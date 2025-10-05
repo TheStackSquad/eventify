@@ -74,7 +74,7 @@ export default function Hero() {
               </div>
             </div>
             {/* Enhanced CTA Buttons */}
-        
+
             <div className="flex flex-col sm:flex-row gap-4 sm:gap-5 pt-2">
               {/* Button 1: Find Events */}
               <Link
@@ -159,25 +159,16 @@ export default function Hero() {
               <div className="absolute top-0 left-0 w-20 h-20 bg-gradient-to-br from-red-500/20 to-transparent rounded-tl-3xl" />
               <div className="absolute bottom-0 right-0 w-20 h-20 bg-gradient-to-tl from-blue-500/20 to-transparent rounded-br-3xl" />
 
-              {/* Carousel with enforced minimum height and centered content */}
-              <div
-                className="relative overflow-hidden rounded-2xl
-              shadow-2xl border border-white/50 min-h-[500px]
-              sm:min-h-[450px] md:min-h-[500px]
-              lg:min-h-[550px] mb-5 bg-gray-100"
-              >
-                <Carousel className="w-full h-full" />
+              {/* Carousel with explicit height */}
+              <div className="relative overflow-hidden rounded-2xl shadow-2xl border border-white/50 h-[400px] sm:h-[450px] md:h-[500px] lg:h-[550px] bg-gray-100">
+                {/* Enhanced overlay with subtle gradient for better text readability */}
+                <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-black/40 to-black/50 z-[1] rounded-2xl pointer-events-none"></div>
+
+                <Carousel />
               </div>
 
-              {/* Optional: Feature badges */}
-              <div
-                className="absolute -bottom-4 left-1/2 transform -translate-x-1/2 flex gap-3
-  // START: Mobile adjustments for stacking and positioning
-  flex-col sm:flex-row gap-2 sm:gap-3 bottom-0 sm:-bottom-4 left-0 sm:left-1/2
-  transform sm:-translate-x-1/2 w-full sm:w-auto p-4 sm:p-0
-  // END: Mobile adjustments
-"
-              >
+              {/* Feature badges - moved outside carousel container with clean separation */}
+              <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 justify-center items-center mt-6 sm:mt-8">
                 <div className="bg-white px-4 py-2 rounded-full shadow-lg border border-gray-200 text-xs font-bold text-gray-700 text-center">
                   🎉 1000+ Events
                 </div>

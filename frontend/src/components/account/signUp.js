@@ -4,11 +4,14 @@
 
 import React, { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { handleSignupSubmit } from "@/handler/signupHandler";
+import { useDispatch } from "react-redux";
+import { signupUser } from "@/redux/action/actionAuth";
+import { toastAlert } from "@/components/common/toast/toastAlert";
 import { validateSignup } from "@/utils/validate/signupValidation";
 import { User, Mail, Lock, Eye, EyeOff, ArrowLeft } from "lucide-react";
 
 export default function SignUpForm() {
+  const dispatch = useDispatch();
   const router = useRouter();
 
   const [formData, setFormData] = useState({
@@ -44,24 +47,58 @@ export default function SignUpForm() {
     }
   };
 
+  // The main submit function using useCallback
   const handleSubmit = useCallback(
     async (e) => {
       e.preventDefault();
+      setIsLoading(true); // Start loading
 
-      // Validate form
+      // 1. Validate form
       const validationErrors = validateSignup(formData);
       if (Object.keys(validationErrors).length > 0) {
         setErrors(validationErrors);
+        setIsLoading(false);
         return;
       }
 
-      // Clear previous errors
+      // Clear previous server errors
       setErrors({});
 
-      // Submit form
-      await handleSignupSubmit(formData, setErrors, setIsLoading, router);
+      try {
+        // 2. Dispatch the Thunk and await the result
+        // The thunk (signupUser) will handle the API call and update the Redux state.
+        await dispatch(signupUser(formData)).unwrap();
+
+        // --- SUCCESS HANDLING ---
+        // unwrap() is a feature of Redux Toolkit Thunks;
+        // if using plain thunks, you check for success/failure inside the thunk.
+
+        // 3. Show Success Toast
+        // NOTE: If the toast is fired *inside* the thunk (as discussed previously),
+        // you may omit it here to avoid duplication. We'll leave it here as an option
+        // if you prefer to keep side-effects in the component.
+        // If it's in the thunk, remove this line:
+        toastAlert.success("Signup successful! Redirecting to login.");
+
+        // 4. Redirection
+        router.push("/login?signup=success");
+      } catch (error) {
+        // --- ERROR HANDLING ---
+        // 3. Show Error Toast
+        // Assuming the thunk payload contains the detailed error message
+        const errorMessage = error.message || "An unexpected error occurred.";
+
+        // 4. Set Component Error State (for displaying below the form)
+        setErrors({ submit: errorMessage });
+
+        // 5. Show global toast
+        toastAlert.error(errorMessage);
+      } finally {
+        setIsLoading(false); // Stop loading regardless of outcome
+      }
     },
-    [formData, router]
+    // Dependency Array for useCallback. Ensure all used state/props are included.
+    [formData, router, dispatch]
   );
 
   // Reusable Input Field Component

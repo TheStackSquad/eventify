@@ -1,22 +1,22 @@
-//frontwend/src/app/layout.js
+// frontend/src/app/layout.js
 
 import { Plus_Jakarta_Sans, Onest } from "next/font/google";
 import Header from "@/components/common/Header";
 import { CartProvider } from "@/context/cartContext";
+import ToastProvider from "@/components/common/toast/toastProvider";
+import ReduxProvider from "@/redux/reduxProvider";
 import "./globals.css";
 
-// 1. Define the Header Font (Jakarta Sans - applied to H elements)
 const headerFont = Plus_Jakarta_Sans({
   subsets: ["latin"],
   display: "swap",
-  variable: "--font-jakarta-sans", // CSS variable: var(--font-jakarta-sans)
+  variable: "--font-jakarta-sans",
 });
 
-// 2. Define the Body Font (Onest - applied to body, buttons, etc.)
 const bodyFont = Onest({
   subsets: ["latin"],
   display: "swap",
-  variable: "--font-onest", // CSS variable: var(--font-onest)
+  variable: "--font-onest",
 });
 
 export const metadata = {
@@ -27,16 +27,17 @@ export const metadata = {
 
 export default function RootLayout({ children }) {
   return (
-    // Apply both font variables to the root <html> tag
     <html lang="en" className={`${headerFont.variable} ${bodyFont.variable}`}>
       <body>
-        {/* Wrap the entire content with the CartProvider */}
-        <CartProvider>
-          <Header />
-          <main id="main-content" className="min-h-screen">
-            {children}
-          </main>
-        </CartProvider>
+        <ReduxProvider>
+          <CartProvider>
+            <Header />
+            <main id="main-content" className="min-h-screen">
+              {children}
+            </main>
+            <ToastProvider />
+          </CartProvider>
+        </ReduxProvider>{" "}
       </body>
     </html>
   );

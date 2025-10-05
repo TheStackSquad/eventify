@@ -19,9 +19,8 @@ export default function Carousel({ className = "" }) {
   }, []);
 
   return (
-
     <div
-      className={`relative overflow-hidden min-h-[65vh] sm:min-h-[70vh] md:min-h-[75vh] lg:min-h-0 ${className}`}
+      className={`relative w-full h-full overflow-hidden rounded-2xl ${className}`}
     >
       {heroImages.map((image, index) => (
         <Image
@@ -30,8 +29,7 @@ export default function Carousel({ className = "" }) {
           alt={image.alt}
           fill
           priority={index === 0}
-          sizes="100vw"
-          className="object-cover transition-opacity duration-3000 ease-in-out"
+          className="object-cover transition-opacity duration-3000 ease-in-out rounded-2xl"
           style={{
             opacity: index === currentSlide ? 1 : 0,
             transitionDuration: "3000ms",
@@ -39,10 +37,7 @@ export default function Carousel({ className = "" }) {
         />
       ))}
 
-      {/* Enhanced overlay with subtle gradient for better text readability */}
-      <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-black/40 to-black/50 z-[1]"></div>
-
-      {/* Optional: Slide indicators for better UX */}
+      {/* Slide indicators - only element that should be inside carousel */}
       <div className="absolute bottom-6 left-1/2 transform -translate-x-1/2 z-[2] flex gap-2">
         {heroImages.map((_, index) => (
           <button

@@ -1,22 +1,24 @@
 // src/components/homepage/ticketCard.js
-'use client';
+"use client";
 
 import React, { useState } from "react";
+// Using next/image for optimized images
+import Image from "next/image";
 import { dummyEvents } from "@/data/upcomingEvents";
 import Link from "next/link";
 
 // Format price in Naira
 const formatPrice = (price) => {
   if (price === 0) return "FREE";
-  return `₦${price.toLocaleString('en-NG')}`;
+  return `₦${price.toLocaleString("en-NG")}`;
 };
 
 // Get starting price from tickets
 const getStartingPrice = (tickets) => {
-  const availableTickets = tickets.filter(t => t.available);
+  const availableTickets = tickets.filter((t) => t.available);
   if (availableTickets.length === 0) return null;
-  
-  const prices = availableTickets.map(t => t.price);
+
+  const prices = availableTickets.map((t) => t.price);
   const minPrice = Math.min(...prices);
   return minPrice;
 };
@@ -25,28 +27,46 @@ const getStartingPrice = (tickets) => {
 const EventCard = ({ event }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [selectedTicket, setSelectedTicket] = useState(null);
-  
+
   const startingPrice = getStartingPrice(event.tickets);
   const hasMultipleTickets = event.tickets.length > 1;
   const isFree = startingPrice === 0;
-  const allSoldOut = event.tickets.every(t => !t.available);
+  const allSoldOut = event.tickets.every((t) => !t.available);
 
   return (
     <div className="flex-shrink-0 w-[85vw] sm:w-[75vw] md:w-80 lg:w-96 snap-start p-4 mr-4 bg-white rounded-2xl shadow-md border border-gray-200 transition-all duration-300 hover:shadow-2xl hover:-translate-y-1">
-      {/* Event Image with gradient overlay */}
+      {/* Event Image with gradient overlay - UPDATED */}
       <div className="relative h-48 md:h-52 bg-gradient-to-br from-gray-200 to-gray-300 rounded-xl mb-4 overflow-hidden group">
-        <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-        <div className="absolute inset-0 flex items-center justify-center">
+        {/* Image Component */}
+        <Image
+          src={event.image} // Use the image path from the event object
+          alt={event.title} // Use the event title as alt text for accessibility
+          fill // Make the image fill the parent container
+          sizes="(max-width: 768px) 85vw, (max-width: 1024px) 75vw, 384px" // Optimization for different screen sizes
+          priority={event.id <= 2} // Prioritize first few images
+          className="object-cover transition-transform duration-500 group-hover:scale-105"
+        />
+
+        {/* Gradient Overlay */}
+        <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent opacity-100 group-hover:opacity-0 transition-opacity duration-300" />
+
+        {/* Placeholder/Fallback (Removed the gray text) */}
+        {/* <div className="absolute inset-0 flex items-center justify-center">
           <span className="text-gray-600 text-sm font-medium tracking-wide">{event.category}</span>
-        </div>
+        </div> */}
+
         {/* Category badge */}
-        <div className="absolute top-3 left-3 bg-white/90 backdrop-blur-sm px-3 py-1 rounded-full">
-          <span className="text-xs font-semibold text-gray-700 uppercase tracking-wider">{event.category}</span>
+        <div className="absolute top-3 left-3 bg-white/90 backdrop-blur-sm px-3 py-1 rounded-full z-10">
+          <span className="text-xs font-semibold text-gray-700 uppercase tracking-wider">
+            {event.category}
+          </span>
         </div>
         {/* Tag badge */}
         {event.tag && (
-          <div className="absolute top-3 right-3 bg-red-500 text-white px-3 py-1 rounded-full">
-            <span className="text-xs font-semibold uppercase tracking-wider">{event.tag}</span>
+          <div className="absolute top-3 right-3 bg-red-500 text-white px-3 py-1 rounded-full z-10">
+            <span className="text-xs font-semibold uppercase tracking-wider">
+              {event.tag}
+            </span>
           </div>
         )}
       </div>
@@ -62,19 +82,35 @@ const EventCard = ({ event }) => {
         <div className="space-y-2">
           <div className="flex items-center text-sm text-gray-600">
             <div className="flex items-center justify-center w-8 h-8 bg-gray-100 rounded-lg mr-3 flex-shrink-0">
-              <svg className="w-4 h-4 text-gray-500" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z" clipRule="evenodd" />
+              <svg
+                className="w-4 h-4 text-gray-500"
+                fill="currentColor"
+                viewBox="0 0 20 20"
+              >
+                <path
+                  fillRule="evenodd"
+                  d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z"
+                  clipRule="evenodd"
+                />
               </svg>
             </div>
             <span className="font-medium">{event.date}</span>
             <span className="mx-2 text-gray-400">•</span>
             <span className="font-medium">{event.time}</span>
           </div>
-          
+
           <div className="flex items-center text-sm text-gray-600">
             <div className="flex items-center justify-center w-8 h-8 bg-gray-100 rounded-lg mr-3 flex-shrink-0">
-              <svg className="w-4 h-4 text-gray-500" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clipRule="evenodd" />
+              <svg
+                className="w-4 h-4 text-gray-500"
+                fill="currentColor"
+                viewBox="0 0 20 20"
+              >
+                <path
+                  fillRule="evenodd"
+                  d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z"
+                  clipRule="evenodd"
+                />
               </svg>
             </div>
             <span className="font-medium line-clamp-1">{event.location}</span>
@@ -84,29 +120,50 @@ const EventCard = ({ event }) => {
         {/* Expandable Ticket Selector */}
         <div className="bg-gray-50 rounded-xl p-4 space-y-3">
           {/* Starting Price Display */}
-          <div 
-            className={`flex items-center justify-between ${hasMultipleTickets ? 'cursor-pointer' : ''}`}
+          <div
+            className={`flex items-center justify-between ${
+              hasMultipleTickets ? "cursor-pointer" : ""
+            }`}
             onClick={() => hasMultipleTickets && setIsExpanded(!isExpanded)}
           >
             <div>
               <p className="text-xs text-gray-500 font-medium uppercase tracking-wide mb-1">
-                {allSoldOut ? 'Sold Out' : isFree ? 'Free Entry' : 'Starting From'}
+                {allSoldOut
+                  ? "Sold Out"
+                  : isFree
+                  ? "Free Entry"
+                  : "Starting From"}
               </p>
-              <p className={`text-2xl font-black ${isFree ? 'text-green-600' : allSoldOut ? 'text-gray-400' : 'text-blue-600'}`}>
-                {allSoldOut ? 'SOLD OUT' : formatPrice(startingPrice)}
+              <p
+                className={`text-2xl font-black ${
+                  isFree
+                    ? "text-green-600"
+                    : allSoldOut
+                    ? "text-gray-400"
+                    : "text-blue-600"
+                }`}
+              >
+                {allSoldOut ? "SOLD OUT" : formatPrice(startingPrice)}
               </p>
             </div>
-            
+
             {hasMultipleTickets && !allSoldOut && (
               <button className="flex items-center gap-1 text-sm text-blue-600 font-semibold hover:text-blue-700 transition-colors">
-                <span>{isExpanded ? 'Hide' : 'View'} Options</span>
-                <svg 
-                  className={`w-4 h-4 transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`}
-                  fill="none" 
-                  stroke="currentColor" 
+                <span>{isExpanded ? "Hide" : "View"} Options</span>
+                <svg
+                  className={`w-4 h-4 transition-transform duration-300 ${
+                    isExpanded ? "rotate-180" : ""
+                  }`}
+                  fill="none"
+                  stroke="currentColor"
                   viewBox="0 0 24 24"
                 >
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    d="M19 9l-7 7-7-7"
+                  />
                 </svg>
               </button>
             )}
@@ -121,20 +178,23 @@ const EventCard = ({ event }) => {
                   onClick={() => setSelectedTicket(ticket)}
                   disabled={!ticket.available}
                   className={`w-full flex items-center justify-between p-3 rounded-lg border-2 transition-all duration-200
-                    ${!ticket.available 
-                      ? 'bg-gray-100 border-gray-200 cursor-not-allowed opacity-60' 
-                      : selectedTicket === ticket
-                        ? 'bg-blue-50 border-blue-500 shadow-sm'
-                        : 'bg-white border-gray-200 hover:border-blue-300 hover:shadow-sm'
+                    ${
+                      !ticket.available
+                        ? "bg-gray-100 border-gray-200 cursor-not-allowed opacity-60"
+                        : selectedTicket === ticket
+                        ? "bg-blue-50 border-blue-500 shadow-sm"
+                        : "bg-white border-gray-200 hover:border-blue-300 hover:shadow-sm"
                     }`}
                 >
                   <div className="flex items-center gap-3">
-                    <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center
-                      ${!ticket.available 
-                        ? 'border-gray-300' 
-                        : selectedTicket === ticket 
-                          ? 'border-blue-500 bg-blue-500' 
-                          : 'border-gray-300'
+                    <div
+                      className={`w-5 h-5 rounded-full border-2 flex items-center justify-center
+                      ${
+                        !ticket.available
+                          ? "border-gray-300"
+                          : selectedTicket === ticket
+                          ? "border-blue-500 bg-blue-500"
+                          : "border-gray-300"
                       }`}
                     >
                       {selectedTicket === ticket && ticket.available && (
@@ -142,18 +202,30 @@ const EventCard = ({ event }) => {
                       )}
                     </div>
                     <div className="text-left">
-                      <p className={`text-sm font-semibold ${!ticket.available ? 'text-gray-400' : 'text-gray-900'}`}>
+                      <p
+                        className={`text-sm font-semibold ${
+                          !ticket.available ? "text-gray-400" : "text-gray-900"
+                        }`}
+                      >
                         {ticket.type}
                       </p>
                       {!ticket.available && (
-                        <p className="text-xs text-red-500 font-medium">Sold Out</p>
+                        <p className="text-xs text-red-500 font-medium">
+                          Sold Out
+                        </p>
                       )}
                       {ticket.available && ticket.quantity < 20 && (
-                        <p className="text-xs text-orange-500 font-medium">Only {ticket.quantity} left</p>
+                        <p className="text-xs text-orange-500 font-medium">
+                          Only {ticket.quantity} left
+                        </p>
                       )}
                     </div>
                   </div>
-                  <p className={`text-lg font-bold ${!ticket.available ? 'text-gray-400' : 'text-gray-900'}`}>
+                  <p
+                    className={`text-lg font-bold ${
+                      !ticket.available ? "text-gray-400" : "text-gray-900"
+                    }`}
+                  >
                     {formatPrice(ticket.price)}
                   </p>
                 </button>
@@ -163,18 +235,29 @@ const EventCard = ({ event }) => {
         </div>
 
         {/* Enhanced CTA Button */}
-        <button 
+        <button
           disabled={allSoldOut}
           className={`w-full flex items-center justify-center py-3 px-4 font-semibold rounded-xl transition-all duration-300 shadow-md transform active:scale-95
-            ${allSoldOut 
-              ? 'bg-gray-300 text-gray-500 cursor-not-allowed' 
-              : 'bg-gradient-to-r from-red-600 to-red-700 text-white hover:from-red-700 hover:to-red-800 hover:shadow-lg hover:scale-[1.02]'
+            ${
+              allSoldOut
+                ? "bg-gray-300 text-gray-500 cursor-not-allowed"
+                : "bg-gradient-to-r from-red-600 to-red-700 text-white hover:from-red-700 hover:to-red-800 hover:shadow-lg hover:scale-[1.02]"
             }`}
         >
-          <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
+          <svg
+            className="w-5 h-5 mr-2"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth="2"
+              d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"
+            />
           </svg>
-          {allSoldOut ? 'Sold Out' : 'Add to Cart'}
+          {allSoldOut ? "Sold Out" : "Add to Cart"}
         </button>
       </div>
     </div>
