@@ -1,30 +1,45 @@
-//frontend/src/redux/reducer/index.js
+// frontend/src/redux/reducer/index.js
 
 import { combineReducers } from "@reduxjs/toolkit";
-import authReducer from "@/redux/reducer/authReducers";
-import storage from "redux-persist/lib/storage"; // Defaults to localStorage
 import { persistReducer } from "redux-persist";
 
-/**
- * @file frontend/src/redux/index.js
- * @description Combines all application reducers and configures persistence.
- */
+// We need to use conditional imports for storage to prevent Next.js from
+// throwing errors when trying to access localStorage on the server side.
 
-// Configuration for redux-persist
+/**
+ * step 1: Define conditional storage.
+ * On the browser (window is defined), we use localStorage (default import).
+ * On the server (window is undefined), we use a 'no-op' storage object that
+ * fulfills the Promise API but does nothing, preventing the error.
+ */
+const storage =
+  typeof window !== "undefined"
+    ? require("redux-persist/lib/storage").default // Browser: uses localStorage
+    : {
+        // Server: no-op storage to suppress the warning/error
+        getItem: () => Promise.resolve(null),
+        setItem: () => Promise.resolve(),
+        removeItem: () => Promise.resolve(),
+      };
+
+// Import your application reducers
+import authReducer from "@/redux/reducer/authReducers";
+
+// step 2: Configuration for redux-persist, using the conditional storage
 const persistConfig = {
-  key: "root", // Key for localStorage entry
-  storage,
+  key: "root", // Key for storage entry
+  storage, // <-- Using the conditional storage here
   // Add reducer slices you want to persist here
   whitelist: ["auth"],
 };
 
-// Combine non-persisted reducers here first if you had any
+// step 3: Combine application reducers
 const combinedReducer = combineReducers({
   auth: authReducer,
-  // ui: uiReducer, // Example of another reducer
+  // Add other reducers here...
 });
 
-// Wrap the combined reducer with persistReducer
+// step 4: Wrap the combined reducer with persistReducer
 const persistedReducer = persistReducer(persistConfig, combinedReducer);
 
 export default persistedReducer;

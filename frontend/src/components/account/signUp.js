@@ -1,4 +1,4 @@
-//src / components / account / signUp.js;
+// src/components/account/signUp.js;
 
 "use client";
 
@@ -8,12 +8,15 @@ import { useDispatch } from "react-redux";
 import { signupUser } from "@/redux/action/actionAuth";
 import { toastAlert } from "@/components/common/toast/toastAlert";
 import { validateSignup } from "@/utils/validate/signupValidation";
-import { User, Mail, Lock, Eye, EyeOff, ArrowLeft } from "lucide-react";
+// step 1: Import the newly separated InputField component
+import InputField from "@/components/common/inputFields";
+import { User, Mail, Lock } from "lucide-react"; // Only need the field icons here
 
 export default function SignUpForm() {
   const dispatch = useDispatch();
   const router = useRouter();
 
+  // step 2: State initialization
   const [formData, setFormData] = useState({
     name: "",
     email: "",
@@ -25,35 +28,42 @@ export default function SignUpForm() {
   const [isLoading, setIsLoading] = useState(false);
   const [errors, setErrors] = useState({});
 
-  const togglePasswordVisibility = () => {
+  // step 3: Define utility functions using useCallback for optimization
+  const togglePasswordVisibility = useCallback(() => {
     setShowPassword((prev) => !prev);
-  };
+  }, []);
 
-  const toggleConfirmPasswordVisibility = () => {
+  const toggleConfirmPasswordVisibility = useCallback(() => {
     setShowConfirmPassword((prev) => !prev);
-  };
+  }, []);
 
-  const handleInputChange = (field, value) => {
-    setFormData((prev) => ({
-      ...prev,
-      [field]: value,
-    }));
-    // Clear field error when user starts typing
-    if (errors[field]) {
-      setErrors((prev) => ({
+  // step 4: Define the core input change handler using useCallback
+  const handleInputChange = useCallback(
+    (field, value) => {
+      // 4.1 Update form data
+      setFormData((prev) => ({
         ...prev,
-        [field]: "",
+        [field]: value,
       }));
-    }
-  };
 
-  // The main submit function using useCallback
+      // 4.2 Clear field error when user starts typing
+      if (errors[field]) {
+        setErrors((prev) => ({
+          ...prev,
+          [field]: "",
+        }));
+      }
+    },
+    [errors] // errors is in dependency array to correctly check for and clear errors
+  );
+
+  // step 5: Define the main form submission function using useCallback
   const handleSubmit = useCallback(
     async (e) => {
       e.preventDefault();
-      setIsLoading(true); // Start loading
+      setIsLoading(true);
 
-      // 1. Validate form
+      // 5.1. Validate form
       const validationErrors = validateSignup(formData);
       if (Object.keys(validationErrors).length > 0) {
         setErrors(validationErrors);
@@ -61,105 +71,31 @@ export default function SignUpForm() {
         return;
       }
 
-      // Clear previous server errors
-      setErrors({});
+      setErrors({}); // Clear previous server errors
 
       try {
-        // 2. Dispatch the Thunk and await the result
-        // The thunk (signupUser) will handle the API call and update the Redux state.
+        // 5.2. Dispatch the Thunk and await the result
         await dispatch(signupUser(formData)).unwrap();
 
-        // --- SUCCESS HANDLING ---
-        // unwrap() is a feature of Redux Toolkit Thunks;
-        // if using plain thunks, you check for success/failure inside the thunk.
-
-        // 3. Show Success Toast
-        // NOTE: If the toast is fired *inside* the thunk (as discussed previously),
-        // you may omit it here to avoid duplication. We'll leave it here as an option
-        // if you prefer to keep side-effects in the component.
-        // If it's in the thunk, remove this line:
+        // 5.3. Success Handling
         toastAlert.success("Signup successful! Redirecting to login.");
-
-        // 4. Redirection
         router.push("/login?signup=success");
       } catch (error) {
-        // --- ERROR HANDLING ---
-        // 3. Show Error Toast
-        // Assuming the thunk payload contains the detailed error message
+        // 5.4. Error Handling
         const errorMessage = error.message || "An unexpected error occurred.";
-
-        // 4. Set Component Error State (for displaying below the form)
         setErrors({ submit: errorMessage });
-
-        // 5. Show global toast
         toastAlert.error(errorMessage);
       } finally {
         setIsLoading(false); // Stop loading regardless of outcome
       }
     },
-    // Dependency Array for useCallback. Ensure all used state/props are included.
     [formData, router, dispatch]
   );
 
-  // Reusable Input Field Component
-  const InputField = ({
-    icon: Icon,
-    type,
-    value,
-    onChange,
-    placeholder,
-    error,
-    isPassword = false,
-    onToggleVisibility,
-    showPassword,
-  }) => (
-    <div className="mb-4">
-      <div className="relative">
-        <div className="absolute inset-y-0 left-0 flex items-center pl-4 pointer-events-none text-gray-400">
-          <Icon className="w-5 h-5" />
-        </div>
-        <input
-          type={type}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          placeholder={placeholder}
-          required
-          className={`w-full pl-12 pr-4 py-4 border rounded-2xl bg-white text-gray-800 focus:ring-green-500 focus:border-green-500 transition duration-150 shadow-sm ${
-            error ? "border-red-300" : "border-gray-200"
-          }`}
-        />
-        {isPassword && (
-          <button
-            type="button"
-            onClick={onToggleVisibility}
-            className="absolute inset-y-0 right-0 flex items-center pr-4 text-gray-500 hover:text-green-600 transition"
-            aria-label={showPassword ? "Hide password" : "Show password"}
-          >
-            {showPassword ? (
-              <EyeOff className="w-5 h-5" />
-            ) : (
-              <Eye className="w-5 h-5" />
-            )}
-          </button>
-        )}
-      </div>
-      {error && <p className="mt-2 text-sm text-red-600 font-body">{error}</p>}
-    </div>
-  );
-
+  // step 6: Render the Sign Up Form with imported InputField components
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
       <div className="w-full max-w-md">
-        {/* Back Button */}
-        {/* <button
-          onClick={() => router.back()}
-          className="flex items-center text-gray-600 hover:text-gray-800 mb-6 transition duration-150 font-body"
-        >
-          <ArrowLeft className="w-5 h-5 mr-2" />
-          Back
-        </button> */}
-
-        {/* Sign Up Card */}
         <div className="w-full p-8 bg-white rounded-3xl shadow-2xl">
           <h1 className="text-4xl font-bold text-gray-900 text-center mb-2 font-header">
             Create Account
@@ -182,8 +118,10 @@ export default function SignUpForm() {
           )}
 
           <form onSubmit={handleSubmit} className="space-y-1">
-            {/* Name Input */}
+            {/* 6.1. Name Input */}
             <InputField
+              label="Full Name"
+              name="name"
               icon={User}
               type="text"
               value={formData.name}
@@ -192,8 +130,10 @@ export default function SignUpForm() {
               error={errors.name}
             />
 
-            {/* Email Input */}
+            {/* 6.2. Email Input */}
             <InputField
+              label="Email Address"
+              name="email"
               icon={Mail}
               type="email"
               value={formData.email}
@@ -202,8 +142,10 @@ export default function SignUpForm() {
               error={errors.email}
             />
 
-            {/* Password Input */}
+            {/* 6.3. Password Input */}
             <InputField
+              label="Password"
+              name="password"
               icon={Lock}
               type={showPassword ? "text" : "password"}
               value={formData.password}
@@ -215,8 +157,10 @@ export default function SignUpForm() {
               showPassword={showPassword}
             />
 
-            {/* Confirm Password Input */}
+            {/* 6.4. Confirm Password Input */}
             <InputField
+              label="Confirm Password"
+              name="confirmPassword"
               icon={Lock}
               type={showConfirmPassword ? "text" : "password"}
               value={formData.confirmPassword}
@@ -228,7 +172,7 @@ export default function SignUpForm() {
               showPassword={showConfirmPassword}
             />
 
-            {/* Create Account Button */}
+            {/* 6.5. Create Account Button */}
             <button
               type="submit"
               disabled={isLoading}
@@ -265,7 +209,7 @@ export default function SignUpForm() {
             </button>
           </form>
 
-          {/* Sign In Link */}
+          {/* 6.6. Sign In Link */}
           <div className="text-center mt-6 font-body">
             Already have an account?
             <a

@@ -1,4 +1,4 @@
-/*//backend/db.go*/
+/*//backend/pkg/db.go*/
 
 package db
 
@@ -24,7 +24,7 @@ const DatabaseName = "eventify"
 func Initialize() {
     // Attempt to load .env file. Ignore error if file doesn't exist (e.g., in production)
     // but log a warning if running locally and it fails.
-    if err := godotenv.Load("../.env"); err != nil {
+    if err := godotenv.Load(".env"); err != nil {
         log.Println("Warning: Could not load .env file. Assuming environment variables are set externally.")
     }
 }
@@ -62,6 +62,13 @@ func ConnectDB() {
     Client = client
 }
 
+// GetDB returns the MongoDB database instance for direct access
+func GetDB() *mongo.Database {
+    if Client == nil {
+        log.Fatal("FATAL: MongoDB Client is not initialized. Call ConnectDB first.")
+    }
+    return Client.Database(DatabaseName)
+}
 // GetCollection returns a handle to the specified collection within the "eventify" database.
 func GetCollection(collectionName string) *mongo.Collection {
     if Client == nil {
