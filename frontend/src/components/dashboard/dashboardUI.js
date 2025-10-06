@@ -13,13 +13,6 @@ import {
   Barcode,
 } from "lucide-react";
 
-/**
- * Renders the main content of the user dashboard.
- * @param {object} props
- * @param {string | null} props.userName The first name of the logged-in user, or null if loading/not available.
- * @param {boolean} props.isLoading True if user session data is still loading.
- * @param {Array<object>} props.tickets Array of purchased ticket objects.
- */
 export default function DashboardUI({ userName, isLoading, tickets = [] }) {
   // Determine the display name:
   const displayName = userName || "User";

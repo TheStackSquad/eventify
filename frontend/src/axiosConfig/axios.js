@@ -2,16 +2,20 @@
 
 import axios from "axios";
 
+// 1. Define the base URL using an environment variable
+// Use a fallback for safety, e.g., the local Go server address
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+
+console.log("Axios Base URL set to:", API_BASE_URL); // Useful for tracing configuration errors
+
 const instance = axios.create({
-  // Use a relative path, Next.js will automatically proxy to the current domain
-  baseURL: "/",
-  timeout: 10000, // Timeout requests after 10 seconds
+  // Use the environment variable for the base URL
+  baseURL: API_BASE_URL,
+  timeout: 10000,
   headers: {
     "Content-Type": "application/json",
   },
-  // Setting withCredentials to true is essential for sending and receiving HttpOnly cookies
   withCredentials: true,
 });
-
 
 export default instance;

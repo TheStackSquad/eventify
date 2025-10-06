@@ -104,12 +104,15 @@ export default function MobileMenu({
 
             {/* Mobile Auth Buttons */}
             <div className="pt-4 space-y-3 border-t border-gray-200">
-              <Link href="/login" onClick={() => setMenuOpen(false)}>
+              <Link href="/account/auth/login" onClick={() => setMenuOpen(false)}>
                 <div className="w-full px-4 py-3 text-center text-gray-700 font-medium border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors duration-200">
                   Login
                 </div>
               </Link>
-              <Link href="/get-started" onClick={() => setMenuOpen(false)}>
+              <Link
+                href="/account/auth/create-account"
+                onClick={() => setMenuOpen(false)}
+              >
                 <div className="w-full px-4 py-3 text-center text-white font-medium bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors duration-200">
                   Get Started
                 </div>
