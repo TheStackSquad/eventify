@@ -58,39 +58,50 @@ export default function SignUpForm() {
   );
 
   // step 5: Define the main form submission function using useCallback
-  const handleSubmit = useCallback(
-    async (e) => {
-      e.preventDefault();
-      setIsLoading(true);
+ const handleSubmit = useCallback(
+   async (e) => {
+     e.preventDefault();
+     console.log("LOG 1: handleSubmit called.");
+     console.log("LOG 2: Initial formData state:", formData); // Trace the data being submitted
+     setIsLoading(true);
 
-      // 5.1. Validate form
-      const validationErrors = validateSignup(formData);
-      if (Object.keys(validationErrors).length > 0) {
-        setErrors(validationErrors);
-        setIsLoading(false);
-        return;
-      }
+     // 5.1. Validate form
+     const validationErrors = validateSignup(formData);
 
-      setErrors({}); // Clear previous server errors
+     if (Object.keys(validationErrors).length > 0) {
+       console.log("LOG 3: Form validation FAILED. Errors:", validationErrors);
+       setErrors(validationErrors);
+       setIsLoading(false);
+       return;
+     }
 
-      try {
-        // 5.2. Dispatch the Thunk and await the result
-        await dispatch(signupUser(formData)).unwrap();
+     console.log("LOG 3: Form validation PASSED.");
+     setErrors({}); // Clear previous server errors
 
-        // 5.3. Success Handling
-        toastAlert.success("Signup successful! Redirecting to login.");
-        router.push("/login?signup=success");
-      } catch (error) {
-        // 5.4. Error Handling
-        const errorMessage = error.message || "An unexpected error occurred.";
-        setErrors({ submit: errorMessage });
-        toastAlert.error(errorMessage);
-      } finally {
-        setIsLoading(false); // Stop loading regardless of outcome
-      }
-    },
-    [formData, router, dispatch]
-  );
+     try {
+       // 5.2. Dispatch the Thunk and await the result
+       console.log("LOG 4: Dispatching signupUser thunk with formData.");
+
+       // Note: formData should be checked in the 'signupUser' thunk for the actual API payload
+       await dispatch(signupUser(formData)).unwrap();
+
+       // 5.3. Success Handling
+       console.log("LOG 5: Thunk successful. User signed up."); // Data flow ends here for success
+       toastAlert.success("Signup successful! Redirecting to login.");
+       router.push("/account/auth/login?signup=success");
+     } catch (error) {
+       // 5.4. Error Handling
+       console.error("LOG 5: Thunk FAILED. Error details:", error); // Data flow ends here for error
+       const errorMessage = error.message || "An unexpected error occurred.";
+       setErrors({ submit: errorMessage });
+       toastAlert.error(errorMessage);
+     } finally {
+       console.log("LOG 6: Finalizing submission. Setting isLoading to false.");
+       setIsLoading(false); // Stop loading regardless of outcome
+     }
+   },
+   [formData, router, dispatch]
+ );
 
   // step 6: Render the Sign Up Form with imported InputField components
   return (

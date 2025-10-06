@@ -7,7 +7,8 @@ import Carousel from "@/components/homepage/carousel";
 
 export default function Hero() {
   return (
-    <section className="relative bg-gradient-to-b from-white via-gray-50 to-white pt-20 pb-28 md:pt-28 md:pb-36 lg:pb-44 overflow-hidden">
+    <section className="relative bg-gradient-to-b from-white via-gray-50 to-white
+    pt-2 pb-2 md:pt-2 md:pb-3 lg:pb-4 overflow-hidden">
       {/* Decorative background elements */}
       <div className="absolute top-0 right-0 w-96 h-96 bg-red-100/30 rounded-full blur-3xl -translate-y-48 translate-x-48 pointer-events-none" />
       <div className="absolute bottom-0 left-0 w-96 h-96 bg-blue-100/20 rounded-full blur-3xl translate-y-48 -translate-x-48 pointer-events-none" />

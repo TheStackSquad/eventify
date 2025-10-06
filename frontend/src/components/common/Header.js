@@ -210,7 +210,7 @@ export default function Header() {
             ) : (
               // 3. Desktop: Login/Signup buttons when logged out
               <>
-                <Link href="/account/login">
+                <Link href="/account/auth/login">
                   <motion.button
                     className="px-4 py-2 text-gray-700 hover:text-gray-900 font-medium transition-colors duration-200"
                     whileHover={{ scale: 1.02 }}
@@ -219,7 +219,7 @@ export default function Header() {
                     Login
                   </motion.button>
                 </Link>
-                <Link href="/account/signup">
+                <Link href="/account/auth/create-account">
                   <motion.button
                     className="px-6 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors duration-200"
                     whileHover={{ scale: 1.05 }}
