@@ -1,4 +1,4 @@
-/*//backend/pkg/db.go*/
+/*//backend/pkg/db/db.go*/
 
 package db
 
@@ -16,8 +16,7 @@ import (
 
 // Client is the global MongoDB client instance accessible to all packages.
 var Client *mongo.Client 
-// DatabaseName holds the name of the MongoDB database (e.g., "eventify").
-const DatabaseName = "eventify" 
+const DatabaseName = "bandhit" 
 
 // Initialize loads environment variables from the .env file in the root
 // of the backend directory.
