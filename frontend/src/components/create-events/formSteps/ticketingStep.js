@@ -1,7 +1,7 @@
 //frontend/src/components/create-events/formSteps/ticketingStep.js
 
-import { createInputField } from "@/components/common/createInputFields";
-import TicketTier from "../components/TicketTier";
+// import { createInputField } from "@/components/common/createInputFields";
+import TicketTier from "@/components/create-events/components/ticketTier";
 
 export default function TicketingStep({
   formData,
