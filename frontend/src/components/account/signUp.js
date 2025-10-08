@@ -105,7 +105,7 @@ export default function SignUpForm() {
 
   // step 6: Render the Sign Up Form with imported InputField components
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-gray-50 flex items-center justify-center py-2 px-4 sm:px-6 lg:px-8">
       <div className="w-full max-w-md">
         <div className="w-full p-8 bg-white rounded-3xl shadow-2xl">
           <h1 className="text-4xl font-bold text-gray-900 text-center mb-2 font-header">

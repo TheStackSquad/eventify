@@ -1,21 +1,111 @@
-// src/axiosConfig/axios.js
-
+// frontend/src/axiosConfig/axios.js
 import axios from "axios";
 
-// 1. Define the base URL using an environment variable
-// Use a fallback for safety, e.g., the local Go server address
+// Step 1: Define the base URL using environment variable
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
 
-console.log("Axios Base URL set to:", API_BASE_URL); // Useful for tracing configuration errors
+console.log("Axios Base URL set to:", API_BASE_URL);
 
+// Step 2: Create axios instance
 const instance = axios.create({
-  // Use the environment variable for the base URL
   baseURL: API_BASE_URL,
   timeout: 10000,
   headers: {
     "Content-Type": "application/json",
   },
-  withCredentials: true,
+  withCredentials: true, // CRITICAL: Sends cookies with every request
 });
+
+// Step 3: Track if we're currently refreshing the token
+let isRefreshing = false;
+let failedQueue = [];
+
+// Step 4: Process queued requests after token refresh
+const processQueue = (error, token = null) => {
+  failedQueue.forEach((prom) => {
+    if (error) {
+      prom.reject(error);
+    } else {
+      prom.resolve(token);
+    }
+  });
+  failedQueue = [];
+};
+
+// Step 5: Constants for better maintainability
+const AUTH_ENDPOINTS = {
+  REFRESH: "/auth/refresh",
+  LOGIN: "/auth/login",
+  LOGOUT: "/auth/logout",
+  ME: "/auth/me",
+};
+
+const REDIRECT_PATHS = {
+  LOGIN: "/login",
+  DASHBOARD: "/dashboard",
+};
+
+// Step 6: Helper function for login redirect
+const redirectToLogin = () => {
+  if (typeof window !== "undefined") {
+    window.location.href = REDIRECT_PATHS.LOGIN;
+  }
+};
+
+// Step 7: Request Interceptor (optional, for logging or adding headers)
+instance.interceptors.request.use(
+  (config) => {
+    return config;
+  },
+  (error) => {
+    return Promise.reject(error);
+  }
+);
+
+// Step 8: Enhanced Response Interceptor
+instance.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    const originalRequest = error.config;
+
+    // Prevent handling non-401 errors or already retried requests
+    if (error.response?.status !== 401 || originalRequest._retry) {
+      return Promise.reject(error);
+    }
+
+    // Prevent refresh loop on refresh endpoint itself
+    if (originalRequest.url === AUTH_ENDPOINTS.REFRESH) {
+      isRefreshing = false;
+      processQueue(error, null);
+      redirectToLogin();
+      return Promise.reject(error);
+    }
+
+    // Handle concurrent requests during refresh
+    if (isRefreshing) {
+      return new Promise((resolve, reject) => {
+        failedQueue.push({ resolve, reject });
+      })
+        .then(() => instance(originalRequest))
+        .catch((err) => Promise.reject(err));
+    }
+
+    // Attempt token refresh
+    originalRequest._retry = true;
+    isRefreshing = true;
+
+    try {
+      await instance.post(AUTH_ENDPOINTS.REFRESH);
+      isRefreshing = false;
+      processQueue(null, true);
+      return instance(originalRequest);
+    } catch (refreshError) {
+      isRefreshing = false;
+      processQueue(refreshError, null);
+      redirectToLogin();
+      return Promise.reject(refreshError);
+    }
+  }
+);
 
 export default instance;

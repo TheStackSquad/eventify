@@ -1,73 +1,153 @@
-//src/app/dashboard/page.js
+// frontend/src/app/dashboard/page.js
+
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
+import { useSelector, useDispatch } from "react-redux";
+import { useRouter } from "next/navigation";
+
 import DashboardUI from "@/components/dashboard/dashboardUI";
-import { useSelector } from "react-redux"; // Import useSelector
+import { logoutUser } from "@/redux/action/actionAuth";
 
-// Mock ticket data for demonstration purposes
-const mockTickets = [
-  {
-    eventName: "Tech Summit 2025",
-    date: new Date(Date.now() + 86400000).toISOString(),
-    time: "10:00 AM",
-    location: "Convention Center",
-    quantity: 2,
-    status: "upcoming",
-    purchaseDate: "2025-09-01",
-  },
-  {
-    eventName: "Music Fest Winter",
-    date: new Date(Date.now() - 86400000).toISOString(),
-    time: "07:00 PM",
-    location: "Stadium Arena",
-    quantity: 1,
-    status: "past",
-    purchaseDate: "2025-08-15",
-  },
-];
+// Placeholder for the real API call to fetch user tickets
+const fetchUserTickets = async () => {
+  console.log("LOG: Initiating API call to fetch user tickets...");
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  return [];
+};
 
-/**
- * Main dashboard page component.
- * It consumes the user session state from Redux and passes it to the UI component.
- */
 export default function DashboardPage() {
-  // 1. SELECT USER NAME AND AUTH STATUS FROM REDUX
-  // Assumes the name is stored under state.auth.user.name
-  const userName = useSelector((state) => state.auth.user?.name);
-  // Assumes the status is stored under state.auth.status (e.g., 'loading', 'succeeded')
-  const authStatus = useSelector((state) => state.auth.status);
+  const dispatch = useDispatch();
+  const router = useRouter();
 
-  // 2. Local state for content loading simulation (1.5s delay after signin succeeds)
+  // 1. SELECT AUTH STATE AND USER DATA
+  const {
+    user,
+    status: authStatus,
+    isInitialized,
+  } = useSelector((state) => state.auth);
+
+  const userName = user?.name;
+
+  // 2. STATE FOR CONTENT AND LOADING
+  const [tickets, setTickets] = useState([]);
   const [isContentLoading, setIsContentLoading] = useState(true);
 
-  useEffect(() => {
-    // If the Redux authentication process (signinUser thunk) reports success:
-    if (authStatus === "succeeded") {
-      // Start a timer to simulate loading the dashboard's specific content (e.g., tickets)
-      const timer = setTimeout(() => {
-        setIsContentLoading(false);
-      }, 1500); // 1.5 second loading delay
+  // 3. NEW: Explicit flag to confirm we've validated auth successfully
+  const [isAuthValidated, setIsAuthValidated] = useState(false);
 
-      return () => clearTimeout(timer);
-    } else if (authStatus === "loading") {
-      // If the signin process is still running, ensure loading is active
-      setIsContentLoading(true);
-    } else if (authStatus === "failed") {
-      // If signin failed, stop the simulated loading
+  // 4. LOGIC FOR FETCHING TICKETS
+  const loadUserContent = useCallback(async () => {
+    console.log("LOG: Starting content fetch (Tickets)...");
+
+    try {
+      const userTickets = await fetchUserTickets();
+      setTickets(userTickets);
+      console.log(
+        "LOG: Tickets fetched successfully. Count:",
+        userTickets.length
+      );
+    } catch (error) {
+      console.error("LOG: Failed to fetch tickets:", error);
+      setTickets([]);
+    } finally {
       setIsContentLoading(false);
     }
-  }, [authStatus]); // Dependency array ensures this runs when Redux auth status changes
+  }, []);
 
-  // Combine Redux's immediate loading state ('loading') with the simulated content loading state
-  const isLoading = authStatus === "loading" || isContentLoading;
+  // 5. CORE AUTH & REDIRECT LOGIC
+  useEffect(() => {
+    console.log(
+      `LOG: Dashboard Effect: isInitialized=${isInitialized}, authStatus=${authStatus}, userExists=${!!user}`
+    );
 
+    // A. Initial check is not complete (Redux is still loading the session)
+    if (!isInitialized || authStatus === "loading") {
+      console.log("LOG: Waiting for session initialization...");
+      setIsAuthValidated(false); // Explicitly mark auth as not validated
+      return;
+    }
+
+    // B. Handle UNAUTHENTICATED State
+    if (isInitialized && !user) {
+      console.log(
+        "LOG: Initialization complete, but no authenticated user found. Redirecting to /login."
+      );
+      setIsContentLoading(false);
+      setIsAuthValidated(false);
+      router.push("/account/auth/login");
+      return;
+    }
+
+    // C. Handle Successful Initialization (User is authenticated)
+    if (isInitialized && user && authStatus === "succeeded") {
+      console.log("LOG: User is authenticated. Marking auth as validated.");
+      setIsAuthValidated(true); // Mark auth as successfully validated
+      loadUserContent();
+    }
+  }, [isInitialized, authStatus, router, loadUserContent, user]);
+
+  // 6. TRIPLE-LAYER LOADING CHECK
+  // Show loading if ANY of these conditions are true:
+  const isLoading =
+    !isInitialized || // Redux hasn't initialized
+    authStatus === "loading" || // Auth is actively checking
+    !isAuthValidated || // We haven't confirmed auth success
+    (isAuthValidated && isContentLoading) || // Auth passed but content still loading
+    !user; // No user object (redundant but defensive)
+
+  // 7. LOGOUT HANDLER FUNCTION
+  const handleLogout = async () => {
+    console.log("LOG: User initiated logout.");
+    const resultAction = await dispatch(logoutUser());
+
+    if (
+      logoutUser.fulfilled.match(resultAction) ||
+      logoutUser.rejected.match(resultAction)
+    ) {
+      console.log("LOG: Logout finished. Redirecting to /login.");
+      router.push("/account/auth/login");
+    }
+  };
+
+  // 8. CREATE EVENT HANDLER
+  const handleCreateEvent = () => {
+    console.log("LOG: Redirecting user to Event Creation flow.");
+    router.push("/events/create-events");
+  };
+
+  // 9. ULTRA-DEFENSIVE RENDER LOGIC
+  // Early return for ANY loading state - no UI leakage possible
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900 mx-auto mb-4"></div>
+          <p>Loading Dashboard...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Additional safety check: If somehow we get here without a user, show nothing
+  if (!user || !isAuthValidated) {
+    console.error("CRITICAL: Reached render without proper auth validation!");
+    return null;
+  }
+
+  // Only render dashboard when ALL conditions are met:
+  // ✓ isInitialized = true
+  // ✓ user exists
+  // ✓ authStatus = 'succeeded'
+  // ✓ isAuthValidated = true
+  // ✓ isContentLoading = false
   return (
-    // Pass the Redux-derived user name and the combined loading state to the UI
     <DashboardUI
       userName={userName}
-      isLoading={isLoading}
-      tickets={mockTickets}
+      isLoading={false}
+      tickets={tickets}
+      onLogout={handleLogout}
+      onCreateEvent={handleCreateEvent}
     />
   );
 }

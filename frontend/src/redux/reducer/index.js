@@ -3,43 +3,53 @@
 import { combineReducers } from "@reduxjs/toolkit";
 import { persistReducer } from "redux-persist";
 
-// We need to use conditional imports for storage to prevent Next.js from
+// ======================================================================
+// 1. Conditional Storage for Next.js (SSR/Client)
+// We must conditionally import storage to prevent Next.js from
 // throwing errors when trying to access localStorage on the server side.
-
-/**
- * step 1: Define conditional storage.
- * On the browser (window is defined), we use localStorage (default import).
- * On the server (window is undefined), we use a 'no-op' storage object that
- * fulfills the Promise API but does nothing, preventing the error.
- */
+// ======================================================================
 const storage =
   typeof window !== "undefined"
     ? require("redux-persist/lib/storage").default // Browser: uses localStorage
     : {
-        // Server: no-op storage to suppress the warning/error
+        // Server: no-op storage to fulfill the Promise API without localStorage access
         getItem: () => Promise.resolve(null),
         setItem: () => Promise.resolve(),
         removeItem: () => Promise.resolve(),
       };
 
-// Import your application reducers
-import authReducer from "@/redux/reducer/authReducers";
+// ======================================================================
+// 2. Import Application Reducers
+// ======================================================================
+import authReducer from "./authReducers";
+import eventReducer from "./eventReducer"; // Imported based on your initial store.js structure
+import ticketReducer from "./ticketReducer"; // Imported based on your initial store.js structure
 
-// step 2: Configuration for redux-persist, using the conditional storage
+// ======================================================================
+// 3. Redux-Persist Configuration
+// ======================================================================
 const persistConfig = {
-  key: "root", // Key for storage entry
-  storage, // <-- Using the conditional storage here
-  // Add reducer slices you want to persist here
+  key: "root", // Key for the storage entry
+  storage, // <-- Using the conditional storage
+  // Specify which slices of the state to save/load from storage
   whitelist: ["auth"],
+  // If you had a slice you explicitly did NOT want to persist, you'd use:
+  // blacklist: ["events", "tickets"],
 };
 
-// step 3: Combine application reducers
+// ======================================================================
+// 4. Combine Reducers
+// ======================================================================
 const combinedReducer = combineReducers({
   auth: authReducer,
-  // Add other reducers here...
+  events: eventReducer, // Included eventReducer
+  tickets: ticketReducer, // Included ticketReducer
 });
 
-// step 4: Wrap the combined reducer with persistReducer
+// ======================================================================
+// 5. Wrap the combined reducer with persistReducer
+// This creates the final, ready-to-use persisted root reducer
+// ======================================================================
 const persistedReducer = persistReducer(persistConfig, combinedReducer);
 
 export default persistedReducer;
