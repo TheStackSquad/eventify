@@ -157,7 +157,7 @@ export default function LoginForm() {
       <div className="text-center mt-6 font-body">
         Don&apos;t have an account?
         <Link
-          href="/account/create-account"
+          href="/account/auth/create-account"
           className="ml-1 text-green-600 hover:text-green-700 font-semibold transition"
         >
           Sign Up here

@@ -4,6 +4,13 @@ import { createAsyncThunk } from "@reduxjs/toolkit";
 import axios from "@/axiosConfig/axios";
 import { toastAlert } from "@/components/common/toast/toastAlert";
 
+// Action type constants for consistency
+const ACTION_TYPES = {
+  SIGNIN: "auth/signinUser",
+  RESTORE_SESSION: "auth/restoreSession",
+  LOGOUT: "auth/logoutUser",
+};
+
 export const signupUser = createAsyncThunk(
   "auth/signupUser",
   async (formData, { rejectWithValue }) => {
@@ -53,41 +60,94 @@ export const signupUser = createAsyncThunk(
   }
 );
 
+// signinUser with error handling
 export const signinUser = createAsyncThunk(
-  "auth/signinUser",
+  ACTION_TYPES.SIGNIN,
   async (formData, { rejectWithValue }) => {
     try {
-      // API call to the Go backend
       const response = await axios.post("/auth/login", formData);
-
-      // The backend should handle setting the secure HttpOnly cookie.
       toastAlert.success("Welcome back to Eventify!");
 
-      // Return non-sensitive user data for state consumption
-      return response.data;
+      // Return structured data for consistent state management
+      return {
+        user: response.data.user,
+        message: response.data.message,
+      };
     } catch (error) {
       const errorMessage =
         error.response?.data?.message || "Invalid credentials or server error.";
       toastAlert.error(errorMessage);
-      return rejectWithValue({ message: errorMessage });
+      return rejectWithValue({
+        message: errorMessage,
+        code: error.response?.status,
+      });
     }
   }
 );
 
+// restoreSession with state management
+export const restoreSession = createAsyncThunk(
+  ACTION_TYPES.RESTORE_SESSION,
+  async (_, { rejectWithValue }) => {
+    console.log(
+      "[restoreSession Thunk] Starting session restoration attempt..."
+    );
+    try {
+      console.log("[restoreSession Thunk] Calling GET /auth/me..."); // If the Go router fix is applied, this should now return 200 (authenticated) or 401 (unauthenticated)
+      const response = await axios.get("/auth/me");
+      console.log(
+        "[restoreSession Thunk] API Success (200 OK). User restored."
+      );
+      return {
+        user: response.data,
+        restored: true,
+      };
+    } catch (error) {
+      const status = error.response?.status; // Differentiate between network errors and auth failures
+      const isAuthError = status === 401;
+
+      if (isAuthError) {
+        console.log(
+          `[restoreSession Thunk] Session expired or invalid (401). State will be set to failed.`
+        );
+      } else if (status) {
+        console.error(
+          `[restoreSession Thunk] API returned error status: ${status}`
+        );
+      } else {
+        console.error(
+          `[restoreSession Thunk] Network error during session restore:`,
+          error.message
+        );
+      }
+      return rejectWithValue({
+        message: isAuthError ? "Session expired" : "Session restoration failed",
+        silent: true,
+        isAuthError,
+      });
+    }
+  }
+);
+
+//logoutUser with state cleanup
 export const logoutUser = createAsyncThunk(
-  "auth/logoutUser",
+  ACTION_TYPES.LOGOUT,
   async (_, { rejectWithValue }) => {
     try {
-      // Request to server to invalidate session/clear cookie
-      await axios.post("/logout");
-
-      // Notification
+      await axios.post("/auth/logout");
       toastAlert.info("You have been logged out.");
-      return {};
+
+      return {
+        success: true,
+        timestamp: new Date().toISOString(),
+      };
     } catch (error) {
-      // Even if the server fails, we clear client state for security purposes
+      // Even on server error, we clear client state
       toastAlert.error("Error logging out on server, clearing local session.");
-      return rejectWithValue(error.response?.data?.message || "Logout failed.");
+      return rejectWithValue({
+        message: error.response?.data?.message || "Logout failed.",
+        clearState: true,
+      });
     }
   }
 );

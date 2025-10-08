@@ -4,7 +4,8 @@ import { Plus_Jakarta_Sans, Onest } from "next/font/google";
 import Header from "@/components/common/Header";
 import { CartProvider } from "@/context/cartContext";
 import ToastProvider from "@/components/common/toast/toastProvider";
-import ReduxProvider from "@/redux/reduxProvider";
+import ReduxProvider from "@/provider/reduxProvider";
+import SessionProvider from "@/provider/sessionProvider";
 import "./globals.css";
 
 const headerFont = Plus_Jakarta_Sans({
@@ -30,13 +31,15 @@ export default function RootLayout({ children }) {
     <html lang="en" className={`${headerFont.variable} ${bodyFont.variable}`}>
       <body>
         <ReduxProvider>
-          <CartProvider>
-            <Header />
-            <main id="main-content" className="min-h-screen">
-              {children}
-            </main>
-            <ToastProvider />
-          </CartProvider>
+          <SessionProvider>
+            <CartProvider>
+              <Header />
+              <main id="main-content" className="min-h-screen">
+                {children}
+              </main>
+              <ToastProvider />
+            </CartProvider>
+          </SessionProvider>
         </ReduxProvider>{" "}
       </body>
     </html>
