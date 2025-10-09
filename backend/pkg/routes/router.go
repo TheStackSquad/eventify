@@ -3,76 +3,80 @@
 package routes
 
 import (
-	"net/http"
-	"time"
+    "net/http"
+    "time"
 
-	"eventify/backend/pkg/handlers" // Single import of handlers
-	"eventify/backend/pkg/middleware"
+    "eventify/backend/pkg/handlers" // Single import of handlers
+    "eventify/backend/pkg/middleware"
 
-	"github.com/gin-contrib/cors"
-	ginzerolog "github.com/gin-contrib/logger"
-	"github.com/gin-gonic/gin"
+    "github.com/gin-contrib/cors"
+    ginzerolog "github.com/gin-contrib/logger"
+    "github.com/gin-gonic/gin"
 )
 
 
 // ConfigureRouter sets up all application routes and middleware.
 func ConfigureRouter(authHandler *handlers.AuthHandler, eventHandler *handlers.EventHandler) *gin.Engine {
-	router := gin.New()
+    router := gin.New()
 
-	// Global Middleware
-	router.Use(gin.Recovery())
-	router.Use(ginzerolog.SetLogger())
+    // Global Middleware
+    router.Use(gin.Recovery())
+    router.Use(ginzerolog.SetLogger())
 
-	// CORS Configuration 
-	router.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"http://localhost:3000"},
-		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
-		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
-		ExposeHeaders:    []string{"Content-Length"},
-		AllowCredentials: true,
-		MaxAge:           12 * time.Hour,
-	}))
+    // CORS Configuration 
+    router.Use(cors.New(cors.Config{
+        AllowOrigins:      []string{"http://localhost:3000"},
+        AllowMethods:      []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+        AllowHeaders:      []string{"Origin", "Content-Type", "Authorization"},
+        ExposeHeaders:     []string{"Content-Length"},
+        AllowCredentials: true,
+        MaxAge:            12 * time.Hour,
+    }))
 
-	// Basic Health Check Route
-	router.GET("/", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{
-			"message": "Eventify API is running",
-			"status":  "healthy",
-		})
-	})
+    // Basic Health Check Route
+    router.GET("/", func(c *gin.Context) {
+        c.JSON(http.StatusOK, gin.H{
+            "message": "Eventify API is running",
+            "status":  "healthy",
+        })
+    })
 
-	// -------------------------------------------------------------------
-	// 1. PUBLIC ROUTES (Authentication)
-	// -------------------------------------------------------------------
-	auth := router.Group("/auth")
-	{
-		auth.POST("/signup", authHandler.Signup)
-		auth.POST("/login", authHandler.Login)
-		auth.POST("/refresh", authHandler.RefreshToken)
-		auth.POST("/logout", authHandler.Logout)
-	}
+    // -------------------------------------------------------------------
+    // 1. PUBLIC ROUTES (Authentication)
+    // -------------------------------------------------------------------
+    auth := router.Group("/auth")
+    {
+        auth.POST("/signup", authHandler.Signup)
+        auth.POST("/login", authHandler.Login)
+        auth.POST("/refresh", authHandler.RefreshToken)
+        auth.POST("/logout", authHandler.Logout)
+    }
 
-	// -------------------------------------------------------------------
-	// 2. PROTECTED ROUTES (Requiring AuthMiddleware)
-	// -------------------------------------------------------------------
-	
-	// Protected Auth Routes (e.g., fetching current user)
-	protectedAuth := router.Group("/auth")
-	protectedAuth.Use(middleware.AuthMiddleware()) 
-	{
-		protectedAuth.GET("/me", authHandler.GetCurrentUser)
-	}
+    // -------------------------------------------------------------------
+    // 2. PROTECTED ROUTES (Requiring AuthMiddleware)
+    // -------------------------------------------------------------------
+    
+    // Protected Auth Routes (e.g., fetching current user)
+    protectedAuth := router.Group("/auth")
+    protectedAuth.Use(middleware.AuthMiddleware()) 
+    {
+        protectedAuth.GET("/me", authHandler.GetCurrentUser)
+    }
     
     // Protected Event Routes
     // This group is now defined and its routes require authentication
-    events := router.Group("/events") // 👈 events group defined here
+    events := router.Group("/events")
     events.Use(middleware.AuthMiddleware()) 
     {
-        // Route is now POST /events/create and is protected
-        events.POST("/create", eventHandler.CreateEvent) // 👈 FIX: events variable is now usable
+        // Existing route
+        events.POST("/create", eventHandler.CreateEvent)
+        
+        // ⭐️ FIX: Register the new GET route for fetching user events
+        events.GET("/my-events", eventHandler.GetUserEventsHandler)
+
         // events.GET("/", eventHandler.GetEvents)
         // events.GET("/:id", eventHandler.GetEvent)
     }
 
-	return router
+    return router
 }
