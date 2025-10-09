@@ -1,14 +1,12 @@
-//backend/ pkg/ routes/router.go
-
+// backend/pkg/routes/router.go
 
 package routes
 
 import (
 	"net/http"
-	//"os"
 	"time"
 
-	"eventify/backend/pkg/handlers"
+	"eventify/backend/pkg/handlers" // Single import of handlers
 	"eventify/backend/pkg/middleware"
 
 	"github.com/gin-contrib/cors"
@@ -18,14 +16,14 @@ import (
 
 
 // ConfigureRouter sets up all application routes and middleware.
-func ConfigureRouter(authHandler *handlers.AuthHandler) *gin.Engine {
+func ConfigureRouter(authHandler *handlers.AuthHandler, eventHandler *handlers.EventHandler) *gin.Engine {
 	router := gin.New()
 
 	// Global Middleware
 	router.Use(gin.Recovery())
 	router.Use(ginzerolog.SetLogger())
 
-	// CORS Configuration (Step 11 from main.go)
+	// CORS Configuration 
 	router.Use(cors.New(cors.Config{
 		AllowOrigins:     []string{"http://localhost:3000"},
 		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
@@ -35,7 +33,7 @@ func ConfigureRouter(authHandler *handlers.AuthHandler) *gin.Engine {
 		MaxAge:           12 * time.Hour,
 	}))
 
-	// Basic Health Check Route (Step 12 from main.go)
+	// Basic Health Check Route
 	router.GET("/", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
 			"message": "Eventify API is running",
@@ -43,24 +41,38 @@ func ConfigureRouter(authHandler *handlers.AuthHandler) *gin.Engine {
 		})
 	})
 
-	// Public Auth Routes (Step 13 from main.go)
+	// -------------------------------------------------------------------
+	// 1. PUBLIC ROUTES (Authentication)
+	// -------------------------------------------------------------------
 	auth := router.Group("/auth")
 	{
 		auth.POST("/signup", authHandler.Signup)
 		auth.POST("/login", authHandler.Login)
 		auth.POST("/refresh", authHandler.RefreshToken)
 		auth.POST("/logout", authHandler.Logout)
-		auth.GET("/me", middleware.AuthMiddleware(), authHandler.GetCurrentUser)
 	}
 
-	// Protected Routes (Step 14 from main.go)
-	protected := router.Group("/")
-	// Assuming you renamed the middleware file to jwt_auth.go or similar, the reference here should match.
-	protected.Use(middleware.AuthMiddleware()) // Use the middleware package reference
+	// -------------------------------------------------------------------
+	// 2. PROTECTED ROUTES (Requiring AuthMiddleware)
+	// -------------------------------------------------------------------
+	
+	// Protected Auth Routes (e.g., fetching current user)
+	protectedAuth := router.Group("/auth")
+	protectedAuth.Use(middleware.AuthMiddleware()) 
 	{
-		// protected.GET("/auth/me", authHandler.GetCurrentUser)
-		// protected.GET("/events", eventHandler.GetEvents)
+		protectedAuth.GET("/me", authHandler.GetCurrentUser)
 	}
+    
+    // Protected Event Routes
+    // This group is now defined and its routes require authentication
+    events := router.Group("/events") // 👈 events group defined here
+    events.Use(middleware.AuthMiddleware()) 
+    {
+        // Route is now POST /events/create and is protected
+        events.POST("/create", eventHandler.CreateEvent) // 👈 FIX: events variable is now usable
+        // events.GET("/", eventHandler.GetEvents)
+        // events.GET("/:id", eventHandler.GetEvent)
+    }
 
 	return router
 }
