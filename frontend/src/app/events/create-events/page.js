@@ -2,59 +2,80 @@
 "use client";
 
 import { useState } from "react";
+// Import the Redux action creator
+import { createEvent } from "@/redux/action/eventAction";
+// Import the Redux dispatch hook
+import { useDispatch } from "react-redux";
 import CreateEventForm from "@/components/create-events/create";
 
 export default function CreateEventsPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const dispatch = useDispatch(); // Initialize dispatch hook
 
   const handleSubmit = async (formData) => {
     setIsSubmitting(true);
 
     try {
-      // Prepare form data for submission
-      const submissionData = new FormData();
+      let finalEventData = { ...formData }; // Start with a copy of the raw form data
+      let imageUrl = null;
 
-      // Append all form fields
-      Object.keys(formData).forEach((key) => {
-        if (key === "tickets") {
-          submissionData.append(key, JSON.stringify(formData[key]));
-        } else if (key === "eventImage" && formData[key]) {
-          submissionData.append(key, formData[key]);
-        } else {
-          submissionData.append(key, formData[key]);
+      // --- STAGE 1: UPLOAD IMAGE TO VERCEL BLOB (AWAIT) ---
+      if (formData.eventImage) {
+        // Create FormData object for the file *only* for the upload route
+        const imageUploadFormData = new FormData();
+        imageUploadFormData.append("file", formData.eventImage);
+
+        // Call the dedicated Next.js API route to handle Vercel Blob upload
+        const uploadResponse = await fetch("/api/event-image", {
+          method: "POST",
+          body: imageUploadFormData,
+        });
+
+        if (!uploadResponse.ok) {
+          // If image upload fails, stop execution and throw error
+          const errorData = await uploadResponse.json();
+          throw new Error(errorData.error || "Failed to upload cover image.");
         }
-      });
 
-      // Simulate API call - replace with your actual API endpoint
-      const response = await fetch("/api/events/create", {
-        method: "POST",
-        body: submissionData,
-      });
-
-      if (!response.ok) {
-        throw new Error("Failed to create event");
+        const uploadResult = await uploadResponse.json();
+        imageUrl = uploadResult.url;
       }
 
-      const result = await response.json();
+      // --- STAGE 2: PREPARE FINAL PAYLOAD FOR GO BACKEND ---
 
-      // Handle successful creation
-      console.log("Event created successfully:", result);
+      // 1. Replace the raw File object with the public URL
+      if (imageUrl) {
+        finalEventData.eventImage = imageUrl;
+      } else {
+        // Remove the key if no image was selected (optional based on your backend validation)
+        delete finalEventData.eventImage;
+      }
 
-      // Redirect to event page or show success message
-      // router.push(`/events/${result.eventId}`);
+      // 2. Tidy up unused keys (like the local preview URL)
+      delete finalEventData.eventImagePreview;
+
+      // 3. Ensure tickets are JSON stringified if the Go backend expects a string
+  
+
+      // --- STAGE 3: DISPATCH REDUX ACTION (AWAIT) ---
+      const resultAction = await dispatch(createEvent(finalEventData));
+
+      // Check if the thunk succeeded using unwrap (if you used .unwrap() or check the payload)
+      if (createEvent.fulfilled.match(resultAction)) {
+        // Handle successful creation (The toast is handled by the thunk)
+        console.log("Event created successfully:", resultAction.payload);
+        // router.push(`/events/${resultAction.payload.eventId}`);
+      }
     } catch (error) {
-      console.error("Error creating event:", error);
-      // Handle error (show toast, error message, etc.)
+      console.error("Error creating event:", error.message || error);
+      // The Redux thunk handles the user-facing toast for API errors.
     } finally {
       setIsSubmitting(false);
     }
   };
 
   const handleBack = () => {
-    // Navigate back to events page
     window.history.back();
-    // Or use router if you're using Next.js navigation:
-    // router.push('/events');
   };
 
   return (

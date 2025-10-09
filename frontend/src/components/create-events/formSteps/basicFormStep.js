@@ -1,8 +1,8 @@
 //frontend/src/components/create-events/formSteps/basicFormSteps
 
 import { createInputField } from "@/components/common/createInputFields";
-import { CATEGORIES } from "../constants/formConfig";
-import ImageUpload from "../components/ImageUpload";
+import { CATEGORIES } from "@/components/create-events/constants/formConfig";
+import ImageUpload from "@/components/create-events/components/imageUpload";
 
 export default function BasicInfoStep({
   formData,
