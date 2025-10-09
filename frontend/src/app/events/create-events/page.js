@@ -2,69 +2,107 @@
 "use client";
 
 import { useState } from "react";
-// Import the Redux action creator
 import { createEvent } from "@/redux/action/eventAction";
-// Import the Redux dispatch hook
-import { useDispatch } from "react-redux";
+import { useDispatch, useSelector } from "react-redux";
 import CreateEventForm from "@/components/create-events/create";
 
 export default function CreateEventsPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const dispatch = useDispatch(); // Initialize dispatch hook
+  const dispatch = useDispatch();
+
+  // Get user data from Redux auth state
+  const { user } = useSelector((state) => state.auth);
 
   const handleSubmit = async (formData) => {
     setIsSubmitting(true);
 
     try {
-      let finalEventData = { ...formData }; // Start with a copy of the raw form data
+      // Validate user is authenticated
+      if (!user || !user.id) {
+        throw new Error(
+          "Authentication required. Please log in to create an event."
+        );
+      }
+
+      let finalEventData = { ...formData };
+      console.log("Raw Form Data:", finalEventData);
+
       let imageUrl = null;
 
-      // --- STAGE 1: UPLOAD IMAGE TO VERCEL BLOB (AWAIT) ---
+      // --- STAGE 1: IMAGE UPLOAD ---
       if (formData.eventImage) {
-        // Create FormData object for the file *only* for the upload route
         const imageUploadFormData = new FormData();
         imageUploadFormData.append("file", formData.eventImage);
 
-        // Call the dedicated Next.js API route to handle Vercel Blob upload
         const uploadResponse = await fetch("/api/event-image", {
           method: "POST",
           body: imageUploadFormData,
         });
 
         if (!uploadResponse.ok) {
-          // If image upload fails, stop execution and throw error
           const errorData = await uploadResponse.json();
           throw new Error(errorData.error || "Failed to upload cover image.");
         }
 
         const uploadResult = await uploadResponse.json();
+        console.log("Image upload result:", uploadResult);
         imageUrl = uploadResult.url;
+          console.log("ImagUrl:", imageUrl);
       }
+    
 
-      // --- STAGE 2: PREPARE FINAL PAYLOAD FOR GO BACKEND ---
+      // --- STAGE 2: PAYLOAD PREPARATION ---
 
-      // 1. Replace the raw File object with the public URL
+      // Add required organizer ID from authenticated user
+      finalEventData.organizerId = user.id;
+
+      // Set uploaded image URL
       if (imageUrl) {
         finalEventData.eventImage = imageUrl;
-      } else {
-        // Remove the key if no image was selected (optional based on your backend validation)
-        delete finalEventData.eventImage;
       }
 
-      // 2. Tidy up unused keys (like the local preview URL)
+      // Format date/time fields for Go's time.Time binding
+      if (finalEventData.startDate && finalEventData.startTime) {
+        const startDateTime = new Date(
+          `${finalEventData.startDate}T${finalEventData.startTime}:00`
+        );
+        const endDateTime = new Date(
+          `${finalEventData.endDate}T${finalEventData.endTime}:00`
+        );
+
+        if (!isNaN(startDateTime)) {
+          finalEventData.startDate = startDateTime.toISOString();
+        }
+        if (!isNaN(endDateTime)) {
+          finalEventData.endDate = endDateTime.toISOString();
+        }
+      }
+
+      // Convert maxAttendees to integer if present
+      if (finalEventData.maxAttendees) {
+        finalEventData.maxAttendees = parseInt(finalEventData.maxAttendees, 10);
+      }
+
+      // Cleanup unused fields
       delete finalEventData.eventImagePreview;
+      delete finalEventData.startTime;
+      delete finalEventData.endTime;
+      delete finalEventData.timezone;
+      delete finalEventData.maxAttendees;
 
-      // 3. Ensure tickets are JSON stringified if the Go backend expects a string
-  
+      console.log(
+        "Final payload to backend:",
+        JSON.stringify(finalEventData, null, 2)
+      );
 
-      // --- STAGE 3: DISPATCH REDUX ACTION (AWAIT) ---
+      // --- STAGE 3: DISPATCH REDUX ACTION ---
       const resultAction = await dispatch(createEvent(finalEventData));
+      console.log("Dispatch result:", resultAction);
 
-      // Check if the thunk succeeded using unwrap (if you used .unwrap() or check the payload)
       if (createEvent.fulfilled.match(resultAction)) {
-        // Handle successful creation (The toast is handled by the thunk)
-        console.log("Event created successfully:", resultAction.payload);
-        // router.push(`/events/${resultAction.payload.eventId}`);
+        // Handle successful creation
+        console.log("Event created successfully!");
+        // Optional: Redirect to event page or show success message
       }
     } catch (error) {
       console.error("Error creating event:", error.message || error);

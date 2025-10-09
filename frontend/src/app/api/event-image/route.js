@@ -2,8 +2,6 @@
 import { put } from "@vercel/blob";
 import { NextResponse } from "next/server";
 
-// Ensure BLOB_READ_WRITE_TOKEN is set in your .env file or Vercel environment.
-
 export async function POST(request) {
   try {
     const formData = await request.formData();
