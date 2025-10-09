@@ -19,8 +19,9 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
+// Flow: Configure Logging/Mode -> Connect DB -> Init Handlers -> Configure Router -> Start/Manage HTTP Server
 func main() {
-	// Step 1: Zerolog Setup (Must be done first)
+	// Step 1: Zerolog Setup
 	zerolog.SetGlobalLevel(zerolog.InfoLevel)
 
 	log.Logger = log.Output(zerolog.ConsoleWriter{
@@ -34,7 +35,7 @@ func main() {
 	} else {
 		gin.SetMode(gin.DebugMode)
 	}
-
+// ------------------------------------------------------------------------------------------------------
 	// Step 2: Database Initialization
 	db.ConnectDB()
 	log.Info().Msg("Database connection established successfully.")
@@ -43,12 +44,19 @@ func main() {
 	dbClient := db.GetDB()
 
 	// Step 4: Initialize Handlers
-	authHandler := handlers.NewAuthHandler(dbClient)
+	// Get the events collection from the database
+	eventsCollection := dbClient.Collection("events")
+
+	// Initialize the AuthHandler (needs the entire DB client)
+	authHandler := handlers.NewAuthHandler(dbClient) 
+
+	// Initialize the new EventHandler (needs only the events collection)
+	eventHandler := handlers.NewEventHandler(eventsCollection) 
 
 	// Step 5: Gin Router Setup
-router := routes.ConfigureRouter(authHandler)
+	router := routes.ConfigureRouter(authHandler, eventHandler)
 
-
+// ------------------------------------------------------------------------------------------------------
 	// Step 6: Retrieve PORT from environment variables
 	port := os.Getenv("PORT")
 	if port == "" {
