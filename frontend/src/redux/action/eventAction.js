@@ -1,4 +1,4 @@
-//frontend/src/redux/action/eventActions.js
+//frontend/src/redux/action/eventAction.js
 
 import { createAsyncThunk } from "@reduxjs/toolkit";
 import axios from "@/axiosConfig/axios";
