@@ -8,13 +8,7 @@ import { useRouter } from "next/navigation";
 
 import DashboardUI from "@/components/dashboard/dashboardUI";
 import { logoutUser } from "@/redux/action/actionAuth";
-
-// Placeholder for the real API call to fetch user tickets
-const fetchUserTickets = async () => {
-  console.log("LOG: Initiating API call to fetch user tickets...");
-  await new Promise((resolve) => setTimeout(resolve, 500));
-  return [];
-};
+import { fetchUserEvents } from "@/redux/action/eventAction"; // Import action
 
 export default function DashboardPage() {
   const dispatch = useDispatch();
@@ -30,30 +24,40 @@ export default function DashboardPage() {
   const userName = user?.name;
 
   // 2. STATE FOR CONTENT AND LOADING
-  const [tickets, setTickets] = useState([]);
+  // Renamed state from 'tickets' to 'events' to match fetched data
+  const [events, setEvents] = useState([]);
   const [isContentLoading, setIsContentLoading] = useState(true);
 
-  // 3. NEW: Explicit flag to confirm we've validated auth successfully
+  // 3. Explicit flag to confirm we've validated auth successfully
   const [isAuthValidated, setIsAuthValidated] = useState(false);
 
-  // 4. LOGIC FOR FETCHING TICKETS
+  // 4. LOGIC FOR FETCHING EVENTS
   const loadUserContent = useCallback(async () => {
-    console.log("LOG: Starting content fetch (Tickets)...");
+    console.log("LOG: Starting content fetch (Events)...");
+    setIsContentLoading(true);
 
     try {
-      const userTickets = await fetchUserTickets();
-      setTickets(userTickets);
-      console.log(
-        "LOG: Tickets fetched successfully. Count:",
-        userTickets.length
-      );
+      const resultAction = await dispatch(fetchUserEvents());
+
+      if (fetchUserEvents.fulfilled.match(resultAction)) {
+        const userEvents = resultAction.payload;
+        setEvents(userEvents); // Update the 'events' state
+        console.log(
+          "LOG: Events fetched successfully. Count:",
+          userEvents.length
+        );
+      } else {
+        const error = resultAction.payload || resultAction.error;
+        console.error("LOG: Failed to fetch events:", error.message);
+        setEvents([]);
+      }
     } catch (error) {
-      console.error("LOG: Failed to fetch tickets:", error);
-      setTickets([]);
+      console.error("LOG: Dispatch or unexpected error:", error);
+      setEvents([]);
     } finally {
       setIsContentLoading(false);
     }
-  }, []);
+  }, [dispatch]);
 
   // 5. CORE AUTH & REDIRECT LOGIC
   useEffect(() => {
@@ -61,18 +65,16 @@ export default function DashboardPage() {
       `LOG: Dashboard Effect: isInitialized=${isInitialized}, authStatus=${authStatus}, userExists=${!!user}`
     );
 
-    // A. Initial check is not complete (Redux is still loading the session)
+    // A. Wait for Redux session initialization
     if (!isInitialized || authStatus === "loading") {
       console.log("LOG: Waiting for session initialization...");
-      setIsAuthValidated(false); // Explicitly mark auth as not validated
+      setIsAuthValidated(false);
       return;
     }
 
     // B. Handle UNAUTHENTICATED State
     if (isInitialized && !user) {
-      console.log(
-        "LOG: Initialization complete, but no authenticated user found. Redirecting to /login."
-      );
+      console.log("LOG: No authenticated user found. Redirecting to /login.");
       setIsContentLoading(false);
       setIsAuthValidated(false);
       router.push("/account/auth/login");
@@ -82,19 +84,18 @@ export default function DashboardPage() {
     // C. Handle Successful Initialization (User is authenticated)
     if (isInitialized && user && authStatus === "succeeded") {
       console.log("LOG: User is authenticated. Marking auth as validated.");
-      setIsAuthValidated(true); // Mark auth as successfully validated
+      setIsAuthValidated(true);
       loadUserContent();
     }
   }, [isInitialized, authStatus, router, loadUserContent, user]);
 
   // 6. TRIPLE-LAYER LOADING CHECK
-  // Show loading if ANY of these conditions are true:
   const isLoading =
-    !isInitialized || // Redux hasn't initialized
-    authStatus === "loading" || // Auth is actively checking
-    !isAuthValidated || // We haven't confirmed auth success
-    (isAuthValidated && isContentLoading) || // Auth passed but content still loading
-    !user; // No user object (redundant but defensive)
+    !isInitialized ||
+    authStatus === "loading" ||
+    !isAuthValidated ||
+    (isAuthValidated && isContentLoading) ||
+    !user;
 
   // 7. LOGOUT HANDLER FUNCTION
   const handleLogout = async () => {
@@ -117,7 +118,7 @@ export default function DashboardPage() {
   };
 
   // 9. ULTRA-DEFENSIVE RENDER LOGIC
-  // Early return for ANY loading state - no UI leakage possible
+  // Early return for ANY loading state
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -129,23 +130,20 @@ export default function DashboardPage() {
     );
   }
 
-  // Additional safety check: If somehow we get here without a user, show nothing
+  // Safety check: If somehow we get here without a user, show nothing
   if (!user || !isAuthValidated) {
     console.error("CRITICAL: Reached render without proper auth validation!");
     return null;
   }
 
-  // Only render dashboard when ALL conditions are met:
-  // ✓ isInitialized = true
-  // ✓ user exists
-  // ✓ authStatus = 'succeeded'
-  // ✓ isAuthValidated = true
-  // ✓ isContentLoading = false
+  // 10. SUCCESSFUL RENDER
+  // Renders DashboardUI with the fetched 'events' data
   return (
     <DashboardUI
       userName={userName}
       isLoading={false}
-      tickets={tickets}
+      // Pass the fetched events data to the UI component
+      events={events}
       onLogout={handleLogout}
       onCreateEvent={handleCreateEvent}
     />

@@ -22,7 +22,7 @@ export default function Hero() {
             {/* Sign In Button with enhanced styling */}
             <div className="flex justify-start animate-fade-in-down">
               <a
-                href="/account/login"
+                href="/account/auth/login"
                 className="group inline-flex items-center gap-2.5 px-6 py-3 md:px-7 md:py-3.5 text-sm md:text-base font-bold text-red-600 bg-gradient-to-r from-red-50 to-red-100 backdrop-blur-sm rounded-full shadow-lg shadow-red-200/50 transition-all duration-300 hover:shadow-xl hover:shadow-red-300/60 hover:from-red-100 hover:to-red-200 active:scale-95 transform border border-red-200/80"
               >
                 <svg

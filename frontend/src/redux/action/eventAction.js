@@ -2,7 +2,7 @@
 
 import { createAsyncThunk } from "@reduxjs/toolkit";
 import axios from "@/axiosConfig/axios";
-import { toastAlert } from "@/components/common/toast/toastAlert";
+import toastAlert from '@/components/common/toast/toastAlert';
 
 // Action type constants
 const ACTION_TYPES = {
@@ -14,20 +14,18 @@ const ACTION_TYPES = {
   PUBLISH_EVENT: "events/publishEvent",
 };
 
-/**
- * Create a new event with Paystack payment setup
- */
 export const createEvent = createAsyncThunk(
   ACTION_TYPES.CREATE_EVENT,
   async (eventData, { rejectWithValue }) => {
+     console.log("Data IN redux:", eventData);
     try {
-      const response = await axios.post("/api/events/create", eventData);
+      const response = await axios.post("/events/create", eventData);
       
-      toastAlert("success", "Event created successfully! 🎉");
+      // toastAlert("success", "Event created successfully! 🎉");
       return response.data;
     } catch (error) {
       const message = error.response?.data?.message || "Failed to create event";
-      toastAlert("error", message);
+      // toastAlert("error", message);
       return rejectWithValue({ message });
     }
   }
@@ -40,15 +38,17 @@ export const fetchUserEvents = createAsyncThunk(
   ACTION_TYPES.FETCH_USER_EVENTS,
   async (_, { rejectWithValue }) => {
     try {
-      const response = await axios.get("/api/events/my-events");
-      return response.data;
+      // 1. HTTP Request
+      const response = await axios.get("/events/my-events");
+      // 2. Success Return
+      return response.data; // This data becomes the `payload` for the 'fulfilled' action
     } catch (error) {
+      // 3. Error Handling
       const message = error.response?.data?.message || "Failed to fetch events";
-      return rejectWithValue({ message });
+      return rejectWithValue({ message }); // This payload becomes the `payload` for the 'rejected' action
     }
   }
 );
-
 /**
  * Fetch analytics for a specific event (tickets sold, revenue, etc.)
  */

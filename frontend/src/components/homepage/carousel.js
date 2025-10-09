@@ -28,6 +28,7 @@ export default function Carousel({ className = "" }) {
           src={image.path}
           alt={image.alt}
           fill
+          sizes="(max-width: 768px) 100vw, 66vw"
           priority={index === 0}
           className="object-cover transition-opacity duration-3000 ease-in-out rounded-2xl"
           style={{

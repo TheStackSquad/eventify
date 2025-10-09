@@ -49,14 +49,14 @@ export default function TicketTier({
           error: errors[`ticket_${index}_tierName`],
           required: true,
         })}
-
         <div className="grid grid-cols-2 gap-4">
           {createInputField({
             label: "Price (₦)",
             type: "number",
             name: `price_${index}`,
             value: ticket.price,
-            onChange: (e) => onChange(index, "price", e.target.value),
+            onChange: (e) =>
+              onChange(index, "price", parseFloat(e.target.value) || 0),
             placeholder: "5000",
             error: errors[`ticket_${index}_price`],
             required: true,
@@ -67,7 +67,8 @@ export default function TicketTier({
             type: "number",
             name: `quantity_${index}`,
             value: ticket.quantity,
-            onChange: (e) => onChange(index, "quantity", e.target.value),
+            onChange: (e) =>
+              onChange(index, "quantity", parseInt(e.target.value, 10) || 0),
             placeholder: "100",
             error: errors[`ticket_${index}_quantity`],
             required: true,

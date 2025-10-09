@@ -2,7 +2,7 @@
 
 import { createAsyncThunk } from "@reduxjs/toolkit";
 import axios from "@/axiosConfig/axios";
-import { toastAlert } from "@/components/common/toast/toastAlert";
+import toastAlert from "@/components/common/toast/toastAlert";
 
 // Action type constants for consistency
 const ACTION_TYPES = {
