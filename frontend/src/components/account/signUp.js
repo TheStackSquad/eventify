@@ -6,7 +6,7 @@ import React, { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useDispatch } from "react-redux";
 import { signupUser } from "@/redux/action/actionAuth";
-import { toastAlert } from "@/components/common/toast/toastAlert";
+import  toastAlert  from "@/components/common/toast/toastAlert";
 import { validateSignup } from "@/utils/validate/signupValidation";
 // step 1: Import the newly separated InputField component
 import InputField from "@/components/common/inputFields";
