@@ -4,108 +4,191 @@
 
 import { motion } from "framer-motion";
 import {
-  Ticket,
   Calendar,
   Users,
   CheckCircle,
-  Barcode,
   LogOut,
-  PlusCircle, // Added for the prominent CTA
+  Sparkles,
+  DollarSign,
+  Barcode,
+  Eye,
+  PlusCircle,
+  BarChart3,
+  Ticket,
 } from "lucide-react";
 
-// Add onCreateEvent to the props for the new CTA
+// Import new subcomponents
+import MyEvents from "@/components/dashboard/myEvents";
+import DashboardStats from "@/components/dashboard/dashboardStats";
+import DashboardQuickActions from "@/components/dashboard/dashboardQuickActions";
+
 export default function DashboardUI({
   userName,
   isLoading,
-  tickets = [],
+  events = [],
+  purchasedTickets = [], // New prop for purchased tickets
   onLogout,
-  onCreateEvent, // New prop for the Create Event button action
+  onCreateEvent,
 }) {
-  // Determine the display name:
   const displayName = userName || "User";
   const welcomeMessage = isLoading
     ? "Loading your dashboard..."
     : `Welcome back, ${displayName}!`;
 
-  // Refactor stats for an Event Ticketing App (unchanged)
+  // --- Data Calculations ---
+
+  const now = new Date();
+
+  // Event stats
+  const totalEvents = events.length;
+  const upcomingEvents = events.filter(
+    (e) => new Date(e.startDate) > now
+  ).length;
+  const liveEvents = events.filter(
+    (e) => new Date(e.startDate) <= now && new Date(e.endDate) >= now
+  ).length;
+  const pastEvents = events.filter((e) => new Date(e.endDate) < now).length;
+
+  // Ticket inventory stats
+  const totalTicketInventory = events.reduce(
+    (sum, e) => sum + (e.tickets?.reduce((s, t) => s + t.quantity, 0) || 0),
+    0
+  );
+
+  const totalTicketTiers = events.reduce(
+    (sum, e) => sum + (e.tickets?.length || 0),
+    0
+  );
+
+  // Potential revenue (if all tickets sold)
+  const potentialRevenue = events.reduce((sum, e) => {
+    const eventRevenue =
+      e.tickets?.reduce((s, t) => s + t.price * t.quantity, 0) || 0;
+    return sum + eventRevenue;
+  }, 0);
+
+  // --- Configuration Objects ---
+
+  // Stats configuration (Passed to DashboardStats)
   const stats = [
     {
-      icon: Ticket,
-      label: "Tickets Purchased",
-      value: tickets.length,
+      icon: Calendar,
+      label: "Total Events",
+      value: totalEvents,
+      subtext: `${liveEvents} live, ${upcomingEvents} upcoming`,
       color: "text-blue-600",
       bgColor: "bg-blue-50",
-    },
-    {
-      icon: Calendar,
-      label: "Upcoming Events",
-      value: tickets.filter((t) => new Date(t.date) > new Date()).length,
-      color: "text-purple-600",
-      bgColor: "bg-purple-50",
+      gradient: "from-blue-500 to-blue-600",
     },
     {
       icon: Users,
-      label: "Total Guests",
-      value: tickets.reduce((sum, t) => sum + t.quantity, 0),
+      label: "Ticket Inventory",
+      value: totalTicketInventory.toLocaleString(),
+      subtext: `Across ${totalTicketTiers} tiers`,
+      color: "text-purple-600",
+      bgColor: "bg-purple-50",
+      gradient: "from-purple-500 to-purple-600",
+    },
+    {
+      icon: DollarSign,
+      label: "Potential Revenue",
+      value: `₦${(potentialRevenue / 1000).toFixed(0)}k`,
+      subtext: "If all tickets sell",
       color: "text-green-600",
       bgColor: "bg-green-50",
+      gradient: "from-green-500 to-green-600",
     },
     {
       icon: CheckCircle,
-      label: "Events Attended",
-      value: tickets.filter((t) => t.status === "past").length,
-      color: "text-yellow-600",
-      bgColor: "bg-yellow-50",
+      label: "Completed Events",
+      value: pastEvents,
+      subtext: pastEvents > 0 ? "View insights" : "None yet",
+      color: "text-amber-600",
+      bgColor: "bg-amber-50",
+      gradient: "from-amber-500 to-amber-600",
     },
   ];
 
-  // --- Loading UI Block (No Change to its visual style, just kept concise) ---
+  // Quick actions for organizers (Passed to DashboardQuickActions)
+  const quickActions = [
+    {
+      icon: PlusCircle,
+      label: "Create Event",
+      description: "Start a new event",
+      color: "bg-indigo-600 hover:bg-indigo-700",
+      onClick: onCreateEvent,
+    },
+    {
+      icon: BarChart3,
+      label: "Analytics",
+      description: "View performance",
+      color: "bg-purple-600 hover:bg-purple-700",
+      onClick: () => console.log("Navigate to analytics"),
+    },
+    {
+      icon: Ticket,
+      label: "All Tickets",
+      description: "Manage tickets",
+      color: "bg-blue-600 hover:bg-blue-700",
+      onClick: () => console.log("Navigate to tickets"),
+    },
+  ];
+
+  // Loading state component
   const LoadingState = (
     <div className="text-center py-20">
-      <h2 className="text-3xl font-extrabold text-gray-900 font-header mb-4">
+      <div className="relative w-20 h-20 mx-auto mb-6">
+        <div className="absolute inset-0 border-4 border-indigo-200 rounded-full"></div>
+        <div className="absolute inset-0 border-4 border-t-indigo-600 rounded-full animate-spin"></div>
+      </div>
+      <h2 className="text-2xl font-bold text-gray-900 mb-2">
         {welcomeMessage}
       </h2>
-      <p className="text-gray-500 font-body">
-        Fetching user data and tickets...
-      </p>
-      <div className="mt-6 w-12 h-12 border-4 border-t-4 border-t-indigo-500 border-gray-200 rounded-full animate-spin mx-auto"></div>
+      <p className="text-gray-500">Setting up your dashboard...</p>
     </div>
   );
 
   // --- Main Render ---
+
   return (
-    <div className="min-h-screen bg-gray-50 py-10 px-4 sm:px-6 lg:px-8 font-body">
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 py-8 px-4 sm:px-6 lg:px-8">
       <div className="max-w-7xl mx-auto">
-        {/* Welcome Header & Logout Button */}
+        {/* Header Section */}
         <motion.header
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5 }}
-          className="pb-8 border-b border-gray-200 mb-8 flex justify-between items-start"
+          className="pb-6 mb-8"
         >
-          <div>
-            <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-gray-900 font-header">
-              {welcomeMessage}
-            </h1>
-            <p className="mt-2 text-lg text-gray-600 font-body">
-              View and manage your purchased tickets and upcoming events.
-            </p>
-          </div>
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-3 mb-2">
+                <h1 className="text-3xl sm:text-4xl font-extrabold text-gray-900">
+                  {welcomeMessage}
+                </h1>
+                {!isLoading && (
+                  <Sparkles className="w-7 h-7 text-yellow-500 animate-pulse" />
+                )}
+              </div>
+              <p className="text-lg text-gray-600">
+                Manage your events, track performance, and grow your audience.
+              </p>
+            </div>
 
-          {/* Logout Button */}
-          {onLogout && !isLoading && (
-            <button
-              onClick={onLogout}
-              className="flex items-center space-x-2 px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700 transition-colors duration-200 shadow-md font-body whitespace-nowrap"
-              aria-label="Log out"
-            >
-              <LogOut className="h-5 w-5" />
-              <span>Logout</span>
-            </button>
-          )}
+            {/* Logout Button */}
+            {onLogout && !isLoading && (
+              <button
+                onClick={onLogout}
+                className="flex items-center gap-2 px-5 py-2.5 text-sm font-semibold rounded-xl text-white bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 transition-all duration-200 shadow-lg hover:shadow-xl transform hover:scale-105"
+              >
+                <LogOut className="h-5 w-5" />
+                <span>Logout</span>
+              </button>
+            )}
+          </div>
         </motion.header>
 
-        {/* Display Loading State */}
+        {/* Loading State */}
         {isLoading && LoadingState}
 
         {/* Dashboard Content */}
@@ -114,82 +197,77 @@ export default function DashboardUI({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ delay: 0.2, duration: 0.5 }}
+            className="space-y-8"
           >
-            {/* Create Event CTA (Visually Prominent) */}
+            {/* Stats Grid (NOW USING SUB-COMPONENT) */}
+            <DashboardStats stats={stats} />
+
+            {/* Quick Actions (NOW USING SUB-COMPONENT) */}
+            <DashboardQuickActions quickActions={quickActions} />
+
+            {/* Created Events Section (UNCHANGED WRAPPER) */}
             <motion.div
-              initial={{ opacity: 0, scale: 0.98 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ delay: 0.4, duration: 0.5 }}
-              className="mb-10 p-6 bg-indigo-600 rounded-xl shadow-xl flex flex-col md:flex-row justify-between items-center text-white"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.7, duration: 0.5 }}
             >
-              <div className="text-center md:text-left mb-4 md:mb-0">
-                <h2 className="text-2xl font-bold font-header">
-                  Ready to Host an Event?
-                </h2>
-                <p className="mt-1 text-indigo-100 font-body">
-                  Start your event creation journey here and reach thousands of
-                  attendees.
-                </p>
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <h2 className="text-2xl font-bold text-gray-900 mb-1">
+                    Your Events
+                  </h2>
+                  <p className="text-sm text-gray-600">
+                    {totalEvents} {totalEvents === 1 ? "event" : "events"}{" "}
+                    created
+                  </p>
+                </div>
+                {totalEvents > 0 && (
+                  <button
+                    onClick={onCreateEvent}
+                    className="hidden sm:flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors text-sm font-semibold"
+                  >
+                    <PlusCircle className="h-4 w-4" />
+                    New Event
+                  </button>
+                )}
               </div>
-              <button
-                onClick={onCreateEvent}
-                className="flex items-center space-x-2 px-6 py-3 bg-white text-indigo-600 font-bold rounded-lg shadow-lg hover:bg-gray-100 transition-colors duration-200 transform hover:scale-[1.03]"
-                style={{
-                  fontFamily: "var(--font-onest), system-ui, sans-serif",
-                }}
-              >
-                <PlusCircle className="h-5 w-5" />
-                <span>Create New Event</span>
-              </button>
+
+              <MyEvents events={events} />
             </motion.div>
 
-            {/* Stats Grid */}
-            <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4 mb-10">
-              {stats.map((stat, index) => (
-                <motion.div
-                  key={index}
-                  initial={{ opacity: 0, scale: 0.95 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  transition={{ duration: 0.4, delay: index * 0.1 + 0.5 }}
-                  className="bg-white overflow-hidden rounded-xl shadow-lg border border-gray-100 p-6 transition-transform hover:shadow-xl hover:scale-[1.02]"
-                >
-                  <div className="flex items-center">
-                    <div className={`p-3 rounded-full ${stat.bgColor}`}>
-                      <stat.icon className={`h-6 w-6 ${stat.color}`} />
-                    </div>
-                    <p className="ml-4 text-sm font-medium text-gray-500 font-body">
-                      {stat.label}
-                    </p>
+            {/* Purchased Tickets Section (UNCHANGED WRAPPER) */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.9, duration: 0.5 }}
+            >
+              <div className="mb-6">
+                <h2 className="text-2xl font-bold text-gray-900 mb-1">
+                  Your Tickets
+                </h2>
+                <p className="text-sm text-gray-600">
+                  Events you&apos;re attending
+                </p>
+              </div>
+
+              <div className="text-center py-16 bg-white rounded-2xl shadow-md border-2 border-dashed border-gray-200">
+                <div className="max-w-md mx-auto">
+                  <div className="bg-gradient-to-br from-gray-50 to-gray-100 rounded-full w-20 h-20 flex items-center justify-center mx-auto mb-4 shadow-inner">
+                    <Barcode className="w-10 h-10 text-gray-400" />
                   </div>
-                  <p className="mt-4 text-3xl font-semibold text-gray-900 font-header">
-                    {stat.value}
+                  <h3 className="text-xl font-bold text-gray-900 mb-2">
+                    No Tickets Yet
+                  </h3>
+                  <p className="text-gray-600 mb-4">
+                    You haven&apos;t purchased any tickets yet.
                   </p>
-                </motion.div>
-              ))}
-            </div>
-
-            {/* Purchased Tickets Section (unchanged) */}
-            <div className="mt-10">
-              <h2 className="text-2xl font-semibold text-gray-900 font-header mb-4 border-b pb-2">
-                Your Purchased Tickets
-              </h2>
-
-              {tickets.length === 0 ? (
-                <div className="text-center py-12 bg-white rounded-xl shadow-lg border border-gray-100">
-                  <Barcode className="w-12 h-12 mx-auto text-gray-400 mb-3" />
-                  <p className="text-lg text-gray-600 font-body">
-                    You haven&apos;t purchased any tickets yet!
-                  </p>
-                  <p className="text-sm text-gray-500 mt-1 font-body">
-                    Explore our events to get started.
-                  </p>
+                  <button className="inline-flex items-center gap-2 px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-semibold">
+                    <Eye className="h-5 w-5" />
+                    Explore Events
+                  </button>
                 </div>
-              ) : (
-                <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-                  {/* ... Ticket cards map (details omitted for brevity) ... */}
-                </div>
-              )}
-            </div>
+              </div>
+            </motion.div>
           </motion.div>
         )}
       </div>
