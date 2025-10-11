@@ -1,5 +1,4 @@
-//src/context/cartContext.js
-
+// src/context/cartContext.js
 "use client";
 
 import React, {
@@ -10,64 +9,99 @@ import React, {
   useMemo,
 } from "react";
 
-// Define the Cart structure
 const CartContext = createContext(null);
-
-// Custom hook for easy access to cart state and actions
 export const useCart = () => {
   const context = useContext(CartContext);
   if (!context) {
-    // This check is crucial to ensure the hook is used inside the provider
     throw new Error("useCart must be used within a CartProvider");
   }
   return context;
 };
 
-// Default value for cart initialization
+// Expanded initial state to include calculated totals
 const initialCartState = {
   items: [],
+  // Add computed properties for consistency
+  totalQuantity: 0,
+  totalAmount: 0, // Assuming price is handled as a number
 };
 
-// Provider component
+const CART_STORAGE_KEY = "eventify_cart";
+
 export const CartProvider = ({ children }) => {
   const [cart, setCart] = useState(initialCartState);
 
-  // --- Persistence Logic (Load from localStorage) ---
+  // --- Persistence (Load) ---
   useEffect(() => {
-    // Check if running on the client (browser) before accessing localStorage
     if (typeof window !== "undefined") {
-      const storedCart = localStorage.getItem("eventify_cart");
+      const storedCart = localStorage.getItem(CART_STORAGE_KEY);
       if (storedCart) {
         try {
-          setCart(JSON.parse(storedCart));
+          // Load items and recalculate totals in case the stored totals are stale
+          const loadedState = JSON.parse(storedCart);
+          const recalculatedState = {
+            ...loadedState,
+            totalQuantity: loadedState.items.reduce(
+              (total, item) => total + item.quantity,
+              0
+            ),
+            totalAmount: loadedState.items.reduce(
+              (total, item) => total + item.price * item.quantity,
+              0
+            ),
+          };
+          setCart(recalculatedState);
         } catch (e) {
           console.error("Could not parse stored cart data:", e);
-          // If parsing fails, use the initial state
           setCart(initialCartState);
         }
       }
     }
   }, []);
 
-  // --- Persistence Logic (Save to localStorage on cart change) ---
+  // --- Persistence (Save) ---
   useEffect(() => {
-    // Save to localStorage whenever the 'cart' state changes
     if (typeof window !== "undefined") {
-      localStorage.setItem("eventify_cart", JSON.stringify(cart));
+      // Save only the items array for persistence, totals are computed on load
+      const stateToSave = { items: cart.items };
+      localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(stateToSave));
     }
-  }, [cart]);
+  }, [cart.items]); // Only re-save when items array changes
+
+  // --- Computed Values ---
+  const computedTotals = useMemo(() => {
+    const totalQuantity = cart.items.reduce(
+      (total, item) => total + item.quantity,
+      0
+    );
+    // Assuming each cart item has a 'price' and 'quantity' property
+    const totalAmount = cart.items.reduce(
+      (total, item) => total + item.price * item.quantity,
+      0
+    );
+    return { totalQuantity, totalAmount };
+  }, [cart.items]);
 
   // --- Cart Actions ---
 
   /**
-   * Adds an item to the cart. If the item already exists, updates its quantity.
-   * @param {object} item - The item object (must have an 'id').
+   * Adds a ticket item to the cart or updates its quantity.
+   * @param {object} item - Must contain: eventId, tierId, price, and other display properties.
    * @param {number} quantity - The quantity to add.
    */
   const addItem = (item, quantity = 1) => {
+    if (!item.eventId || !item.tierId || item.price === undefined) {
+      console.error(
+        "Cart item is missing required properties (eventId, tierId, price).",
+        item
+      );
+      return;
+    }
+
     setCart((prevCart) => {
       const existingItemIndex = prevCart.items.findIndex(
-        (i) => i.id === item.id
+        // 💡 CRITICAL CHANGE: Check both Event ID and Tier ID for uniqueness 💡
+        (i) => i.eventId === item.eventId && i.tierId === item.tierId
       );
 
       let newItems;
@@ -80,38 +114,63 @@ export const CartProvider = ({ children }) => {
             : i
         );
       } else {
-        // New item, add to cart
-        newItems = [...prevCart.items, { ...item, quantity }];
+        // New item, assign a unique cartId and add to cart
+        const newItem = {
+          ...item,
+          cartId: `${item.eventId}-${item.tierId}-${Date.now()}`, // Unique cart key
+          quantity: quantity,
+        };
+        newItems = [...prevCart.items, newItem];
       }
 
       return { ...prevCart, items: newItems };
     });
   };
 
-
-  const removeItem = (itemId) => {
+  /**
+   * Removes a unique cart item by its assigned cartId.
+   * @param {string} cartId - The unique ID assigned when the item was added.
+   */
+  const removeItem = (cartId) => {
     setCart((prevCart) => ({
       ...prevCart,
-      items: prevCart.items.filter((item) => item.id !== itemId),
+      // 💡 CRITICAL CHANGE: Filter by the unique 'cartId' 💡
+      items: prevCart.items.filter((item) => item.cartId !== cartId),
     }));
   };
-
 
   const clearCart = () => {
     setCart(initialCartState);
   };
 
-  // Memoize computed values for performance
-  const itemCount = useMemo(() => {
-    return cart.items.reduce((total, item) => total + item.quantity, 0);
-  }, [cart.items]);
+  // NOTE: This function is required for the cart page to update quantities
+  const updateItemQuantity = (cartId, newQuantity) => {
+    const quantity = Math.max(0, newQuantity); // Ensure quantity is not negative
+
+    if (quantity === 0) {
+      // Use existing removeItem logic if quantity hits zero
+      removeItem(cartId);
+      return;
+    }
+
+    setCart((prevCart) => {
+      const newItems = prevCart.items.map((item) =>
+        item.cartId === cartId ? { ...item, quantity: quantity } : item
+      );
+      return { ...prevCart, items: newItems };
+    });
+  };
 
   const contextValue = {
     ...cart,
-    itemCount,
+    // Use the computed totals and map totalQuantity to the expected 'itemCount'
+    itemCount: computedTotals.totalQuantity, // For CartIcon.js
+    totalQuantity: computedTotals.totalQuantity,
+    totalAmount: computedTotals.totalAmount,
     addItem,
     removeItem,
     clearCart,
+    updateItemQuantity, // Essential for cart page adjustments
   };
 
   return (

@@ -1,4 +1,4 @@
-//frontend/src/components/create-events/hooks / useEventForm.js;
+//frontend/src/components/create-events/hooks/useEventForm.js
 
 import { useState } from "react";
 import { INITIAL_FORM_DATA } from "../constants/formConfig";
@@ -8,6 +8,13 @@ export const useEventForm = (onSubmit) => {
   const [currentStep, setCurrentStep] = useState(1);
   const [formData, setFormData] = useState(INITIAL_FORM_DATA);
   const [errors, setErrors] = useState({});
+
+  // 🆕 FUNCTION TO RESET FORM STATE
+  const resetForm = () => {
+    setFormData(INITIAL_FORM_DATA);
+    setCurrentStep(1); // Reset to the first step
+    setErrors({}); // Clear any validation errors
+  };
 
   const handleInputChange = (field, value) => {
     setFormData((prev) => ({
@@ -83,7 +90,8 @@ export const useEventForm = (onSubmit) => {
   const handleSubmit = (e) => {
     e.preventDefault();
     if (validateStep(4, formData, setErrors)) {
-      onSubmit(formData);
+      // 🚨 KEY CHANGE: Pass formData AND the resetForm function
+      onSubmit(formData, resetForm);
     }
   };
 
@@ -99,5 +107,6 @@ export const useEventForm = (onSubmit) => {
     handleNext,
     handlePrevious,
     handleSubmit,
+    // Note: resetForm is NOT returned because the component doesn't call it directly.
   };
 };

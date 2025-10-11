@@ -17,15 +17,14 @@ const ACTION_TYPES = {
 export const createEvent = createAsyncThunk(
   ACTION_TYPES.CREATE_EVENT,
   async (eventData, { rejectWithValue }) => {
-     console.log("Data IN redux:", eventData);
+    console.log("Data IN redux:", eventData);
     try {
       const response = await axios.post("/events/create", eventData);
-      
-      // toastAlert("success", "Event created successfully! 🎉");
       return response.data;
     } catch (error) {
       const message = error.response?.data?.message || "Failed to create event";
-      // toastAlert("error", message);
+      // 🚨 ADD ERROR TOAST HERE 🚨
+      toastAlert.error(message);
       return rejectWithValue({ message });
     }
   }

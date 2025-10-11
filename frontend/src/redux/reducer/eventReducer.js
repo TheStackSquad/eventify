@@ -76,7 +76,7 @@ const eventSlice = createSlice({
       })
       .addCase(fetchUserEvents.fulfilled, (state, action) => {
         state.status = STATUS.SUCCEEDED;
-        state.userEvents = action.payload.events || [];
+        state.userEvents = action.payload || [];
         state.error = null;
       })
       .addCase(fetchUserEvents.rejected, (state, action) => {

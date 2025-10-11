@@ -25,7 +25,9 @@ export default function MyEvents({ events = [] }) {
             Start creating amazing events and reach thousands of attendees!
           </p>
           <p className="text-sm text-gray-500">
-            Click the <span className="font-semibold">"Create New Event"</span>{" "}
+            Click the{" "}
+            <span className="font-semibold">
+              **&quot;Create New Event&quot;**</span>{" "}
             button above to get started.
           </p>
         </div>
