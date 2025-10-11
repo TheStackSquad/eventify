@@ -1,4 +1,4 @@
-//src / components / common / CartIcon.jsx;
+//src / components / common / CartIcon.js;
 
 "use client";
 

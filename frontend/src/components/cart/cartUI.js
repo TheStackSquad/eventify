@@ -1,4 +1,4 @@
-//src/components/cart/cartUI.js
+// src/components/cart/cartUI.js
 "use client";
 import Image from "next/image";
 
@@ -7,26 +7,22 @@ import { motion } from "framer-motion";
 import { Trash2, Plus, Minus } from "lucide-react";
 
 // --- Placeholder Component for Cart Item Image ---
-// NOTE: We keep the image component here as it's purely presentation related
 const CartItemImage = ({ src, alt, width = 64, height = 64 }) => {
   const [imageError, setImageError] = useState(false);
-  // Use a simple fetchable placeholder image URL
-  const finalSrc =
-    imageError || !src
-      ? "https://placehold.co/64x64/e0f2fe/0369a1?text=Event"
-      : src;
+
+  // 💡 REFACTOR: Use the local image path as default placeholder 💡
+  const finalSrc = imageError || !src ? "/img/placeholder.jpg" : src;
 
   return (
     <div
       className="relative flex-shrink-0"
       style={{ width: width, height: height }}
     >
-      <image
+      <Image // 💡 Ensure this is the Next.js Image component 💡
         src={finalSrc}
-        alt={alt || "Cart Item"}
+        alt={alt || "Event Ticket"}
         width={width}
-              height={height}
-              fill
+        height={height}
         className="rounded-lg object-cover shadow-sm w-full h-full"
         onError={() => setImageError(true)}
       />
@@ -38,9 +34,10 @@ export default function CartUI({
   items,
   itemCount,
   subtotal,
+  vatAmount, // 💡 NEW: VAT amount 💡
+  serviceFee, // 💡 NEW: Service Fee 💡
   total,
   isProcessing,
-  SHIPPING_FEE,
   handleQuantityChange,
   handleCheckout,
   removeItem,
@@ -53,7 +50,7 @@ export default function CartUI({
         className="text-4xl font-extrabold text-gray-900 mb-8"
         style={{ fontFamily: "var(--font-jakarta-sans)" }}
       >
-        Your Shopping Cart
+        Your Ticket Cart
       </h1>
 
       <div className="lg:grid lg:grid-cols-3 lg:gap-10">
@@ -61,34 +58,39 @@ export default function CartUI({
         <div className="lg:col-span-2 space-y-6">
           {items.map((item) => (
             <motion.div
-              key={item.id}
+              // 💡 REFACTOR: Use item.cartId as the key for stability 💡
+              key={item.cartId}
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, x: -20 }}
               transition={{ duration: 0.3 }}
               className="flex items-center bg-white p-4 sm:p-6 rounded-xl shadow-lg border border-gray-100"
             >
-              <CartItemImage src={item.imageSrc} alt={item.name} />
+              <CartItemImage src={item.eventImage} alt={item.eventTitle} />
 
               <div className="flex-1 min-w-0 ml-4">
                 <h3
                   className="text-lg font-semibold text-gray-800 truncate"
                   style={{ fontFamily: "var(--font-jakarta-sans)" }}
                 >
-                  {item.name}
+                  {item.eventTitle}
                 </h3>
                 <p
                   className="text-sm text-gray-500"
                   style={{ fontFamily: "var(--font-onest)" }}
                 >
-                  {formatCurrency(item.price)} per item
+                  {/* 💡 REFACTOR: Use tierName and price prop names 💡 */}
+                  {item.tierName} | {formatCurrency(item.price)} per ticket
                 </p>
               </div>
 
               {/* Quantity Controls */}
               <div className="flex items-center space-x-2 mr-4 flex-shrink-0">
                 <motion.button
-                  onClick={() => handleQuantityChange(item, -1)}
+                  // 💡 REFACTOR: Pass item.cartId and the new quantity 💡
+                  onClick={() =>
+                    handleQuantityChange(item.cartId, item.quantity - 1)
+                  }
                   disabled={item.quantity <= 1}
                   className="p-1 border border-gray-300 rounded-full text-gray-600 hover:bg-gray-100 disabled:opacity-50 transition-colors"
                   whileTap={{ scale: 0.9 }}
@@ -104,8 +106,13 @@ export default function CartUI({
                 </span>
 
                 <motion.button
-                  onClick={() => handleQuantityChange(item, 1)}
-                  className="p-1 border border-gray-300 rounded-full text-gray-600 hover:bg-gray-100 transition-colors"
+                  // 💡 REFACTOR: Pass item.cartId and the new quantity 💡
+                  onClick={() =>
+                    handleQuantityChange(item.cartId, item.quantity + 1)
+                  }
+                  // Optional: Add max quantity check
+                  disabled={item.quantity >= item.maxQuantity}
+                  className="p-1 border border-gray-300 rounded-full text-gray-600 hover:bg-gray-100 transition-colors disabled:opacity-50"
                   whileTap={{ scale: 0.9 }}
                 >
                   <Plus size={16} />
@@ -121,7 +128,8 @@ export default function CartUI({
                   {formatCurrency(Number(item.price) * item.quantity)}
                 </p>
                 <motion.button
-                  onClick={() => removeItem(item.id)}
+                  // 💡 REFACTOR: Use item.cartId for removal 💡
+                  onClick={() => removeItem(item.cartId)}
                   className="text-red-500 hover:text-red-700 transition-colors p-1 rounded-full hover:bg-red-50"
                   aria-label="Remove item"
                   whileTap={{ scale: 0.9 }}
@@ -159,19 +167,26 @@ export default function CartUI({
               style={{ fontFamily: "var(--font-onest)" }}
             >
               <div className="flex justify-between">
-                <span>Subtotal ({itemCount} items)</span>
+                <span>Tickets Subtotal ({itemCount} items)</span>
                 <span className="font-medium">{formatCurrency(subtotal)}</span>
               </div>
 
+              {/* 💡 REFACTOR: Service Fee 💡 */}
               <div className="flex justify-between">
-                <span>Shipping Fee</span>
+                <span>Service Fee</span>
                 <span className="font-medium">
-                  {formatCurrency(SHIPPING_FEE)}
+                  {formatCurrency(serviceFee)}
                 </span>
               </div>
 
+              {/* 💡 REFACTOR: VAT/Tax 💡 */}
+              <div className="flex justify-between">
+                <span>Value Added Tax (VAT)</span>
+                <span className="font-medium">{formatCurrency(vatAmount)}</span>
+              </div>
+
               <div className="border-t border-blue-200 pt-3 flex justify-between text-xl font-extrabold text-blue-800">
-                <span>Order Total</span>
+                <span>Total Due</span>
                 <span>{formatCurrency(total)}</span>
               </div>
             </div>
@@ -191,11 +206,13 @@ export default function CartUI({
               {isProcessing ? "Processing..." : "Proceed to Checkout"}
             </motion.button>
 
+            {/* 💡 REFACTOR: Checkout Info Text 💡 */}
             <p
               className="mt-4 text-center text-sm text-gray-500"
               style={{ fontFamily: "var(--font-onest)" }}
             >
-              Shipping calculated at checkout.
+              All fees and VAT are calculated above. You will confirm payment
+              details on the next page.
             </p>
           </div>
         </div>

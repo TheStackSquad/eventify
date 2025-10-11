@@ -17,5 +17,5 @@ const toastAlert = {
   },
 };
 
-export default toastAlert; // Change to default export
+export default toastAlert;
 

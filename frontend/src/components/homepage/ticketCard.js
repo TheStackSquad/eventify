@@ -1,26 +1,55 @@
-// src/components/homepage/ticketCard.js
+//frontend src/components/homepage/ticketCard.js
 "use client";
 
-import React from "react"; // Removed useState
-// Using next/image for optimized images
+import React from "react";
 import Image from "next/image";
-import { dummyEvents } from "@/data/upcomingEvents";
 import Link from "next/link";
-// Import the new component and utility
+import { useSelector} from "react-redux";
 import { TicketSelector, formatPrice } from "./ticketElements";
 
-// NOTE: getStartingPrice and formatPrice were moved to ticketElements.js
+// Utility function to format date/time and location from the raw API data
+const mapEventData = (rawEvent) => {
+  const startDate = new Date(rawEvent.startDate);
+  const startTime = startDate.toLocaleTimeString("en-US", {
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: "UTC", // Assuming the raw Z date is UTC
+    hour12: true,
+  });
+  const formattedDate = startDate.toLocaleDateString("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+
+  return {
+    id: rawEvent.id,
+    title: rawEvent.eventTitle,
+    image: rawEvent.eventImage,
+    category: rawEvent.category,
+    tag: null, // No tag in the payload, defaulting to null
+    date: formattedDate,
+    time: startTime,
+    location: `${rawEvent.venueName}, ${rawEvent.city}`,
+    tickets: rawEvent.tickets.map((ticket) => ({
+      ...ticket,
+      // Assuming all tickets are 'available' if quantity > 0,
+      // you might need real 'available' flag from API if different.
+      available: ticket.quantity > 0,
+    })),
+  };
+};
 
 // Enhanced EventCard with external TicketSelector
 const EventCard = ({ event }) => {
-  // NOTE: isExpanded and selectedTicket state are now managed inside TicketSelector
 
-  // NOTE: These utility calls should be moved to TicketSelector or redefined/imported here if needed for the CTA
+  // Check if all tickets are sold out (based on the 'available' flag in the mapped ticket)
   const allSoldOut = event.tickets.every((t) => !t.available);
 
   return (
     <div className="flex-shrink-0 w-[85vw] sm:w-[75vw] md:w-80 lg:w-96 snap-start p-4 mr-4 bg-white rounded-2xl shadow-md border border-gray-200 transition-all duration-300 hover:shadow-2xl hover:-translate-y-1">
-      {/* Event Image and Badges... (same as before) */}
+      {/* Event Image and Badges... */}
       <div className="relative h-48 md:h-52 bg-gradient-to-br from-gray-200 to-gray-300 rounded-xl mb-4 overflow-hidden group">
         {/* Image Component */}
         <Image
@@ -28,7 +57,7 @@ const EventCard = ({ event }) => {
           alt={event.title}
           fill
           sizes="(max-width: 768px) 85vw, (max-width: 1024px) 75vw, 384px"
-          priority={event.id <= 2}
+          priority={false} // Removed hardcoded priority based on dummy ID
           className="object-cover transition-transform duration-500 group-hover:scale-105"
         />
 
@@ -58,7 +87,7 @@ const EventCard = ({ event }) => {
           {event.title}
         </h4>
 
-        {/* Metadata with enhanced icons and spacing... (same as before) */}
+        {/* Metadata with enhanced icons and spacing... */}
         <div className="space-y-2">
           <div className="flex items-center text-sm text-gray-600">
             <div className="flex items-center justify-center w-8 h-8 bg-gray-100 rounded-lg mr-3 flex-shrink-0">
@@ -101,14 +130,15 @@ const EventCard = ({ event }) => {
         <TicketSelector event={event} />
 
         {/* Enhanced CTA Button */}
-        <button
-          disabled={allSoldOut}
+        <Link
+          href={`/events/${event.id}`} // Using event.id for the detail link
           className={`w-full flex items-center justify-center py-3 px-4 font-semibold rounded-xl transition-all duration-300 shadow-md transform active:scale-95
             ${
               allSoldOut
-                ? "bg-gray-300 text-gray-500 cursor-not-allowed"
+                ? "bg-gray-300 text-gray-500 cursor-not-allowed pointer-events-none" // Added pointer-events-none to disabled link
                 : "bg-gradient-to-r from-red-600 to-red-700 text-white hover:from-red-700 hover:to-red-800 hover:shadow-lg hover:scale-[1.02]"
             }`}
+          aria-disabled={allSoldOut}
         >
           <svg
             className="w-5 h-5 mr-2"
@@ -123,18 +153,24 @@ const EventCard = ({ event }) => {
               d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"
             />
           </svg>
-          {allSoldOut ? "Sold Out" : "Add to Cart"}
-        </button>
+          {allSoldOut ? "Sold Out" : "Buy Tickets"}
+        </Link>
       </div>
     </div>
   );
 };
 
-// ... (UpcomingEvents component remains the same)
-// ... (Note: You still need to ensure the Link button inside UpcomingEvents
-// ... has the modern implementation as discussed in the previous turn)
-
 export default function UpcomingEvents() {
+  // 2. ACCESS REDUX STATE
+  const { userEvents } = useSelector((state) => state.events || {});
+
+  // 3. MAP RAW DATA TO COMPONENT FORMAT
+  const eventsToDisplay = (userEvents || []).map(mapEventData);
+  console.log('Peek:', eventsToDisplay);
+
+  // NOTE: I'm assuming the events are already sorted by date in the Redux state
+  // or that sorting will be done later.
+
   return (
     <section className="relative px-1 md:px-6 py-12 md:py-16 bg-gradient-to-b from-black via-gray-900 to-black">
       <div className="max-w-7xl mx-auto">
@@ -164,10 +200,7 @@ export default function UpcomingEvents() {
               href="/onboarding"
               className="flex-shrink-0 group cursor-pointer"
             >
-              <div
-              
-                className="w-14 h-14 md:w-20 md:h-20 bg-gradient-to-br from-yellow-400 to-yellow-500 rounded-2xl md:rounded-3xl flex items-center justify-center shadow-xl hover:shadow-2xl transition-all duration-300 hover:scale-110 active:scale-95"
-              >
+              <div className="w-14 h-14 md:w-20 md:h-20 bg-gradient-to-br from-yellow-400 to-yellow-500 rounded-2xl md:rounded-3xl flex items-center justify-center shadow-xl hover:shadow-2xl transition-all duration-300 hover:scale-110 active:scale-95">
                 <svg
                   className="w-7 h-7 md:w-10 md:h-10 text-black transform group-hover:rotate-90 transition-transform duration-300"
                   fill="none"
@@ -195,9 +228,11 @@ export default function UpcomingEvents() {
             }}
           >
             <div className="flex px-6 md:px-10 lg:px-12">
-              {dummyEvents.map((event) => (
+              {/* 4. USE REDUX DATA INSTEAD OF dummyEvents */}
+              {eventsToDisplay.map((event) => (
                 <EventCard key={event.id} event={event} />
               ))}
+
               {/* Spacer for better end-scroll experience */}
               <div className="w-4 flex-shrink-0"></div>
             </div>
