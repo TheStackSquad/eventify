@@ -1,5 +1,4 @@
-//frontend/src/redux/reducer/eventReducer.js
-
+// frontend/src/redux/reducer/eventReducer.js
 import { createSlice } from "@reduxjs/toolkit";
 import {
   createEvent,
@@ -8,29 +7,11 @@ import {
   updateEvent,
   deleteEvent,
   publishEvent,
+  getEventById, // ADD THIS IMPORT
 } from "@/redux/action/eventAction";
-import { STATUS } from "@/redux/lib/constants";
+import { STATUS, EVENT_DEFAULTS } from "@/utils/constants/globalConstants";
 
-const initialState = {
-  // User's created events
-  userEvents: [],
-
-  // Currently selected event for detailed view
-  selectedEvent: null,
-
-  // Analytics data for selected event
-  analytics: {
-    totalRevenue: 0,
-    ticketsSold: 0,
-    ticketsRemaining: 0,
-    viewCount: 0,
-  },
-
-  // Status tracking
-  status: STATUS.IDLE,
-  analyticsStatus: STATUS.IDLE,
-  error: null,
-};
+const initialState = EVENT_DEFAULTS.INITIAL_STATE;
 
 const eventSlice = createSlice({
   name: "events",
@@ -51,6 +32,11 @@ const eventSlice = createSlice({
       state.selectedEvent = null;
       state.analytics = initialState.analytics;
     },
+
+    // NEW: Clear current event (for form editing)
+    clearCurrentEvent(state) {
+      state.currentEvent = null;
+    },
   },
   extraReducers: (builder) => {
     builder
@@ -61,12 +47,28 @@ const eventSlice = createSlice({
       })
       .addCase(createEvent.fulfilled, (state, action) => {
         state.status = STATUS.SUCCEEDED;
-        state.userEvents.unshift(action.payload.event); // Add to beginning
+        state.userEvents.unshift(action.payload.event);
         state.error = null;
       })
       .addCase(createEvent.rejected, (state, action) => {
         state.status = STATUS.FAILED;
         state.error = action.payload?.message || "Failed to create event";
+      })
+
+      // GET EVENT BY ID (NEW) - for form editing
+      .addCase(getEventById.pending, (state) => {
+        state.status = STATUS.LOADING;
+        state.error = null;
+      })
+      .addCase(getEventById.fulfilled, (state, action) => {
+        state.status = STATUS.SUCCEEDED;
+        state.currentEvent = action.payload; // Store for form pre-fill
+        state.error = null;
+      })
+      .addCase(getEventById.rejected, (state, action) => {
+        state.status = STATUS.FAILED;
+        state.error = action.payload?.message || "Failed to fetch event";
+        state.currentEvent = null;
       })
 
       // FETCH USER EVENTS
@@ -99,43 +101,67 @@ const eventSlice = createSlice({
 
       // UPDATE EVENT
       .addCase(updateEvent.fulfilled, (state, action) => {
+        const updatedEvent = action.payload.event;
+
+        // Update in userEvents array
         const index = state.userEvents.findIndex(
-          (e) => e.id === action.payload.event.id
+          (e) => e.id === updatedEvent.id
         );
         if (index !== -1) {
-          state.userEvents[index] = action.payload.event;
+          state.userEvents[index] = updatedEvent;
         }
-        if (state.selectedEvent?.id === action.payload.event.id) {
-          state.selectedEvent = action.payload.event;
+
+        // Update selectedEvent if it's the same event
+        if (state.selectedEvent?.id === updatedEvent.id) {
+          state.selectedEvent = updatedEvent;
+        }
+
+        // Update currentEvent if it's the same event
+        if (state.currentEvent?.id === updatedEvent.id) {
+          state.currentEvent = updatedEvent;
         }
       })
 
       // DELETE EVENT
       .addCase(deleteEvent.fulfilled, (state, action) => {
+        const deletedEventId = action.payload.eventId;
         state.userEvents = state.userEvents.filter(
-          (e) => e.id !== action.payload.eventId
+          (e) => e.id !== deletedEventId
         );
-        if (state.selectedEvent?.id === action.payload.eventId) {
+
+        // Clear selected/current if they match the deleted event
+        if (state.selectedEvent?.id === deletedEventId) {
           state.selectedEvent = null;
           state.analytics = initialState.analytics;
+        }
+        if (state.currentEvent?.id === deletedEventId) {
+          state.currentEvent = null;
         }
       })
 
       // PUBLISH EVENT
       .addCase(publishEvent.fulfilled, (state, action) => {
+        const publishedEvent = action.payload.event;
         const index = state.userEvents.findIndex(
-          (e) => e.id === action.payload.event.id
+          (e) => e.id === publishedEvent.id
         );
         if (index !== -1) {
-          state.userEvents[index] = action.payload.event;
+          state.userEvents[index] = publishedEvent;
         }
-        if (state.selectedEvent?.id === action.payload.event.id) {
-          state.selectedEvent = action.payload.event;
+        if (state.selectedEvent?.id === publishedEvent.id) {
+          state.selectedEvent = publishedEvent;
+        }
+        if (state.currentEvent?.id === publishedEvent.id) {
+          state.currentEvent = publishedEvent;
         }
       });
   },
 });
 
-export const { clearEventError, setSelectedEvent, clearSelectedEvent } =
-  eventSlice.actions;
+export const {
+  clearEventError,
+  setSelectedEvent,
+  clearSelectedEvent,
+  clearCurrentEvent,
+} = eventSlice.actions;
 export default eventSlice.reducer;

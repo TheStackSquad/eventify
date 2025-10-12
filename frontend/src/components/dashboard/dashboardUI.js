@@ -18,9 +18,12 @@ import {
 } from "lucide-react";
 
 // Import new subcomponents
-import MyEvents from "@/components/dashboard/myEvents";
-import DashboardStats from "@/components/dashboard/dashboardStats";
-import DashboardQuickActions from "@/components/dashboard/dashboardQuickActions";
+// import MyEvents from "@/components/dashboard/myEvents";
+// import DashboardStats from "@/components/dashboard/dashboardStats";
+// import DashboardQuickActions from "@/components/dashboard/dashboardQuickActions";
+import MyEvents from "./myEvents";
+import DashboardStats from "./dashboardStats";
+import DashboardQuickActions from "./dashboardQuickActions";
 
 export default function DashboardUI({
   userName,
@@ -29,6 +32,8 @@ export default function DashboardUI({
   purchasedTickets = [], // New prop for purchased tickets
   onLogout,
   onCreateEvent,
+  openDeleteModal,
+  openAnalyticsModal,
 }) {
   const displayName = userName || "User";
   const welcomeMessage = isLoading
@@ -231,8 +236,11 @@ export default function DashboardUI({
                   </button>
                 )}
               </div>
-
-              <MyEvents events={events} />
+              <MyEvents
+                events={events}
+                openDeleteModal={openDeleteModal}
+                openAnalyticsModal={openAnalyticsModal}
+              />
             </motion.div>
 
             {/* Purchased Tickets Section (UNCHANGED WRAPPER) */}

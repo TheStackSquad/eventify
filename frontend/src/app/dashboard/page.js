@@ -5,6 +5,10 @@ import { useState, useEffect, useCallback } from "react";
 import { useSelector, useDispatch } from "react-redux";
 import { useRouter } from "next/navigation";
 
+// Imports for Modals
+import DeleteModal from "@/components/modal/delete";
+import AnalyticsModal from "@/components/modal/analytics";
+
 import DashboardUI from "@/components/dashboard/dashboardUI";
 import { logoutUser } from "@/redux/action/actionAuth";
 import { fetchUserEvents } from "@/redux/action/eventAction";
@@ -15,23 +19,70 @@ export default function DashboardPage() {
   const dispatch = useDispatch();
   const router = useRouter();
 
-  // Redux state selectors
+  // Redux state selectors (Assuming a structure like state.events exists for analytics)
   const {
     user,
     status: authStatus,
     isInitialized,
   } = useSelector((state) => state.auth);
 
-  // Local state
+  const { analyticsData, analyticsStatus } = useSelector(
+    (state) => state.events
+  ); // <-- ASSUMPTION: Event state has analytics
+
+  // --- Local state for Content & Modals ---
   const [events, setEvents] = useState([]);
   const [purchasedTickets, setPurchasedTickets] = useState([]);
   const [isContentLoading, setIsContentLoading] = useState(true);
   const [isAuthValidated, setIsAuthValidated] = useState(false);
   const [error, setError] = useState(null);
 
+  // Modal State for Delete
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState({ id: null, title: "" });
+
+  // Modal State for Analytics
+  const [isAnalyticsModalOpen, setIsAnalyticsModalOpen] = useState(false);
+  const [analyticsTargetId, setAnalyticsTargetId] = useState(null);
+
+
+  const openDeleteModal = useCallback((id, title) => {
+    setDeleteTarget({ id, title });
+    setIsDeleteModalOpen(true);
+  }, []);
+
+  const closeDeleteModal = useCallback(() => {
+    setIsDeleteModalOpen(false);
+    setDeleteTarget({ id: null, title: "" });
+  }, []);
+
+
+  const openAnalyticsModal = useCallback((id) => {
+    setAnalyticsTargetId(id);
+    setIsAnalyticsModalOpen(true);
+  }, []);
+
+  const closeAnalyticsModal = useCallback(() => {
+    setIsAnalyticsModalOpen(false);
+    setAnalyticsTargetId(null);
+  }, []);
+
   /**
-   * Fetch user's created events and purchased tickets
+   * Effect to monitor analytics fetch and show the modal when data is ready
    */
+  useEffect(() => {
+    if (analyticsTargetId && analyticsStatus === "succeeded" && analyticsData) {
+      // Find the specific event title for the modal
+      const targetEvent = events.find((e) => e.id === analyticsTargetId);
+      if (targetEvent) {
+        console.log(`✅ Analytics ready for: ${targetEvent.eventTitle}`);
+        setIsAnalyticsModalOpen(true);
+      }
+    }
+    // Note: If status is 'failed', you might want to show an error toast here
+  }, [analyticsStatus, analyticsTargetId, analyticsData, events]);
+
+ 
   const loadUserContent = useCallback(async () => {
     console.log("📊 Loading dashboard content...");
     setIsContentLoading(true);
@@ -54,12 +105,6 @@ export default function DashboardPage() {
         setEvents([]);
         setError(errorMsg);
       }
-
-      // TODO: Fetch purchased tickets when action is available
-      // const ticketsResult = await dispatch(fetchUserTickets());
-      // if (fetchUserTickets.fulfilled.match(ticketsResult)) {
-      //   setPurchasedTickets(ticketsResult.payload || []);
-      // }
 
       setPurchasedTickets([]); // Placeholder until tickets endpoint is ready
     } catch (error) {
@@ -84,14 +129,12 @@ export default function DashboardPage() {
 
     // Wait for session initialization
     if (!isInitialized || authStatus === "loading") {
-      console.log("⏳ Waiting for session initialization...");
       setIsAuthValidated(false);
       return;
     }
 
     // Redirect unauthenticated users
     if (isInitialized && !user) {
-      console.log("🚫 No user found. Redirecting to login...");
       setIsContentLoading(false);
       setIsAuthValidated(false);
       router.push("/account/auth/login");
@@ -100,7 +143,6 @@ export default function DashboardPage() {
 
     // User is authenticated - load content
     if (isInitialized && user && authStatus === "succeeded") {
-      console.log("✅ User authenticated:", user.name);
       setIsAuthValidated(true);
       loadUserContent();
     }
@@ -118,7 +160,6 @@ export default function DashboardPage() {
       router.push("/account/auth/login");
     } catch (error) {
       console.error("❌ Logout error:", error);
-      // Still redirect on error
       router.push("/account/auth/login");
     }
   };
@@ -194,17 +235,49 @@ export default function DashboardPage() {
     );
   }
 
+  // Find the event object corresponding to the currently viewed analytics
+  const currentEvent = events.find((e) => e.id === analyticsTargetId);
+
   /**
    * Main render
    */
   return (
-    <DashboardUI
-      userName={user.name}
-      isLoading={false}
-      events={events}
-      purchasedTickets={purchasedTickets}
-      onLogout={handleLogout}
-      onCreateEvent={handleCreateEvent}
-    />
+    <>
+      <DashboardUI
+        userName={user.name}
+        isLoading={false}
+        events={events}
+        purchasedTickets={purchasedTickets}
+        onLogout={handleLogout}
+        onCreateEvent={handleCreateEvent}
+        // 👇 PASS THE NEW HANDLERS DOWN TO THE UI/CARD COMPONENTS
+        openDeleteModal={openDeleteModal}
+        openAnalyticsModal={openAnalyticsModal}
+      />
+
+      {/* -------------------- MODALS -------------------- */}
+
+      {/* 1. Delete Modal */}
+      <DeleteModal
+        isOpen={isDeleteModalOpen}
+        onClose={closeDeleteModal}
+        eventId={deleteTarget.id}
+        eventTitle={deleteTarget.title}
+      />
+
+      {/* 2. Analytics Modal */}
+      <AnalyticsModal
+        isOpen={isAnalyticsModalOpen && !!currentEvent}
+        onClose={closeAnalyticsModal}
+        // Pass the fetched data from Redux
+        analyticsData={analyticsData}
+        eventTitle={
+          currentEvent
+            ? `${currentEvent.eventTitle} Sales Report`
+            : "Sales Report"
+        }
+        isLoading={analyticsStatus === "pending"}
+      />
+    </>
   );
 }
