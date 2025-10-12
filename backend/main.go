@@ -13,23 +13,22 @@ import (
 	"eventify/backend/pkg/db"
 	"eventify/backend/pkg/handlers"
 	"eventify/backend/pkg/routes"
+	"eventify/backend/pkg/services" // Import the new services package
 
 	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 )
 
-// Flow: Configure Logging/Mode -> Connect DB -> Init Handlers -> Configure Router -> Start/Manage HTTP Server
+// Flow: Configure Logging/Mode -> Connect DB -> Init Services -> Init Handlers -> Configure Router -> Start/Manage HTTP Server
 func main() {
-	// Step 1: Zerolog Setup
+	// Step 1: Zerolog Setup and Gin Mode
 	zerolog.SetGlobalLevel(zerolog.InfoLevel)
-
 	log.Logger = log.Output(zerolog.ConsoleWriter{
 		Out:        os.Stderr,
 		TimeFormat: time.RFC3339,
 	}).With().Timestamp().Logger()
 
-	// Set Gin mode based on environment
 	if os.Getenv("GIN_MODE") == "release" {
 		gin.SetMode(gin.ReleaseMode)
 	} else {
@@ -40,31 +39,32 @@ func main() {
 	db.ConnectDB()
 	log.Info().Msg("Database connection established successfully.")
 
-	// Step 3: Get MongoDB database instance
+	// Step 3: Get MongoDB database instance and collections
 	dbClient := db.GetDB()
-
-	// Step 4: Initialize Handlers
-	// Get the events collection from the database
 	eventsCollection := dbClient.Collection("events")
 
-	// Initialize the AuthHandler (needs the entire DB client)
+	// Step 4: Initialize Services (New Step)
+	// The service layer handles business logic and DB communication.
+	eventService := services.NewEventService(eventsCollection) 
+
+	// Step 5: Initialize Handlers (Now depend on Services)
+	// Initialize the AuthHandler (needs the entire DB client for user operations)
 	authHandler := handlers.NewAuthHandler(dbClient) 
 
-	// Initialize the new EventHandler (needs only the events collection)
-	eventHandler := handlers.NewEventHandler(eventsCollection) 
+	// Initialize the EventHandler, passing the new EventService dependency
+	eventHandler := handlers.NewEventHandler(eventService) 
 
-	// Step 5: Gin Router Setup
+	// Step 6: Gin Router Setup
 	router := routes.ConfigureRouter(authHandler, eventHandler)
 
 // ------------------------------------------------------------------------------------------------------
-	// Step 6: Retrieve PORT from environment variables
+	// Step 7: Retrieve PORT and Server Configuration
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
 	}
 	serverAddr := fmt.Sprintf(":%s", port)
 
-	// Step 7: HTTP Server Configuration
 	srv := &http.Server{
 		Addr:         serverAddr,
 		Handler:      router,
