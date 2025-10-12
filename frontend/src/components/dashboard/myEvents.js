@@ -1,7 +1,5 @@
 //frontend/src/components/dashboard/myEvents.js
 
-// frontend/src/components/dashboard/myEvents.js
-
 import React from "react";
 import { Clock, Calendar, TrendingUp } from "lucide-react";
 
@@ -9,8 +7,11 @@ import { Clock, Calendar, TrendingUp } from "lucide-react";
 import EventCard from "@/components/dashboard/myEvents/eventCard";
 // No need to import utilities here since EventCard handles them, 
 // but we'll import Calendar icon for the empty state.
-
-export default function MyEvents({ events = [] }) {
+export default function MyEvents({ 
+  events = [], 
+  openDeleteModal, 
+  openAnalyticsModal 
+}) {
   if (events.length === 0) {
     return (
       <div className="text-center py-16 bg-gradient-to-br from-gray-50 to-gray-100 rounded-xl border-2 border-dashed border-gray-300">
@@ -57,7 +58,12 @@ export default function MyEvents({ events = [] }) {
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
         {events.map((event) => (
-          <EventCard key={event.id} event={event} />
+          <EventCard
+            key={event.id}
+            event={event}
+            openDeleteModal={openDeleteModal}
+            openAnalyticsModal={openAnalyticsModal}
+          />
         ))}
       </div>
     </div>

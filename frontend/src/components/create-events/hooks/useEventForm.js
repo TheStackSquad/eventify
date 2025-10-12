@@ -1,19 +1,41 @@
 //frontend/src/components/create-events/hooks/useEventForm.js
-
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { INITIAL_FORM_DATA } from "../constants/formConfig";
 import { validateStep } from "../utils/validation";
 
-export const useEventForm = (onSubmit) => {
+export const useEventForm = (onSubmit, initialData = null) => {
   const [currentStep, setCurrentStep] = useState(1);
   const [formData, setFormData] = useState(INITIAL_FORM_DATA);
   const [errors, setErrors] = useState({});
 
+  // 🆕 Use ref to track if we've initialized with initialData
+  const hasInitialized = useRef(false);
+
+  // 🆕 CRITICAL FIX: Initialize form with initialData ONCE when available
+  useEffect(() => {
+    if (initialData && !hasInitialized.current) {
+      console.log(
+        "🔄 useEventForm: Initializing with initialData",
+        initialData
+      );
+      setFormData(initialData);
+      hasInitialized.current = true;
+    }
+  }, [initialData]);
+
   // 🆕 FUNCTION TO RESET FORM STATE
   const resetForm = () => {
     setFormData(INITIAL_FORM_DATA);
-    setCurrentStep(1); // Reset to the first step
-    setErrors({}); // Clear any validation errors
+    setCurrentStep(1);
+    setErrors({});
+    hasInitialized.current = false; // Reset the flag
+  };
+
+  // 🆕 FUNCTION TO UPDATE FORM DATA EXTERNALLY (for edits)
+  const updateFormData = (newData) => {
+    console.log("🔄 useEventForm: Updating form data", newData);
+    setFormData(newData);
+    hasInitialized.current = true;
   };
 
   const handleInputChange = (field, value) => {
@@ -90,7 +112,6 @@ export const useEventForm = (onSubmit) => {
   const handleSubmit = (e) => {
     e.preventDefault();
     if (validateStep(4, formData, setErrors)) {
-      // 🚨 KEY CHANGE: Pass formData AND the resetForm function
       onSubmit(formData, resetForm);
     }
   };
@@ -107,6 +128,7 @@ export const useEventForm = (onSubmit) => {
     handleNext,
     handlePrevious,
     handleSubmit,
-    // Note: resetForm is NOT returned because the component doesn't call it directly.
+    resetForm,
+    updateFormData,
   };
 };

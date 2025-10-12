@@ -1,8 +1,10 @@
-// frontend/src/components/dashboard/myEvents/EventCard.js
+// frontend/src/components/dashboard/myEvents/eventCard.js
 
 import React from "react";
 import Image from "next/image";
 import { motion } from "framer-motion";
+import { useRouter } from "next/navigation";
+import { useDispatch } from "react-redux";
 import {
   Edit,
   BarChart3,
@@ -18,8 +20,11 @@ import {
   getDaysUntil,
   getEventStatus,
 } from "@/components/dashboard/myEvents/eventUtils";
+import { fetchEventAnalytics } from "@/redux/action/eventAction";
 
-export default function EventCard({ event }) {
+export default function EventCard({ event, openDeleteModal, openAnalyticsModal }) { 
+  const router = useRouter();
+  const dispatch = useDispatch();
   const {
     id,
     eventTitle,
@@ -59,9 +64,21 @@ export default function EventCard({ event }) {
   const isPast = new Date(endDate) < new Date();
 
   // Handler stubs for organizer actions
-  const handleEdit = () => console.log(`Editing event ${id}`);
-  const handleViewSales = () => console.log(`Viewing sales for event ${id}`);
-  const handleDelete = () => console.log(`Deleting event ${id}`);
+  // 1. EDIT: Redirect to a pre-filled form
+  const handleEdit = () => {
+    router.push(`/events/create-events?id=${id}`);
+  };
+
+  // 2. SALES: Fetch data, then open modal (Modal is opened by parent component watching Redux state)
+  const handleViewSales = () => {
+    dispatch(fetchEventAnalytics(id));
+    openAnalyticsModal(id);
+  };
+
+  // 3. DELETE: Open a confirmation modal
+  const handleDelete = () => {
+    openDeleteModal(id, eventTitle);
+  };
 
   return (
     <motion.div
@@ -73,7 +90,7 @@ export default function EventCard({ event }) {
       {/* Event Image with Status Badge */}
       <div className="relative h-48 group">
         <Image
-          src={eventImage || "/default-event.webp"}
+          src={eventImage || "/img/placeholder.jpg"}
           alt={eventTitle}
           fill={true}
           sizes="(max-width: 640px) 100vw, (max-width: 768px) 50vw, (max-width: 1280px) 33vw, 25vw"
