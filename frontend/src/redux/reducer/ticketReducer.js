@@ -1,7 +1,7 @@
 // frontend/src/redux/reducer/ticketReducer.js
 
 import { createSlice } from "@reduxjs/toolkit";
-import { STATUS } from "@/redux/lib/constants";
+import { STATUS } from "@/utils/constants/globalConstants";
 
 const initialState = {
   // User's purchased tickets

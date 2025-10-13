@@ -7,7 +7,7 @@ import {
   logoutUser,
   restoreSession,
 } from "@/redux/action/actionAuth";
-import { STATUS } from "@/redux/lib/constants";
+import { STATUS } from "@/utils/constants/globalConstants";
 
 // Step 1: Initial state definition
 const initialState = {

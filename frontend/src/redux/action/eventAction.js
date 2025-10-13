@@ -60,14 +60,18 @@ export const getEventById = createAsyncThunk(
   async (eventId, { rejectWithValue }) => {
     try {
       // Use string replacement
-      const endpoint = API_ENDPOINTS.EVENTS.GET_BY_ID.replace(':eventId', eventId);
-      console.log('🔍 Fetching event from:', endpoint); // Debug log
-      
+      const endpoint = API_ENDPOINTS.EVENTS.GET_BY_ID.replace(
+        ":eventId",
+        eventId
+      );
+      console.log("🔍 Fetching event from:", endpoint); // Debug log
+
       const response = await axios.get(endpoint);
       return response.data;
     } catch (error) {
-      const message = error.response?.data?.message || ERROR_MESSAGES.FETCH_EVENT_FAILED;
-      toastAlert.error(message); // FIX: Use .error method
+      const message =
+        error.response?.data?.message || ERROR_MESSAGES.FETCH_EVENT_FAILED;
+      toastAlert("error", message); // FIXED: Use function call instead of .error method
       return rejectWithValue({ message });
     }
   }
@@ -129,3 +133,6 @@ export const publishEvent = createAsyncThunk(
     }
   }
 );
+
+// REMOVE ALL THE DUPLICATE CONSTANT DEFINITIONS BELOW THIS LINE
+// (Everything from REDUX_ACTION_TYPES to the end of the file)
