@@ -1,17 +1,15 @@
 // frontend/src/redux/reducer/eventReducer.js
 import { createSlice } from "@reduxjs/toolkit";
-import {
-  createEvent,
-  fetchUserEvents,
-  fetchEventAnalytics,
-  updateEvent,
-  deleteEvent,
-  publishEvent,
-  getEventById, // ADD THIS IMPORT
-} from "@/redux/action/eventAction";
+import * as eventActions from "@/redux/action/eventAction";
 import { STATUS, EVENT_DEFAULTS } from "@/utils/constants/globalConstants";
 
 const initialState = EVENT_DEFAULTS.INITIAL_STATE;
+
+// Debug: Check what actions are imported
+console.log("🔍 [DEBUG] Imported eventActions:", eventActions);
+console.log("🔍 [DEBUG] getEventById action:", eventActions.getEventById);
+console.log("🔍 [DEBUG] createEvent action:", eventActions.createEvent);
+console.log("🔍 [DEBUG] All action names:", Object.keys(eventActions));
 
 const eventSlice = createSlice({
   name: "events",
@@ -39,68 +37,110 @@ const eventSlice = createSlice({
     },
   },
   extraReducers: (builder) => {
+    console.log("🔍 [DEBUG] Building extraReducers...");
+
     builder
       // CREATE EVENT
-      .addCase(createEvent.pending, (state) => {
+      .addCase(eventActions.createEvent.pending, (state) => {
+        console.log("🔍 [DEBUG] createEvent.pending triggered");
         state.status = STATUS.LOADING;
         state.error = null;
       })
-      .addCase(createEvent.fulfilled, (state, action) => {
+      .addCase(eventActions.createEvent.fulfilled, (state, action) => {
+        console.log(
+          "🔍 [DEBUG] createEvent.fulfilled triggered with payload:",
+          action.payload
+        );
         state.status = STATUS.SUCCEEDED;
         state.userEvents.unshift(action.payload.event);
         state.error = null;
       })
-      .addCase(createEvent.rejected, (state, action) => {
+      .addCase(eventActions.createEvent.rejected, (state, action) => {
+        console.log(
+          "🔍 [DEBUG] createEvent.rejected triggered with error:",
+          action.payload
+        );
         state.status = STATUS.FAILED;
         state.error = action.payload?.message || "Failed to create event";
       })
 
-      // GET EVENT BY ID (NEW) - for form editing
-      .addCase(getEventById.pending, (state) => {
+      // GET EVENT BY ID
+      .addCase(eventActions.getEventById.pending, (state) => {
+        console.log("🔍 [DEBUG] getEventById.pending triggered");
         state.status = STATUS.LOADING;
         state.error = null;
       })
-      .addCase(getEventById.fulfilled, (state, action) => {
+      .addCase(eventActions.getEventById.fulfilled, (state, action) => {
+        console.log(
+          "🔍 [DEBUG] getEventById.fulfilled triggered with payload:",
+          action.payload
+        );
         state.status = STATUS.SUCCEEDED;
         state.currentEvent = action.payload; // Store for form pre-fill
         state.error = null;
       })
-      .addCase(getEventById.rejected, (state, action) => {
+      .addCase(eventActions.getEventById.rejected, (state, action) => {
+        console.log(
+          "🔍 [DEBUG] getEventById.rejected triggered with error:",
+          action.payload
+        );
         state.status = STATUS.FAILED;
         state.error = action.payload?.message || "Failed to fetch event";
         state.currentEvent = null;
       })
 
       // FETCH USER EVENTS
-      .addCase(fetchUserEvents.pending, (state) => {
+      .addCase(eventActions.fetchUserEvents.pending, (state) => {
+        console.log("🔍 [DEBUG] fetchUserEvents.pending triggered");
         state.status = STATUS.LOADING;
         state.error = null;
       })
-      .addCase(fetchUserEvents.fulfilled, (state, action) => {
+      .addCase(eventActions.fetchUserEvents.fulfilled, (state, action) => {
+        console.log(
+          "🔍 [DEBUG] fetchUserEvents.fulfilled triggered with payload:",
+          action.payload
+        );
         state.status = STATUS.SUCCEEDED;
         state.userEvents = action.payload || [];
         state.error = null;
       })
-      .addCase(fetchUserEvents.rejected, (state, action) => {
+      .addCase(eventActions.fetchUserEvents.rejected, (state, action) => {
+        console.log(
+          "🔍 [DEBUG] fetchUserEvents.rejected triggered with error:",
+          action.payload
+        );
         state.status = STATUS.FAILED;
         state.error = action.payload?.message || "Failed to fetch events";
       })
 
       // FETCH EVENT ANALYTICS
-      .addCase(fetchEventAnalytics.pending, (state) => {
+      .addCase(eventActions.fetchEventAnalytics.pending, (state) => {
+        console.log("🔍 [DEBUG] fetchEventAnalytics.pending triggered");
         state.analyticsStatus = STATUS.LOADING;
       })
-      .addCase(fetchEventAnalytics.fulfilled, (state, action) => {
+      .addCase(eventActions.fetchEventAnalytics.fulfilled, (state, action) => {
+        console.log(
+          "🔍 [DEBUG] fetchEventAnalytics.fulfilled triggered with payload:",
+          action.payload
+        );
         state.analyticsStatus = STATUS.SUCCEEDED;
         state.analytics = action.payload.analytics;
       })
-      .addCase(fetchEventAnalytics.rejected, (state, action) => {
+      .addCase(eventActions.fetchEventAnalytics.rejected, (state, action) => {
+        console.log(
+          "🔍 [DEBUG] fetchEventAnalytics.rejected triggered with error:",
+          action.payload
+        );
         state.analyticsStatus = STATUS.FAILED;
         state.error = action.payload?.message || "Failed to fetch analytics";
       })
 
       // UPDATE EVENT
-      .addCase(updateEvent.fulfilled, (state, action) => {
+      .addCase(eventActions.updateEvent.fulfilled, (state, action) => {
+        console.log(
+          "🔍 [DEBUG] updateEvent.fulfilled triggered with payload:",
+          action.payload
+        );
         const updatedEvent = action.payload.event;
 
         // Update in userEvents array
@@ -123,7 +163,11 @@ const eventSlice = createSlice({
       })
 
       // DELETE EVENT
-      .addCase(deleteEvent.fulfilled, (state, action) => {
+      .addCase(eventActions.deleteEvent.fulfilled, (state, action) => {
+        console.log(
+          "🔍 [DEBUG] deleteEvent.fulfilled triggered with payload:",
+          action.payload
+        );
         const deletedEventId = action.payload.eventId;
         state.userEvents = state.userEvents.filter(
           (e) => e.id !== deletedEventId
@@ -140,7 +184,11 @@ const eventSlice = createSlice({
       })
 
       // PUBLISH EVENT
-      .addCase(publishEvent.fulfilled, (state, action) => {
+      .addCase(eventActions.publishEvent.fulfilled, (state, action) => {
+        console.log(
+          "🔍 [DEBUG] publishEvent.fulfilled triggered with payload:",
+          action.payload
+        );
         const publishedEvent = action.payload.event;
         const index = state.userEvents.findIndex(
           (e) => e.id === publishedEvent.id
@@ -155,6 +203,8 @@ const eventSlice = createSlice({
           state.currentEvent = publishedEvent;
         }
       });
+
+    console.log("🔍 [DEBUG] extraReducers build completed");
   },
 });
 
@@ -164,4 +214,6 @@ export const {
   clearSelectedEvent,
   clearCurrentEvent,
 } = eventSlice.actions;
+
+console.log("🔍 [DEBUG] eventSlice created successfully");
 export default eventSlice.reducer;

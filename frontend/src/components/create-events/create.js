@@ -48,10 +48,10 @@ export default function CreateEventForm({
   // 🆕 CRITICAL FIX: Handle initialData updates safely
   useEffect(() => {
     if (isEditMode && initialData) {
-      updateFormData(initialData);
+    //  updateFormData(initialData);
       setIsReady(true);
     }
-  }, [isEditMode, initialData]); // Remove updateFormData
+  }, [isEditMode, initialData]);
 
   const renderStep = () => {
     // 🆕 Show loading state while data loads in edit mode
