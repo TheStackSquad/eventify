@@ -11,7 +11,7 @@ import (
 
     "go.mongodb.org/mongo-driver/mongo"
     "go.mongodb.org/mongo-driver/mongo/options"
-    "github.com/joho/godotenv" // Library often used to load .env files
+    "github.com/joho/godotenv"
 )
 
 // Client is the global MongoDB client instance accessible to all packages.
