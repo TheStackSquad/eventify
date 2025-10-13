@@ -8,7 +8,7 @@ import (
 	"fmt"
 
 	"eventify/backend/pkg/models"
-	"eventify/backend/pkg/services" // Import the new services package
+	"eventify/backend/pkg/services"
 	"eventify/backend/pkg/utils"
 
 	"github.com/gin-gonic/gin"

@@ -9,22 +9,30 @@ import (
 
 	"eventify/backend/pkg/models"
 	"eventify/backend/pkg/utils"
+	"eventify/backend/pkg/repository" // <-- Import the repository package
 
 	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog/log"
-	"go.mongodb.org/mongo-driver/bson"
+	//"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
+	//"go.mongodb.org/mongo-driver/bson/primitive"
 	"golang.org/x/crypto/bcrypt"
 )
 
 type AuthHandler struct {
-	collection          *mongo.Collection
+	// FIX: Use the AuthRepository interface for all user CRUD/role operations
+	AuthRepo            repository.AuthRepository 
 	refreshTokenService *models.RefreshTokenService
+	// Note: We keep the collection for direct use in Signup/Login for simplicity,
+	// but best practice dictates all user-related DB access should go through AuthRepo.
+	// We'll update to use AuthRepo where possible.
 }
 
-func NewAuthHandler(db *mongo.Database) *AuthHandler {
+// FIX: NewAuthHandler now accepts the repository.AuthRepository interface.
+func NewAuthHandler(authRepo repository.AuthRepository, db *mongo.Database) *AuthHandler {
 	return &AuthHandler{
-		collection:          db.Collection("user"),
+		AuthRepo: authRepo, // <-- Dependency Injected
+		// The RefreshTokenService still takes the raw DB object, which is assumed correct for now.
 		refreshTokenService: models.NewRefreshTokenService(db),
 	}
 }
@@ -33,8 +41,8 @@ func NewAuthHandler(db *mongo.Database) *AuthHandler {
 const (
 	AccessTokenCookieName  = "access_token"
 	RefreshTokenCookieName = "refresh_token"
-	AccessMaxAge           = 60 * 15       // 15 minutes in seconds
-	RefreshMaxAge          = 3600 * 24 * 7 // 7 days in seconds
+	AccessMaxAge           = 60 * 15
+	RefreshMaxAge          = 3600 * 24 * 7
 )
 
 // Step 2: Get cookie domain from environment or use default
@@ -48,7 +56,7 @@ func getCookieDomain() string {
 
 // Step 3: Get cookie secure flag from environment
 func getCookieSecure() bool {
-	return os.Getenv("COOKIE_SECURE") == "true" // Should be true in production
+	return os.Getenv("COOKIE_SECURE") == "true"
 }
 
 // Step 4: Helper function to set both auth cookies
@@ -72,20 +80,19 @@ func setAuthCookies(c *gin.Context, accessToken, refreshToken string) {
 		RefreshTokenCookieName,
 		refreshToken,
 		RefreshMaxAge,
-		"/", // Changed from "/auth/refresh" to "/" for easier access
+		"/",
 		domain,
 		secure,
 		true, // HttpOnly: CRITICAL for security
 	)
 }
 
-// Step 5: Signup handler (unchanged, included for completeness)
+// Step 5: Signup handler
 func (h *AuthHandler) Signup(c *gin.Context) {
 	var user models.User
 	var ctx, cancel = context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	// Bind JSON to struct and validate input
 	if err := c.ShouldBindJSON(&user); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"message": "Invalid input. Please check all fields.",
@@ -93,19 +100,20 @@ func (h *AuthHandler) Signup(c *gin.Context) {
 		return
 	}
 
-	// Check if user already exists
-	filter := bson.M{"email": user.Email}
-	err := h.collection.FindOne(ctx, filter).Decode(&user)
+	// FIX: Use AuthRepo to check if user already exists
+	_, err := h.AuthRepo.GetUserByEmail(ctx, user.Email)
 
 	if err == nil {
 		c.JSON(http.StatusConflict, gin.H{"message": "User with this email already exists."})
 		return
-	} else if err != mongo.ErrNoDocuments {
+	} 
+	// The repository now returns errors.New("user not found") instead of mongo.ErrNoDocuments
+	if err.Error() != "user not found" && err.Error() != "user with this email already exists" { 
 		log.Error().Err(err).Msg("Database error during user check (Signup)")
 		c.JSON(http.StatusInternalServerError, gin.H{"message": "Server error. Please try again."})
 		return
 	}
-
+	
 	// Hash the password
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(user.Password), bcrypt.DefaultCost)
 	if err != nil {
@@ -114,9 +122,9 @@ func (h *AuthHandler) Signup(c *gin.Context) {
 		return
 	}
 	user.Password = string(hashedPassword)
-
-	// Save to MongoDB
-	_, insertErr := h.collection.InsertOne(ctx, user)
+	
+	// FIX: Use AuthRepo to save to MongoDB
+	_, insertErr := h.AuthRepo.CreateUser(ctx, &user)
 
 	if insertErr != nil {
 		log.Error().Err(insertErr).Msg("Failed to insert new user into MongoDB")
@@ -125,8 +133,6 @@ func (h *AuthHandler) Signup(c *gin.Context) {
 	}
 
 	// Success response
-	user.Password = ""
-
 	c.JSON(http.StatusCreated, models.AuthResponse{
 		Message: "Signup successful! Please log in.",
 	})
@@ -135,11 +141,9 @@ func (h *AuthHandler) Signup(c *gin.Context) {
 // Step 6: Login handler with dual token generation
 func (h *AuthHandler) Login(c *gin.Context) {
 	var loginReq models.LoginRequest
-	var user models.User
 	var ctx, cancel = context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	// Bind JSON
 	if err := c.ShouldBindJSON(&loginReq); err != nil {
 		log.Error().Err(err).Msg("Invalid login request body format")
 		c.JSON(http.StatusBadRequest, gin.H{
@@ -148,14 +152,14 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 
-	// Find user by email
-	filter := bson.M{"email": loginReq.Email}
-	err := h.collection.FindOne(ctx, filter).Decode(&user)
+	// FIX: Use AuthRepo to find user by email
+	user, err := h.AuthRepo.GetUserByEmail(ctx, loginReq.Email)
 
-	if err == mongo.ErrNoDocuments {
-		c.JSON(http.StatusUnauthorized, gin.H{"message": "Invalid email or password."})
-		return
-	} else if err != nil {
+	if err != nil {
+		if err.Error() == "user not found" {
+			c.JSON(http.StatusUnauthorized, gin.H{"message": "Invalid email or password."})
+			return
+		}
 		log.Error().Err(err).Msg("Database error during user lookup (Login)")
 		c.JSON(http.StatusInternalServerError, gin.H{"message": "Server error during authentication."})
 		return
@@ -182,7 +186,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 
-	// NEW: Save the Refresh Token to the database
+	// Save the Refresh Token to the database
 	saveErr := h.refreshTokenService.SaveRefreshToken(ctx, userID, refreshToken, RefreshMaxAge)
 	if saveErr != nil {
 		log.Error().Err(saveErr).Msg("Failed to save refresh token")
@@ -193,32 +197,31 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	// Set both tokens in secure HTTP-ONLY cookies
 	setAuthCookies(c, accessToken, refreshToken)
 
-	// Success response
-	user.Password = ""
+	// Use the ToUserProfile method to convert *models.User to *models.UserProfile
+	userProfile := user.ToUserProfile()
 
+	// Success response
 	c.JSON(http.StatusOK, models.AuthResponse{
 		Message: "Login successful! Tokens set in secure cookies.",
-		User:    &user,
+		User:    userProfile,
 	})
 }
 
-// Step 7: NEW - Refresh Token handler
+// Step 7: Refresh Token handler (No changes needed, as it doesn't return user data)
 func (h *AuthHandler) RefreshToken(c *gin.Context) {
-	// Get the Refresh Token from the HTTP-Only cookie
+	// ... (Refresh token logic remains the same)
 	refreshToken, err := c.Cookie(RefreshTokenCookieName)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"message": "No refresh token provided."})
 		return
 	}
 
-	// Validate the Refresh Token
 	claims, err := utils.ValidateJWT(refreshToken)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"message": "Session expired, please log in again."})
 		return
 	}
 
-	// Verify Refresh Token against the database
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -229,7 +232,6 @@ func (h *AuthHandler) RefreshToken(c *gin.Context) {
 		return
 	}
 
-	// Generate NEW Access Token
 	newAccessToken, accessErr := utils.GenerateAccessJWT(claims.UserID)
 	if accessErr != nil {
 		log.Error().Err(accessErr).Msg("Failed to generate new access token")
@@ -237,7 +239,6 @@ func (h *AuthHandler) RefreshToken(c *gin.Context) {
 		return
 	}
 
-	// Set NEW Access Token cookie
 	c.SetCookie(
 		AccessTokenCookieName,
 		newAccessToken,
@@ -250,51 +251,48 @@ func (h *AuthHandler) RefreshToken(c *gin.Context) {
 
 	log.Info().Str("user_id", claims.UserID).Msg("Access token refreshed successfully")
 
-	// Success response
 	c.JSON(http.StatusOK, gin.H{"message": "Access token refreshed successfully."})
 }
 
-// Step 8: NEW - Get Current User handler (for session restoration)
+// Step 8: Get Current User handler (for session restoration)
 func (h *AuthHandler) GetCurrentUser(c *gin.Context) {
-	// This handler will be protected by AuthMiddleware
-	// The middleware will set the user_id in the context
-	userID, exists := c.Get("user_id")
+	userIDHex, exists := c.Get("user_id")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"message": "Unauthorized"})
 		return
 	}
-
-	// Fetch user from database
-	var user models.User
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	err := h.collection.FindOne(ctx, bson.M{"_id": userID}).Decode(&user)
+	
+	// FIX: Use AuthRepo to fetch user by ID
+	user, err := h.AuthRepo.GetUserByID(c.Request.Context(), userIDHex.(string))
+	
 	if err != nil {
+		if err.Error() == "user not found" {
+			c.JSON(http.StatusNotFound, gin.H{"message": "User not found."})
+			return
+		}
 		log.Error().Err(err).Msg("Failed to fetch user data")
 		c.JSON(http.StatusInternalServerError, gin.H{"message": "Failed to fetch user data."})
 		return
 	}
 
-	// Clear password before sending
-	user.Password = ""
+	// Use the ToUserProfile method to send the DTO instead of the full model
+	userProfile := user.ToUserProfile()
 
 	c.JSON(http.StatusOK, gin.H{
-		"user": user,
+		"user": userProfile,
 	})
 }
 
 // Step 9: Logout handler with token revocation
 func (h *AuthHandler) Logout(c *gin.Context) {
-	// Get refresh token from cookie to revoke it
+	// ... (Logout logic remains the same)
 	refreshToken, err := c.Cookie(RefreshTokenCookieName)
 	
-	// NEW: Revoke the refresh token in the database
+	// Revoke the refresh token in the database
 	if err == nil && refreshToken != "" {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
-		// Extract user ID from token if possible
 		if claims, validateErr := utils.ValidateJWT(refreshToken); validateErr == nil {
 			revokeErr := h.refreshTokenService.RevokeRefreshToken(ctx, claims.UserID, refreshToken)
 			if revokeErr != nil {
@@ -306,10 +304,7 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 	domain := getCookieDomain()
 	secure := getCookieSecure()
 
-	// Clear Access Token cookie
 	c.SetCookie(AccessTokenCookieName, "", -1, "/", domain, secure, true)
-
-	// Clear Refresh Token cookie
 	c.SetCookie(RefreshTokenCookieName, "", -1, "/", domain, secure, true)
 
 	log.Info().Msg("User logged out successfully (tokens cleared and revoked)")

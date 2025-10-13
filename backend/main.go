@@ -1,4 +1,5 @@
 // backend/main.go
+
 package main
 
 import (
@@ -12,8 +13,9 @@ import (
 
 	"eventify/backend/pkg/db"
 	"eventify/backend/pkg/handlers"
+	"eventify/backend/pkg/repository"
 	"eventify/backend/pkg/routes"
-	"eventify/backend/pkg/services" // Import the new services package
+	"eventify/backend/pkg/services"
 
 	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog"
@@ -22,7 +24,7 @@ import (
 
 // Flow: Configure Logging/Mode -> Connect DB -> Init Services -> Init Handlers -> Configure Router -> Start/Manage HTTP Server
 func main() {
-	// Step 1: Zerolog Setup and Gin Mode
+	// Step 1: Zerolog Setup and Gin Mode (Logging and Environment)
 	zerolog.SetGlobalLevel(zerolog.InfoLevel)
 	log.Logger = log.Output(zerolog.ConsoleWriter{
 		Out:        os.Stderr,
@@ -34,30 +36,43 @@ func main() {
 	} else {
 		gin.SetMode(gin.DebugMode)
 	}
-// ------------------------------------------------------------------------------------------------------
-	// Step 2: Database Initialization
+
+	// ------------------------------------------------------------------------------------------------------
+	// Step 2: Database Initialization and Connection
 	db.ConnectDB()
 	log.Info().Msg("Database connection established successfully.")
 
 	// Step 3: Get MongoDB database instance and collections
 	dbClient := db.GetDB()
 	eventsCollection := dbClient.Collection("events")
+	vendorsCollection := dbClient.Collection("vendors")
+	usersCollection := dbClient.Collection("users")
 
-	// Step 4: Initialize Services (New Step)
-	// The service layer handles business logic and DB communication.
-	eventService := services.NewEventService(eventsCollection) 
+	// Step 4: Initialize Services & Repositories (The Dependency Graph)
 
-	// Step 5: Initialize Handlers (Now depend on Services)
-	// Initialize the AuthHandler (needs the entire DB client for user operations)
-	authHandler := handlers.NewAuthHandler(dbClient) 
+	// Repositories
+	vendorRepo := repository.NewMongoVendorRepository(vendorsCollection)
+	authRepo := repository.NewMongoAuthRepository(usersCollection)
 
-	// Initialize the EventHandler, passing the new EventService dependency
-	eventHandler := handlers.NewEventHandler(eventService) 
+	// Services (Using mock/assumed service initialization for events)
+	eventService := services.NewEventService(eventsCollection)
+
+	// Step 5: Initialize Handlers (Injecting Repositories/Services)
+
+	// FIX 1: Pass both the authRepo and the raw dbClient to satisfy the NewAuthHandler signature
+	authHandler := handlers.NewAuthHandler(authRepo, dbClient)
+
+	// EventHandler needs the EventService
+	eventHandler := handlers.NewEventHandler(eventService)
+
+	// VendorHandler needs the VendorRepository
+	vendorHandler := handlers.NewVendorHandler(vendorRepo)
 
 	// Step 6: Gin Router Setup
-	router := routes.ConfigureRouter(authHandler, eventHandler)
+	// FIX 2: Pass the required authRepo to the ConfigureRouter function
+	router := routes.ConfigureRouter(authHandler, eventHandler, vendorHandler, authRepo)
 
-// ------------------------------------------------------------------------------------------------------
+	// ------------------------------------------------------------------------------------------------------
 	// Step 7: Retrieve PORT and Server Configuration
 	port := os.Getenv("PORT")
 	if port == "" {
