@@ -12,9 +12,6 @@ import DesktopNav from "@/components/common/nav/desktopNav";
 import MobileMenu from "@/components/common/nav/mobileMenu";
 import CartIcon from "@/components/common/cartIcon";
 
-// --- Placeholder for User Session Logic ---
-// In a real app, you would fetch this from a context, Redux store, or an
-// authentication hook (e.g., useSupabaseUser, useAuth, etc.)
 const useUserSession = () => {
   // Replace this with your actual authentication logic
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -72,7 +69,7 @@ const navItems = [
     //   },
     // ],
   },
-  { path: "/cart", label: "Cart" },
+  { path: "/vendor", label: "Vendor" },
   { path: "/dashboard", label: "Dashboard" },
   { path: "/about-us", label: "About Us" },
 ];
