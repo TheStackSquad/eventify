@@ -1,10 +1,19 @@
-//frontend/src/components/vendorUI/handlers/useVendorFormHandler.js
+// frontend/src/components/vendorUI/handlers/useVendorFormHandler.js
 
 import React from "react";
-import { PRICE_RANGES } from "@/data/vendorData";
+import { useDispatch } from "react-redux";
+import { registerVendor, updateVendor } from "@/redux/action/vendorAction";
+// Import Validation utilities
+import {
+  vendorRegistrationValidate,
+  validateVendorField,
+  hasValidationErrors,
+} from "@/utils/validate/vendorValidate";
 
+// Custom hook to manage all vendor form logic (registration and update)
 export const useVendorFormHandler = ({ vendorId, onSuccess }) => {
   const isEditMode = !!vendorId;
+  const dispatch = useDispatch();
 
   // 1. State Management
   const [formData, setFormData] = React.useState({
@@ -14,11 +23,13 @@ export const useVendorFormHandler = ({ vendorId, onSuccess }) => {
     city: "",
     minPrice: "",
     phoneNumber: "",
+    // If editing, this might hold the existing URL string
+    imageURL: "",
   });
-  const [imageFile, setImageFile] = React.useState(null);
+  const [imageFile, setImageFile] = React.useState(null); // Holds the actual File object for new uploads
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [error, setError] = React.useState(null);
-  const [formErrors, setFormErrors] = React.useState({}); // For field-specific validation errors
+  const [formErrors, setFormErrors] = React.useState({}); // Field-specific validation errors
   const [isLoadingVendor, setIsLoadingVendor] = React.useState(false);
 
   // 2. Mock Data Fetching (Simulate loading existing vendor data in edit mode)
@@ -36,9 +47,9 @@ export const useVendorFormHandler = ({ vendorId, onSuccess }) => {
           city: "Lekki Phase 1",
           minPrice: "150000",
           phoneNumber: "08012345678",
+          imageURL: "https://your-domain.com/path/to/existing-image.webp", // Existing URL
         };
         setFormData(mockVendorData);
-        // Note: Image file retrieval is complex, so we'll leave imageFile as null for the mock
         setIsLoadingVendor(false);
       }, 1000);
     }
@@ -46,98 +57,90 @@ export const useVendorFormHandler = ({ vendorId, onSuccess }) => {
 
   // 3. Handlers
 
-  /** Handles standard input change for text, number, and select fields. */
+  /** Handles standard input change for text, number, and select fields with live validation. */
   const handleChange = (e) => {
     const { name, value } = e.target;
 
-    // Basic price validation: ensure it's a number and within bounds
-    if (name === "minPrice" && value !== "") {
-      const numValue = Number(value);
-      if (
-        isNaN(numValue) ||
-        numValue < PRICE_RANGES.MIN ||
-        numValue > PRICE_RANGES.MAX
-      ) {
-        // Set a temporary field error but allow state change for user feedback
-        setFormErrors((prev) => ({
-          ...prev,
-          [name]: "Price must be between ₦1,000 and ₦100,000,000.",
-        }));
-      } else {
-        setFormErrors((prev) => ({ ...prev, [name]: "" }));
-      }
-    } else if (name === "minPrice" && value === "") {
-      setFormErrors((prev) => ({
-        ...prev,
-        [name]: "Starting price is required.",
-      }));
-    }
-
     setFormData((prev) => ({ ...prev, [name]: value }));
     if (error) setError(null); // Clear global error on any change
+
+    // Live Field Validation
+    const errorMsg = validateVendorField(name, value);
+    setFormErrors((prev) => ({
+      ...prev,
+      [name]: errorMsg,
+    }));
   };
 
-  /** Handles file input change for the business image. */
+  /** Handles file input change for the business image with live validation. */
   const handleImageChange = (e) => {
     const file = e.target.files[0];
+    const fileValue = file || null;
+    setImageFile(fileValue);
+
+    // Clear imageURL from formData if a new file is selected, as it's no longer the source of truth
     if (file) {
-      // Basic file validation (Max 5MB)
-      if (file.size > 5 * 1024 * 1024) {
-        setFormErrors((prev) => ({
-          ...prev,
-          imageURL: "File size exceeds 5MB limit.",
-        }));
-        setImageFile(null);
-      } else {
-        setImageFile(file);
-        setFormErrors((prev) => ({ ...prev, imageURL: "" }));
-      }
+      setFormData((prev) => ({ ...prev, imageURL: "" }));
     }
+
+    // Validation for image file (using the file object)
+    const errorMsg = vendorRegistrationValidate(
+      {
+        ...formData,
+        // Pass the file object here for client-side file validation (type, size)
+        imageURL: fileValue,
+      },
+      isEditMode
+    ).imageURL;
+
+    setFormErrors((prev) => ({
+      ...prev,
+      imageURL: errorMsg || null,
+    }));
+
     if (error) setError(null);
   };
 
-  /** Simple client-side validation check */
+  /** Uses the imported comprehensive client-side validation check. */
   const validateForm = () => {
-    let errors = {};
-    let isValid = true;
-
-    if (!formData.name.trim()) {
-      errors.name = "Business name is required.";
-      isValid = false;
-    }
-    if (!formData.category) {
-      errors.category = "Service category is required.";
-      isValid = false;
-    }
-    if (!formData.state) {
-      errors.state = "Primary service state is required.";
-      isValid = false;
-    }
-
-    // Basic check for Nigerian phone number format (0XX-XXX-XXXX)
-    if (!formData.phoneNumber.match(/^0[789][01]\d{8}$/)) {
-      errors.phoneNumber =
-        "Valid Nigerian phone number (11 digits, starts with 0) is required.";
-      isValid = false;
-    }
-
-    const minPriceNum = Number(formData.minPrice);
-    if (isNaN(minPriceNum) || minPriceNum < PRICE_RANGES.MIN) {
-      errors.minPrice = `Minimum price must be at least ₦${PRICE_RANGES.MIN.toLocaleString()}.`;
-      isValid = false;
-    }
-
-    // Image is only required for new registration
-    if (!isEditMode && !imageFile) {
-      errors.imageURL = "A business image is required for new registration.";
-      isValid = false;
-    }
+    // Use the comprehensive validation function
+    const errors = vendorRegistrationValidate(
+      {
+        ...formData,
+        // For final validation, prioritize the new file object (if present)
+        // over the existing URL string. Validation utility must handle both types.
+        imageURL: imageFile || formData.imageURL,
+      },
+      isEditMode
+    );
 
     setFormErrors(errors);
-    return isValid;
+
+    // Returns true if NO errors are found
+    return !hasValidationErrors(errors);
   };
 
-  /** Handles form submission (Registration or Update). */
+  // Helper function to upload the image file to Vercel Blob via Next.js API Route
+  const handleVendorImageUpload = async (file) => {
+    const uploadFormData = new FormData();
+    // 'file' must match the key expected by /api/vendor-image/route.js
+    uploadFormData.append("file", file);
+
+    const response = await fetch("/api/vendor-image", {
+      method: "POST",
+      body: uploadFormData,
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error || "Image upload failed.");
+    }
+
+    const result = await response.json();
+    return result.url; // Returns the public Vercel Blob URL string
+  };
+
+  /** Handles form submission (Registration or Update) using Redux Thunks. */
   const handleSubmit = async (e) => {
     e.preventDefault();
 
@@ -148,25 +151,40 @@ export const useVendorFormHandler = ({ vendorId, onSuccess }) => {
 
     setIsSubmitting(true);
     setError(null);
-    console.log(
-      `[SUBMIT] Attempting ${isEditMode ? "Update" : "Registration"} for:`,
-      formData
-    );
+    setFormErrors({});
 
     try {
-      // --- MOCK API CALL SIMULATION ---
-      await new Promise((resolve) => setTimeout(resolve, 1500));
+      let finalImageUrl = formData.imageURL || ""; // Start with existing URL
 
-      // Mock failure condition if name contains 'fail'
-      if (formData.name.toLowerCase().includes("fail")) {
-        throw new Error("Simulated network failure. Check your connection.");
+      // 1. Handle Image Upload (only for a NEW file)
+      if (imageFile) {
+        // Upload the new file and get the public URL string
+        finalImageUrl = await handleVendorImageUpload(imageFile);
+        console.log("[IMAGE UPLOAD] Received URL:", finalImageUrl);
       }
 
-      // Success condition
-      console.log("[SUBMIT] Submission successful!");
+      // 2. Prepare Final JSON Payload
+      // This payload contains only text fields and the final image URL string.
+      const finalPayload = {
+        ...formData,
+        minPrice: Number(formData.minPrice),
+        imageURL: finalImageUrl,
+      };
+
+      console.debug("Final JSON payload to backend:", finalPayload);
+
+      // 3. Determine Action and Dispatch (Sending clean JSON payload to Go backend)
+      const action = isEditMode
+        ? updateVendor({ vendorId, data: finalPayload })
+        : registerVendor(finalPayload);
+
+      // Dispatch action and wait for 200/201 response
+      const result = await dispatch(action).unwrap();
+
+      console.log("[SUBMIT] Submission successful:", result);
       if (onSuccess) onSuccess(); // Notify parent component
 
-      // Clear form only after successful registration, not update
+      // 4. Clear form after successful registration
       if (!isEditMode) {
         setFormData({
           name: "",
@@ -175,11 +193,12 @@ export const useVendorFormHandler = ({ vendorId, onSuccess }) => {
           city: "",
           minPrice: "",
           phoneNumber: "",
+          imageURL: "",
         });
         setImageFile(null);
-        setFormErrors({});
       }
     } catch (err) {
+      // Error handling is managed by the Redux Thunk and toastAlert
       console.error("[SUBMIT ERROR]", err.message);
       setError(
         err.message ||

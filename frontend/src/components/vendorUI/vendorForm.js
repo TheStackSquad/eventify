@@ -1,4 +1,4 @@
-// frontend/src/components/vendorUI/vendorForm.jsx
+// frontend/src/components/vendorUI/VendorForm.jsx
 
 "use client";
 
@@ -12,182 +12,21 @@ import {
   Image as ImageIcon,
   Upload,
 } from "lucide-react";
-// import LoadingSpinner from "@/components/common/loading/loadingSpinner"; // Original import causing error
+import LoadingSpinner from "@/components/common/loading/loadingSpinner";
 
-// Import the actual helper files
-import { formatSelectOptions } from "./handlers/vendorFormHelpers";
-import { useVendorFormHandler } from "./handlers/useVendorFormHandler";
+// Import the sub-components
+import VendorInputField from "@/components/vendorUI/components/vendorInputFields";
+import VendorFileInputField from "@/components/vendorUI/components/vendorFileInputField";
+import SelectField from "@/components/vendorUI/components/selectedField";
+
+// Import the data and handler logic
+import { useVendorFormHandler } from "@/components/vendorUI/handlers/useVendorFormHandler";
 import {
   VENDOR_CATEGORIES,
   NIGERIAN_STATES,
   PRICE_RANGES,
   FORM_PLACEHOLDERS,
 } from "@/data/vendorData";
-
-// --- MOCK COMPONENT FOR STANDALONE EXECUTION (Fixing the import error) ---
-const LoadingSpinner = ({
-  fullScreen = true,
-  message = "Loading...",
-  size = "md",
-  color = "indigo",
-}) => {
-  let spinnerSize = "w-6 h-6";
-  if (size === "sm") spinnerSize = "w-4 h-4";
-  if (size === "lg") spinnerSize = "w-8 h-8";
-
-  const spinnerColor = `text-${color}-500`;
-
-  const content = (
-    <div className="flex flex-col items-center justify-center space-y-3 p-4">
-      <svg
-        className={`animate-spin ${spinnerSize} ${spinnerColor}`}
-        xmlns="http://www.w3.org/2000/svg"
-        fill="none"
-        viewBox="0 0 24 24"
-      >
-        <circle
-          className="opacity-25"
-          cx="12"
-          cy="12"
-          r="10"
-          stroke="currentColor"
-          strokeWidth="4"
-        ></circle>
-        <path
-          className="opacity-75"
-          fill="currentColor"
-          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-        ></path>
-      </svg>
-      {message && (
-        <p className={`text-sm font-medium text-gray-700`}>{message}</p>
-      )}
-    </div>
-  );
-
-  if (fullScreen) {
-    return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-white bg-opacity-80">
-        {content}
-      </div>
-    );
-  }
-
-  return content;
-};
-// --- END MOCK COMPONENT ---
-
-// Input Field Component
-const InputField = ({ icon: Icon, label, error, required, ...props }) => (
-  <div className="group">
-    <label className="block text-sm font-semibold text-gray-700 mb-2">
-      {label} {required && <span className="text-red-500">*</span>}
-    </label>
-    <div className="relative">
-      <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-indigo-600 transition-colors">
-        <Icon size={20} />
-      </div>
-      <input
-        {...props}
-        className={`w-full pl-12 pr-4 py-3.5 bg-gray-50 border-2 rounded-xl text-gray-900 placeholder-gray-400 transition-all duration-200 focus:bg-white focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100 focus:outline-none ${
-          error ? "border-red-400 bg-red-50" : "border-gray-200"
-        }`}
-      />
-    </div>
-    {error && (
-      <p className="mt-1.5 text-sm text-red-600 flex items-center gap-1">
-        <span className="inline-block w-1 h-1 bg-red-600 rounded-full"></span>
-        {error}
-      </p>
-    )}
-  </div>
-);
-
-// File Input Field Component
-const FileInputField = ({ icon: Icon, label, error, accept, ...props }) => (
-  <div className="group">
-    <label className="block text-sm font-semibold text-gray-700 mb-2">
-      {label} <span className="text-red-500">*</span>
-    </label>
-    <div className="relative">
-      <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-indigo-600 transition-colors z-10">
-        <Icon size={20} />
-      </div>
-      <input
-        type="file"
-        accept={accept}
-        {...props}
-        className="w-full pl-12 pr-4 py-3.5 bg-gray-50 border-2 rounded-xl text-gray-900 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 cursor-pointer transition-all duration-200 focus:bg-white focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100 focus:outline-none border-gray-200"
-      />
-    </div>
-    {props.imageFile && !error && (
-      <p className="mt-1.5 text-sm text-green-600 flex items-center gap-1">
-        <span className="inline-block w-1 h-1 bg-green-600 rounded-full"></span>
-        {props.imageFile.name} ({(props.imageFile.size / 1024).toFixed(1)} KB)
-      </p>
-    )}
-    {error && (
-      <p className="mt-1.5 text-sm text-red-600 flex items-center gap-1">
-        <span className="inline-block w-1 h-1 bg-red-600 rounded-full"></span>
-        {error}
-      </p>
-    )}
-    <p className="mt-1 text-xs text-gray-500">
-      Max 5MB • JPG, PNG, or WEBP format
-    </p>
-  </div>
-);
-
-// Select Field Component
-const SelectField = ({ icon: Icon, label, options, error, ...props }) => (
-  <div className="group">
-    <label className="block text-sm font-semibold text-gray-700 mb-2">
-      {label} <span className="text-red-500">*</span>
-    </label>
-    <div className="relative">
-      <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-indigo-600 transition-colors z-10">
-        <Icon size={20} />
-      </div>
-      <select
-        {...props}
-        className={`w-full pl-12 pr-10 py-3.5 bg-gray-50 border-2 rounded-xl text-gray-900 appearance-none cursor-pointer transition-all duration-200 focus:bg-white focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100 focus:outline-none ${
-          error ? "border-red-400 bg-red-50" : "border-gray-200"
-        }`}
-      >
-        {options.map((option) => (
-          <option
-            key={option.value}
-            value={option.value}
-            disabled={option.disabled}
-          >
-            {option.label}
-          </option>
-        ))}
-      </select>
-      <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none">
-        <svg
-          className="w-5 h-5 text-gray-400"
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M19 9l-7 7-7-7"
-          />
-        </svg>
-      </div>
-    </div>
-    {error && (
-      <p className="mt-1.5 text-sm text-red-600 flex items-center gap-1">
-        <span className="inline-block w-1 h-1 bg-red-600 rounded-full"></span>
-        {error}
-      </p>
-    )}
-  </div>
-);
 
 const VendorForm = ({ vendorId, onSubmissionSuccess }) => {
   const {
@@ -215,8 +54,28 @@ const VendorForm = ({ vendorId, onSubmissionSuccess }) => {
     );
   }
 
+  // --- Dynamic Content ---
+  const headerText = isEditMode
+    ? "Update Your Business Profile"
+    : "Register Your Business";
+  const headerSubText = isEditMode
+    ? "Update your business information and profile to keep your PVS high."
+    : "Join thousands of verified service providers and gain platform visibility.";
+  const buttonText = isEditMode
+    ? "Update Business Profile"
+    : "Submit Registration";
+  const submittingText = isEditMode
+    ? "Updating Business..."
+    : "Submitting Registration...";
+  const errorHeaderText = isEditMode ? "Update Failed" : "Registration Failed";
+  const agreementVerb = isEditMode ? "updating" : "registering";
+  // The 'animate-fade-in' and 'animate-shake' classes would need to be defined
+  // in your global CSS or a module/utility file to work here.
+  // Assuming 'animate-fade-in' is a working Tailwind animation class/plugin:
+  const formClassName = "w-full max-w-2xl mx-auto animate-fade-in";
+
   return (
-    <div className="w-full max-w-2xl mx-auto animate-fade-in">
+    <div className={formClassName}>
       <div className="bg-white rounded-3xl shadow-2xl shadow-indigo-100/50 border border-gray-100 overflow-hidden">
         {/* Form Header */}
         <div className="relative bg-gradient-to-br from-indigo-600 via-indigo-700 to-purple-700 px-8 py-12 text-center overflow-hidden">
@@ -228,21 +87,15 @@ const VendorForm = ({ vendorId, onSubmissionSuccess }) => {
               <Building2 className="w-8 h-8 text-white" />
             </div>
             <h2 className="text-3xl md:text-4xl font-bold text-white mb-2">
-              {isEditMode
-                ? "Update Your Business Profile"
-                : "Register Your Business"}
+              {headerText}
             </h2>
-            <p className="text-indigo-100 max-w-md mx-auto">
-              {isEditMode
-                ? "Update your business information and profile to keep your PVS high."
-                : "Join thousands of verified service providers and gain platform visibility."}
-            </p>
+            <p className="text-indigo-100 max-w-md mx-auto">{headerSubText}</p>
           </div>
         </div>
 
         {/* Form Content */}
         <div className="px-6 md:px-12 py-10">
-          {/* Error Alert */}
+          {/* Error Alert (Assuming 'animate-shake' is defined globally or via plugin) */}
           {error && (
             <div className="mb-6 p-4 bg-red-50 border-l-4 border-red-500 rounded-r-xl animate-shake">
               <div className="flex items-start gap-3">
@@ -259,7 +112,7 @@ const VendorForm = ({ vendorId, onSubmissionSuccess }) => {
                 </svg>
                 <div>
                   <h3 className="text-sm font-semibold text-red-800 mb-0.5">
-                    {isEditMode ? "Update Failed" : "Registration Failed"}
+                    {errorHeaderText}
                   </h3>
                   <p className="text-sm text-red-700">{error}</p>
                 </div>
@@ -269,7 +122,7 @@ const VendorForm = ({ vendorId, onSubmissionSuccess }) => {
 
           <form onSubmit={handleSubmit} className="space-y-6">
             {/* Business Name */}
-            <InputField
+            <VendorInputField
               icon={Briefcase}
               label="Business Name"
               type="text"
@@ -282,7 +135,7 @@ const VendorForm = ({ vendorId, onSubmissionSuccess }) => {
             />
 
             {/* Business Image */}
-            <FileInputField
+            <VendorFileInputField
               icon={ImageIcon}
               label="Business Logo/Image"
               name="imageURL"
@@ -318,7 +171,7 @@ const VendorForm = ({ vendorId, onSubmissionSuccess }) => {
             </div>
 
             {/* City/Area */}
-            <InputField
+            <VendorInputField
               icon={MapPin}
               label="City or Area"
               type="text"
@@ -331,7 +184,7 @@ const VendorForm = ({ vendorId, onSubmissionSuccess }) => {
 
             {/* Price & Phone */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <InputField
+              <VendorInputField
                 icon={DollarSign}
                 label="Starting Price (NGN)"
                 type="number"
@@ -345,7 +198,7 @@ const VendorForm = ({ vendorId, onSubmissionSuccess }) => {
                 step={PRICE_RANGES.STEP}
               />
 
-              <InputField
+              <VendorInputField
                 icon={Phone}
                 label="Phone Number"
                 type="tel"
@@ -366,6 +219,7 @@ const VendorForm = ({ vendorId, onSubmissionSuccess }) => {
             >
               {isSubmitting ? (
                 <>
+                  {/* Spinner SVG */}
                   <svg
                     className="animate-spin -ml-1 mr-3 h-5 w-5 text-white"
                     xmlns="http://www.w3.org/2000/svg"
@@ -386,19 +240,11 @@ const VendorForm = ({ vendorId, onSubmissionSuccess }) => {
                       d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
                     ></path>
                   </svg>
-                  <span>
-                    {isEditMode
-                      ? "Updating Business..."
-                      : "Submitting Registration..."}
-                  </span>
+                  <span>{submittingText}</span>
                 </>
               ) : (
                 <>
-                  <span>
-                    {isEditMode
-                      ? "Update Business Profile"
-                      : "Submit Registration"}
-                  </span>
+                  <span>{buttonText}</span>
                   <Upload className="w-5 h-5" />
                 </>
               )}
@@ -407,7 +253,7 @@ const VendorForm = ({ vendorId, onSubmissionSuccess }) => {
 
           {/* Footer Note */}
           <p className="mt-6 text-center text-sm text-gray-500">
-            By {isEditMode ? "updating" : "registering"}, you agree to our{" "}
+            By {agreementVerb}, you agree to our{" "}
             <a
               href="#"
               className="text-indigo-600 hover:text-indigo-800 font-medium"
@@ -424,41 +270,6 @@ const VendorForm = ({ vendorId, onSubmissionSuccess }) => {
           </p>
         </div>
       </div>
-
-      {/* Custom CSS for animations */}
-      <style jsx>{`
-        @keyframes fade-in {
-          from {
-            opacity: 0;
-            transform: translateY(20px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
-
-        @keyframes shake {
-          0%,
-          100% {
-            transform: translateX(0);
-          }
-          25% {
-            transform: translateX(-4px);
-          }
-          75% {
-            transform: translateX(4px);
-          }
-        }
-
-        .animate-fade-in {
-          animation: fade-in 0.5s ease-out;
-        }
-
-        .animate-shake {
-          animation: shake 0.4s ease-in-out;
-        }
-      `}</style>
     </div>
   );
 };
