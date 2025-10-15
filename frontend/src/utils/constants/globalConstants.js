@@ -1,7 +1,4 @@
-/**
- * Global Constants for Event Management Application
- * Centralized location for all constants used across Redux, components, and forms
- */
+//frontend/src/utils/constants/globalConstants.js
 
 // ========== REDUX ACTION TYPES ==========
 export const REDUX_ACTION_TYPES = {
@@ -25,17 +22,26 @@ export const REDUX_ACTION_TYPES = {
 
 // ========== API ENDPOINTS ==========
 export const API_ENDPOINTS = {
-  // ... (All API_ENDPOINTS remain here)
-  // NEW: PUBLIC VENDOR ENDPOINTS
+  EVENTS: {
+    BASE: "/events",
+    CREATE: "/events",
+    GET_BY_ID: "/events/:eventId",
+    UPDATE: "/events/:id",
+    DELETE: "/events/:id",
+    MY_EVENTS: "/events/my-events",
+    ANALYTICS: "/events/:id/analytics",
+    PUBLISH: "/events/:id/publish",
+  },
   VENDORS: {
-    BASE: "/api/v1/vendors", // Matches router.Group("/api/v1/vendors")
+    BASE: "/api/v1/vendors",
     LIST: "/api/v1/vendors",
     GET_PROFILE: "/api/v1/vendors/:id",
     REGISTER: "/api/v1/vendors/register",
+    // 👈 FIX: Added the UPDATE endpoint for use in the updateVendor thunk
+    UPDATE: "/api/v1/vendors/:id",
   },
-  // NEW: ADMIN VENDOR ENDPOINTS
   ADMIN_VENDORS: {
-    BASE: "/api/v1/admin/vendors", // Matches router.Group("/api/v1/admin/vendors")
+    BASE: "/api/v1/admin/vendors",
     VERIFY_IDENTITY: "/api/v1/admin/vendors/:id/verify/identity",
     VERIFY_BUSINESS: "/api/v1/admin/vendors/:id/verify/business",
     DELETE: "/api/v1/admin/vendors/:id",
@@ -93,7 +99,13 @@ export const EVENT_DEFAULTS = {
 
 // ========== ERROR MESSAGES ==========
 export const ERROR_MESSAGES = {
-  // ... (All ERROR_MESSAGES remain here)
+  // Event Operations
+  CREATE_EVENT_FAILED: "Failed to create event",
+  UPDATE_EVENT_FAILED: "Failed to update event",
+  DELETE_EVENT_FAILED: "Failed to delete event",
+  FETCH_EVENTS_FAILED: "Failed to fetch events",
+  FETCH_EVENT_FAILED: "Failed to fetch event",
+  FETCH_ANALYTICS_FAILED: "Failed to fetch analytics",
   // Vendor Operations (New)
   FETCH_VENDORS_FAILED: "Failed to fetch vendors list.",
   FETCH_PROFILE_FAILED: "Failed to load vendor profile.",
@@ -108,7 +120,10 @@ export const ERROR_MESSAGES = {
 
 // ========== SUCCESS MESSAGES ==========
 export const SUCCESS_MESSAGES = {
-  // ... (All SUCCESS_MESSAGES remain here)
+  EVENT_CREATED: "🎉 Event created successfully!",
+  EVENT_UPDATED: "🎉 Event updated successfully!",
+  EVENT_DELETED: "Event deleted successfully!",
+  EVENT_PUBLISHED: "Event published successfully!",
   // Vendor Operations (New)
   VENDOR_REGISTERED: "Vendor registration submitted successfully!",
 
@@ -120,7 +135,10 @@ export const SUCCESS_MESSAGES = {
 
 // ========== ROUTES ==========
 export const ROUTES = {
-  // ... (All ROUTES remain here)
+  LOGIN: "/auth/login",
+  MY_EVENTS: "/events/my-events",
+  CREATE_EVENT: "/events/create-events",
+
   // Vendor Routes (New)
   VENDOR_LISTING: "/vendors",
   VENDOR_PROFILE: "/vendors/:slug", // We'll use a slug for the UI route

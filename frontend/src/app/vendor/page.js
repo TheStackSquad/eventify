@@ -33,7 +33,20 @@ const VendorListingPage = () => {
   };
 
   const navigateToRegistration = () => setShowRegistrationForm(true);
-  const navigateToListing = () => setShowRegistrationForm(false);
+  const navigateToListing = () => {
+    // 1. Fetch the updated vendor list immediately.
+    // This ensures the new vendor (or updated profile) is visible.
+    dispatch(fetchVendors(filters));
+
+    // 2. Switch the view back to the listing page.
+    // This relies on your existing Redux Thunk logic:
+    // - In useVendorFormHandler.js, onSubmissionSuccess is only called
+    //   AFTER the API returns 200/201 (success).
+    // - Switching the view will now briefly show a loading state
+    //   while the new fetchVendors call is pending.
+    setShowRegistrationForm(false);
+  };
+
 
   // Loading state
   if (!showRegistrationForm && isLoading && vendors.length === 0) {
