@@ -21,6 +21,7 @@ export const useVendorFormHandler = ({ vendorId, onSuccess }) => {
     category: "",
     state: "",
     city: "",
+    area: "",
     minPrice: "",
     phoneNumber: "",
     // If editing, this might hold the existing URL string
@@ -140,7 +141,7 @@ export const useVendorFormHandler = ({ vendorId, onSuccess }) => {
     return result.url; // Returns the public Vercel Blob URL string
   };
 
-  /** Handles form submission (Registration or Update) using Redux Thunks. */
+  // Enhanced handleSubmit in useVendorFormHandler.js
   const handleSubmit = async (e) => {
     e.preventDefault();
 
@@ -154,58 +155,66 @@ export const useVendorFormHandler = ({ vendorId, onSuccess }) => {
     setFormErrors({});
 
     try {
-      let finalImageUrl = formData.imageURL || ""; // Start with existing URL
+      let finalImageUrl = formData.imageURL;
 
-      // 1. Handle Image Upload (only for a NEW file)
+      // 1. Handle Image Upload FIRST (if new file selected)
       if (imageFile) {
-        // Upload the new file and get the public URL string
+        console.log("[IMAGE UPLOAD] Starting upload...");
         finalImageUrl = await handleVendorImageUpload(imageFile);
-        console.log("[IMAGE UPLOAD] Received URL:", finalImageUrl);
+        console.log("[IMAGE UPLOAD] Completed. URL:", finalImageUrl);
+
+        // Update formData immediately with the new image URL
+        setFormData((prev) => ({ ...prev, imageURL: finalImageUrl }));
       }
 
-      // 2. Prepare Final JSON Payload
-      // This payload contains only text fields and the final image URL string.
+      // 2. Prepare Final Payload with proper type conversions
       const finalPayload = {
-        ...formData,
-        minPrice: Number(formData.minPrice),
-        imageURL: finalImageUrl,
+        name: formData.name.trim(),
+        category: formData.category,
+        subCategories: formData.subCategories || [], // Ensure array
+        state: formData.state,
+        city: formData.city,
+        area: formData.area || "", // Default to empty string
+        phoneNumber: formData.phoneNumber,
+        minPrice: Number(formData.minPrice), // Convert to number
+        imageURL: finalImageUrl, // Use the confirmed URL
       };
 
-      console.debug("Final JSON payload to backend:", finalPayload);
+      console.log("[FINAL PAYLOAD]", finalPayload);
 
-      // 3. Determine Action and Dispatch (Sending clean JSON payload to Go backend)
+      // 3. Validate critical fields
+      if (!finalPayload.name || !finalPayload.category || !finalPayload.state) {
+        throw new Error("Missing required fields");
+      }
+
+      // 4. Dispatch to Redux
       const action = isEditMode
         ? updateVendor({ vendorId, data: finalPayload })
         : registerVendor(finalPayload);
 
-      // Dispatch action and wait for 200/201 response
       const result = await dispatch(action).unwrap();
+      console.log("[SUBMIT SUCCESS]", result);
 
-      console.log("[SUBMIT] Submission successful:", result);
-      if (onSuccess) onSuccess(); // Notify parent component
+      if (onSuccess) onSuccess();
 
-      // 4. Clear form after successful registration
+      // 5. Reset form only for new registrations
       if (!isEditMode) {
         setFormData({
           name: "",
           category: "",
+          subCategories: [],
           state: "",
           city: "",
-          minPrice: "",
+          area: "",
           phoneNumber: "",
+          minPrice: "",
           imageURL: "",
         });
         setImageFile(null);
       }
     } catch (err) {
-      // Error handling is managed by the Redux Thunk and toastAlert
-      console.error("[SUBMIT ERROR]", err.message);
-      setError(
-        err.message ||
-          (isEditMode
-            ? "Failed to update profile."
-            : "Failed to register business.")
-      );
+      console.error("[SUBMIT ERROR]", err);
+      setError(err.message || "Submission failed. Please try again.");
     } finally {
       setIsSubmitting(false);
     }
