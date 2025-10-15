@@ -30,60 +30,68 @@ func NewVendorHandler(repo repository.VendorRepository) *VendorHandler {
 // ----------------------------------------------------------------------
 // PUBLIC ENDPOINTS (Accessed by general users for the listing page)
 // ----------------------------------------------------------------------
-
-// RegisterVendor handles POST /api/v1/vendors/register to create a new vendor profile.
+// In backend/pkg/handlers/vendor.go - enhance RegisterVendor handler
 func (h *VendorHandler) RegisterVendor(c *gin.Context) {
-	var vendor models.Vendor
-	
-	// Temporarily bind into a struct where MinPrice is a string to allow the string value from the client
-	var bindVendor struct {
-		models.Vendor
-		MinPrice string `json:"minPrice"` // Override MinPrice to accept string
-	}
-	
-	// 2. BIND: Bind the JSON into the temporary struct
-	if err := c.ShouldBindJSON(&bindVendor); err != nil {
-		log.Error().Err(err).Msg("JSON binding failed for vendor registration")
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input format or missing required fields."})
-		return
-	}
+    var vendor models.Vendor
     
-    // Copy all fields from the temporary struct
+    var bindVendor struct {
+        models.Vendor
+        MinPrice string `json:"minPrice"`
+    }
+    
+    // Log the incoming request
+    log.Info().Msg("Received vendor registration request")
+    
+    if err := c.ShouldBindJSON(&bindVendor); err != nil {
+        log.Error().Err(err).Msg("JSON binding failed for vendor registration")
+        c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input format or missing required fields."})
+        return
+    }
+    
     vendor = bindVendor.Vendor
-
-	// 3. CONVERSION: Convert string price to integer after successful binding
-	priceInt, err := strconv.Atoi(bindVendor.MinPrice)
-	if err != nil {
-		// Log the failed conversion
-		log.Error().Err(err).Msg("Failed to convert minPrice string to int")
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid price format. Price must be a whole number."})
-		return
-	}
     
-    // 4. FIX: Store the converted integer value back into the vendor struct's MinPrice field
-    // (Assuming MinPrice is an 'int' in the final models.Vendor struct again)
+    // Log the received data (excluding sensitive info)
+    log.Info().
+        Str("name", vendor.Name).
+        Str("category", vendor.Category).
+        Str("imageURL", vendor.ImageURL). // Log the image URL status
+        Msg("Processing vendor registration")
+    
+    // Convert price
+    priceInt, err := strconv.Atoi(bindVendor.MinPrice)
+    if err != nil {
+        log.Error().Err(err).Str("price", bindVendor.MinPrice).Msg("Failed to convert minPrice")
+        c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid price format. Price must be a whole number."})
+        return
+    }
+    
     vendor.MinPrice = priceInt
-	
-	// 5. Initialize PVS flags and calculate initial PVS 
-	vendor.IsIdentityVerified = false
-	vendor.IsBusinessRegistered = false
-	
-	// FIX: Call CalculatePVS with the correct single argument. 
-    // It will read the converted price from vendor.MinPrice
-	vendor.PVSScore = services.CalculatePVS(&vendor) 
-	
-	// 6. Insert the new vendor document into the database
-	insertedID, err := h.Repo.Create(c.Request.Context(), &vendor)
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to insert new vendor document")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to register vendor profile."})
-		return
-	}
+    
+    // Initialize and calculate PVS
+    vendor.IsIdentityVerified = false
+    vendor.IsBusinessRegistered = false
+    vendor.PVSScore = services.CalculatePVS(&vendor)
+    
+    // Log before database insertion
+    log.Info().
+        Str("name", vendor.Name).
+        Str("imageURL", vendor.ImageURL).
+        Int("pvsScore", vendor.PVSScore).
+        Msg("Inserting vendor into database")
+    
+    insertedID, err := h.Repo.Create(c.Request.Context(), &vendor)
+    if err != nil {
+        log.Error().Err(err).Msg("Failed to insert new vendor document")
+        c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to register vendor profile."})
+        return
+    }
 
-	c.JSON(http.StatusCreated, gin.H{
-		"message": "Vendor profile created. Pending verification.",
-		"vendor_id": insertedID.Hex(),
-	})
+    log.Info().Str("vendorID", insertedID.Hex()).Msg("Vendor registered successfully")
+    
+    c.JSON(http.StatusCreated, gin.H{
+        "message": "Vendor profile created. Pending verification.",
+        "vendor_id": insertedID.Hex(),
+    })
 }
 
 // ListVendors handles GET /api/v1/vendors to retrieve filtered public listings.
