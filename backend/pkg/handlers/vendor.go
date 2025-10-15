@@ -6,11 +6,12 @@ import (
 	//"context" // Required for c.Request.Context()
 	"net/http"
 
+	"strconv" 
 	"eventify/backend/pkg/models"
 	"eventify/backend/pkg/services"
 	// Repository import is essential for Dependency Injection:
 	"eventify/backend/pkg/repository"
-
+	"github.com/rs/zerolog/log" 
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
@@ -33,26 +34,54 @@ func NewVendorHandler(repo repository.VendorRepository) *VendorHandler {
 // RegisterVendor handles POST /api/v1/vendors/register to create a new vendor profile.
 func (h *VendorHandler) RegisterVendor(c *gin.Context) {
 	var vendor models.Vendor
-	// Bind and validate the incoming JSON request
-	if err := c.ShouldBindJSON(&vendor); err != nil {
+	
+	// Temporarily bind into a struct where MinPrice is a string to allow the string value from the client
+	var bindVendor struct {
+		models.Vendor
+		MinPrice string `json:"minPrice"` // Override MinPrice to accept string
+	}
+	
+	// 2. BIND: Bind the JSON into the temporary struct
+	if err := c.ShouldBindJSON(&bindVendor); err != nil {
+		log.Error().Err(err).Msg("JSON binding failed for vendor registration")
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input format or missing required fields."})
 		return
 	}
+    
+    // Copy all fields from the temporary struct
+    vendor = bindVendor.Vendor
 
-	// 1. Initialize PVS flags and calculate initial PVS (Profile Completion only)
+	// 3. CONVERSION: Convert string price to integer after successful binding
+	priceInt, err := strconv.Atoi(bindVendor.MinPrice)
+	if err != nil {
+		// Log the failed conversion
+		log.Error().Err(err).Msg("Failed to convert minPrice string to int")
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid price format. Price must be a whole number."})
+		return
+	}
+    
+    // 4. FIX: Store the converted integer value back into the vendor struct's MinPrice field
+    // (Assuming MinPrice is an 'int' in the final models.Vendor struct again)
+    vendor.MinPrice = priceInt
+	
+	// 5. Initialize PVS flags and calculate initial PVS 
 	vendor.IsIdentityVerified = false
 	vendor.IsBusinessRegistered = false
-	vendor.PVSScore = services.CalculatePVS(&vendor) // Only profile completion score will be > 0
-
-	// 2. Insert the new vendor document into the database
+	
+	// FIX: Call CalculatePVS with the correct single argument. 
+    // It will read the converted price from vendor.MinPrice
+	vendor.PVSScore = services.CalculatePVS(&vendor) 
+	
+	// 6. Insert the new vendor document into the database
 	insertedID, err := h.Repo.Create(c.Request.Context(), &vendor)
 	if err != nil {
+		log.Error().Err(err).Msg("Failed to insert new vendor document")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to register vendor profile."})
 		return
 	}
 
 	c.JSON(http.StatusCreated, gin.H{
-		"message":   "Vendor profile created. Pending verification.",
+		"message": "Vendor profile created. Pending verification.",
 		"vendor_id": insertedID.Hex(),
 	})
 }

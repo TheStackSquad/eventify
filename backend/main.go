@@ -20,6 +20,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
+	//"github.com/gin-contrib/cors"
 )
 
 // Flow: Configure Logging/Mode -> Connect DB -> Init Services -> Init Handlers -> Configure Router -> Start/Manage HTTP Server
@@ -71,6 +72,21 @@ func main() {
 	// Step 6: Gin Router Setup
 	// FIX 2: Pass the required authRepo to the ConfigureRouter function
 	router := routes.ConfigureRouter(authHandler, eventHandler, vendorHandler, authRepo)
+
+	// router.Use(cors.New(cors.Config{
+	// 	// Allow your frontend origin
+	// 	AllowOrigins:     []string{"http://localhost:3000"},
+		
+	// 	// Allow the methods your frontend uses (GET, POST, PATCH for vendor update, etc.)
+	// 	AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
+		
+	// 	// CRITICAL: Allows cookies and session credentials to be sent (matching your Axios config)
+	// 	AllowCredentials: true,
+		
+	// 	// Allow headers needed for authentication and content type
+	// 	AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization"},
+	// 	MaxAge:           12 * time.Hour,
+	// }))
 
 	// ------------------------------------------------------------------------------------------------------
 	// Step 7: Retrieve PORT and Server Configuration
