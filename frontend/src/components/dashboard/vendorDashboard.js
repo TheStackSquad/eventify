@@ -1,83 +1,54 @@
 // frontend/src/components/dashboard/VendorsDashboard.js
+
 "use client";
 
-import React, { useEffect, useState } from "react";
-// NOTE: External imports (Redux) and aliased paths are assumed to be resolved by your environment.
+import React from "react";
 import { useDispatch, useSelector } from "react-redux";
-import { fetchVendors } from "@/redux/action/vendorAction";
-import { setVendorFilters } from "@/redux/reducer/vendorReducer";
-import { STATUS } from "@/utils/constants/globalConstants";
 
-// FIX: Corrected relative paths based on the component's location in /components/dashboard/
-import LoadingSpinner from "@/components/common/loading/loadingSpinner";
-import VendorListingView from "@/components/vendorUI/vendorListingView";
+// REMOVED: VendorListingView import
 import VendorRegistrationView from "@/components/vendorUI/vendorRegistrationView";
 
-export default function VendorsDashboard() {
+// NOTE: Renamed the export to better reflect its purpose as a hub/management view
+export default function VendorManagementView({ activeView }) {
+  // You can keep dispatch/selector if you plan to use Redux state for analytics data
   const dispatch = useDispatch();
-  const { vendors, status, error, filters } = useSelector(
-    (state) => state.vendors
+  const { status, error } = useSelector((state) => state.vendors);
+
+  // --- Placeholder for Analytics Cards ---
+  const AnalyticsCards = () => (
+    <div className="space-y-6">
+      <h2 className="text-2xl font-semibold text-gray-800 border-b pb-2">
+        Vendor Analytics
+      </h2>
+
+      {/* Placeholder card 1 */}
+      <div className="p-6 bg-white rounded-xl shadow-lg border border-gray-100">
+        <h3 className="text-lg font-medium text-gray-700">Earnings Summary</h3>
+        <p className="text-3xl font-bold text-indigo-600 mt-2">N112,500.00</p>
+        <p className="text-sm text-gray-500 mt-1">
+          Total revenue in the last 30 days.
+        </p>
+      </div>
+
+      {/* Placeholder card 2 */}
+      <div className="p-6 bg-white rounded-xl shadow-lg border border-gray-100">
+        <h3 className="text-lg font-medium text-gray-700">Event Bookings</h3>
+        <p className="text-3xl font-bold text-teal-600 mt-2">15</p>
+        <p className="text-sm text-gray-500 mt-1">Upcoming booked events.</p>
+      </div>
+
+      {/* Add more cards for ratings, profile completeness, etc. */}
+    </div>
   );
 
-  // State to toggle between the listing view and the registration form
-  const [showRegistrationForm, setShowRegistrationForm] = useState(false);
+  switch (activeView) {
+    case "vendor":
+      return <AnalyticsCards />;
 
-  const isLoading = status === STATUS.LOADING;
+    case "vendor-register":
+      return <VendorRegistrationView />;
 
-  // Effect to fetch vendors when filters change or when switching back to listing view
-  useEffect(() => {
-    // Only fetch data if we are in the listing view
-    if (!showRegistrationForm) {
-      dispatch(fetchVendors(filters));
-    }
-  }, [dispatch, filters, showRegistrationForm]);
-
-  const handleFilterChange = (newFilters) => {
-    dispatch(setVendorFilters(newFilters));
-  };
-
-  // Logic to navigate to the Registration form/Profile Management
-  const navigateToRegistration = () => setShowRegistrationForm(true);
-
-  // Logic to navigate back to the Listing view and refresh data
-  const navigateToListing = () => {
-    // 1. Fetch the updated vendor list immediately.
-    dispatch(fetchVendors(filters));
-
-    // 2. Switch the view back to the listing page.
-    setShowRegistrationForm(false);
-  };
-
-  // --- RENDERING SWITCH LOGIC ---
-
-  // Loading state (only for listing view when no data is present)
-  if (!showRegistrationForm && isLoading && vendors.length === 0) {
-    return (
-      <LoadingSpinner
-        fullScreen={true}
-        message="Searching for top-rated vendors..."
-        subMessage="This may take a moment to load all services."
-      />
-    );
+    default:
+      return <AnalyticsCards />;
   }
-
-  // Registration view
-  if (showRegistrationForm) {
-    return (
-      <VendorRegistrationView
-        onBack={navigateToListing}
-        onSubmissionSuccess={navigateToListing}
-      />
-    );
-  }
-
-  // Main listing view
-  return (
-    <VendorListingView
-      vendors={vendors}
-      filters={filters}
-      onRegisterClick={navigateToRegistration}
-      onFilterChange={handleFilterChange}
-    />
-  );
 }

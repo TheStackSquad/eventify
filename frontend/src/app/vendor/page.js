@@ -1,54 +1,42 @@
-
 // frontend/src/app/vendor/page.js
 
 "use client";
-import React, { useEffect, useState } from "react";
-
+import React, { useEffect } from "react";
 import { useDispatch, useSelector } from "react-redux";
 
 import { fetchVendors } from "@/redux/action/vendorAction";
-
 import { setVendorFilters } from "@/redux/reducer/vendorReducer";
 
 import { STATUS } from "@/utils/constants/globalConstants";
 
 import LoadingSpinner from "@/components/common/loading/loadingSpinner";
-
 import VendorListingView from "@/components/vendorUI/vendorListingView";
 
-import VendorRegistrationView from "@/components/vendorUI/vendorRegistrationView";
-// Removing ErrorState import as its function is now merged into VendorListingView or handled by LoadingSpinner
 
 const VendorListingPage = () => {
   const dispatch = useDispatch();
   const { vendors, status, error, filters } = useSelector(
     (state) => state.vendors
   );
-  const [showRegistrationForm, setShowRegistrationForm] = useState(false);
 
+  // --- REMOVED: showRegistrationForm state (no longer needed here)
   const isLoading = status === STATUS.LOADING;
 
+  // Fetch vendors on initial load and whenever filters change
   useEffect(() => {
-    if (!showRegistrationForm) {
-      dispatch(fetchVendors(filters));
-    }
-  }, [dispatch, filters, showRegistrationForm]);
+    // --- SIMPLIFIED: Removed !showRegistrationForm condition
+    dispatch(fetchVendors(filters));
+  }, [dispatch, filters]);
 
   const handleFilterChange = (newFilters) => {
     dispatch(setVendorFilters(newFilters));
   };
 
-  const navigateToRegistration = () => setShowRegistrationForm(true);
-  const navigateToListing = () => {
-    // 1. Fetch the updated vendor list immediately.
-    dispatch(fetchVendors(filters));
-
-    // 2. Switch the view back to the listing page.
-    setShowRegistrationForm(false);
-  };
+  // --- REMOVED: navigateToRegistration and navigateToListing functions
 
   // Loading state (Full screen only when initially loading with no data)
-  if (!showRegistrationForm && isLoading && vendors.length === 0) {
+  if (isLoading && vendors.length === 0) {
+    // --- SIMPLIFIED: Removed !showRegistrationForm condition
     return (
       <LoadingSpinner
         fullScreen={true}
@@ -58,22 +46,14 @@ const VendorListingPage = () => {
     );
   }
 
-  // Registration view
-  if (showRegistrationForm) {
-    return (
-      <VendorRegistrationView
-        onBack={navigateToListing}
-        onSubmissionSuccess={navigateToListing}
-      />
-    );
-  }
+  // --- REMOVED: Registration view conditional rendering block
 
   // Main listing view (handles its own local loading/error display once data is present/failed)
   return (
     <VendorListingView
       vendors={vendors}
       filters={filters}
-      onRegisterClick={navigateToRegistration}
+      // --- REMOVED: onRegisterClick prop (registration is now handled via the sidebar/router)
       onFilterChange={handleFilterChange}
       isLoading={isLoading}
       isError={!!error}

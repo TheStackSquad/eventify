@@ -92,33 +92,6 @@ const totalEvents =
 
             {/* View Toggle and Logout */}
             <div className="flex items-center gap-4">
-              {/* View Toggle */}
-              {!isLoading && (
-                <div className="flex bg-gray-100 rounded-lg p-1">
-                  <button
-                    onClick={() => onViewChange("events")}
-                    className={`px-4 py-2 rounded-md text-sm font-medium transition-all duration-200 flex items-center gap-2 ${
-                      activeView === "events"
-                        ? "bg-white text-indigo-600 shadow-sm"
-                        : "text-gray-600 hover:text-gray-900"
-                    }`}
-                  >
-                    <Calendar className="w-4 h-4" />
-                    Events
-                  </button>
-                  <button
-                    onClick={() => onViewChange("vendor")}
-                    className={`px-4 py-2 rounded-md text-sm font-medium transition-all duration-200 flex items-center gap-2 ${
-                      activeView === "vendors"
-                        ? "bg-white text-indigo-600 shadow-sm"
-                        : "text-gray-600 hover:text-gray-900"
-                    }`}
-                  >
-                    <UserCheck className="w-4 h-4" />
-                    Vendors
-                  </button>
-                </div>
-              )}
 
               {/* Logout Button */}
               {onLogout && !isLoading && (
