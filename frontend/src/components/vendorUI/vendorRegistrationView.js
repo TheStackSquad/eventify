@@ -1,32 +1,18 @@
-//frontend/src/components/vendorUI/VendorRegistrationView.jsx
+// frontend/src/components/vendorUI/VendorRegistrationView.jsx
 
 import React from "react";
 import VendorForm from "@/components/vendorUI/vendorForm";
 
-const VendorRegistrationView = ({ onBack, onSubmissionSuccess }) => {
+// Removed onBack prop, as navigation is now handled externally by the sidebar
+// onSubmissionSuccess can be kept if it triggers a redirect to the Analytics view
+const VendorRegistrationView = ({ onSubmissionSuccess }) => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-indigo-50/30">
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Back Button */}
-        <button
-          onClick={onBack}
-          className="group flex items-center gap-2 text-indigo-600 hover:text-indigo-800 font-medium mb-6 transition-colors"
-        >
-          <svg
-            className="w-5 h-5 transition-transform group-hover:-translate-x-1"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M15 19l-7-7 7-7"
-            />
-          </svg>
-          Back to Vendor Listings
-        </button>
+        {/* --- REMOVED: Back Button logic and rendering --- 
+            It is no longer needed since switching to another view (like Analytics) 
+            is done via the main persistent sidebar navigation.
+        */}
 
         {/* Form Header */}
         <div className="text-center mb-8">

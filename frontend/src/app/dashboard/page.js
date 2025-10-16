@@ -1,4 +1,5 @@
 // frontend/src/app/dashboard/page.js
+
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
@@ -8,7 +9,7 @@ import { useRouter } from "next/navigation";
 // Layout & Views
 import DashboardLayout from "@/components/dashboard/dashboardLayout";
 import MyEventsDashboard from "@/components/dashboard/myEventsDashboard";
-import VendorsDashboard from "@/components/dashboard/vendorDashboard";
+import VendorsDashboard from "@/components/dashboard/vendorDashboard"; // Handles both Analytics and Registration
 
 // Modals
 import DeleteModal from "@/components/modal/delete";
@@ -234,7 +235,11 @@ export default function DashboardPage() {
           />
         )}
 
-        {activeView === "vendor" && <VendorsDashboard />}
+        {/* --- MODIFIED VENDOR BLOCK --- */}
+        {(activeView === "vendor" || activeView === "vendor-register") && (
+          <VendorsDashboard activeView={activeView} />
+        )}
+        {/* ------------------------------ */}
       </DashboardLayout>
 
       {/* Modals */}
