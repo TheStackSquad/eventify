@@ -17,15 +17,17 @@ export const signupUser = createAsyncThunk(
     // LOG A: Trace the data received from the component
     console.log("LOG A: signupUser Thunk received formData:", formData);
 
+    const { confirmPassword, ...apiPayload } = formData;
+
     try {
-      // LOG B: Trace the API endpoint and method before the call
+      // LOG B: Trace the API endpoint and method and the *cleaned* data
       console.log(
-        "LOG B: Attempting POST request to /signup with data:",
-        formData
+        "LOG B: Attempting POST request to /signup with CLEANED data:",
+        apiPayload // 👈 Use the cleaned payload here
       );
 
       // API call to the Go backend, handles CORS/cookies via axiosConfig
-      const response = await axios.post("/auth/signup", formData);
+      const response = await axios.post("/auth/signup", apiPayload); // 👈 Send the cleaned payload
 
       // LOG C: Trace the raw response received from the backend
       console.log("LOG C: API call successful. Raw response:", response);
@@ -35,7 +37,7 @@ export const signupUser = createAsyncThunk(
         response.data.message || "Signup successful! Redirecting to login."
       );
 
-      // Return data needed for the signup success handler (usually just status)
+      // Return data needed for the signup success handler
       // LOG D: Trace the final data returned by the thunk
       console.log("LOG D: Thunk returning successful data:", response.data);
       return response.data;
@@ -54,7 +56,7 @@ export const signupUser = createAsyncThunk(
       // Error notification
       toastAlert.error(errorMessage);
 
-      // Reject the promise to trigger the 'rejected' case in the reducer and stop component execution
+      // Reject the promise
       return rejectWithValue({ message: errorMessage });
     }
   }

@@ -24,7 +24,7 @@ export const fetchVendors = createAsyncThunk(
       const message =
         error.response?.data?.message || ERROR_MESSAGES.FETCH_VENDORS_FAILED;
       // 2. FIX: Access the .error method on the imported object
-      toastAlert.error(message);
+    //  toastAlert.error(message);
       return rejectWithValue({ message });
     }
   }

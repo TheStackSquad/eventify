@@ -1,10 +1,34 @@
 // frontend/src/axiosConfig/axios.js
 import axios from "axios";
+// 1. Import the necessary constants
+import { API_ENDPOINTS, ROUTES } from "../utils/constants/globalConstants";
 
 // Step 1: Define the base URL using environment variable
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
 
 console.log("Axios Base URL set to:", API_BASE_URL);
+
+// 2. INTEGRATION: Update constants to use the imported endpoints
+// The AUTH_ENDPOINTS are not in globalConstants.js, so we keep the local definition
+// or, ideally, move them to globalConstants.js
+const AUTH_ENDPOINTS = {
+  REFRESH: "/auth/refresh",
+  LOGIN: "/auth/login",
+  LOGOUT: "/auth/logout",
+  ME: "/auth/me",
+};
+
+const REDIRECT_PATHS = {
+  LOGIN: ROUTES.LOGIN,
+  DASHBOARD: "/dashboard", // Keeping as is, since it's not in ROUTES
+};
+
+// 3. EXPORT ALL ENDPOINTS: Exporting all endpoints from this file for easy use
+// This is the main reason to integrate them into your central Axios file.
+export const ENDPOINTS = {
+  ...API_ENDPOINTS, // Includes EVENTS, VENDORS, ADMIN_VENDORS, UPLOAD
+  AUTH: AUTH_ENDPOINTS,
+};
 
 // Step 2: Create axios instance
 const instance = axios.create({
@@ -32,27 +56,15 @@ const processQueue = (error, token = null) => {
   failedQueue = [];
 };
 
-// Step 5: Constants for better maintainability
-const AUTH_ENDPOINTS = {
-  REFRESH: "/auth/refresh",
-  LOGIN: "/auth/login",
-  LOGOUT: "/auth/logout",
-  ME: "/auth/me",
-};
-
-const REDIRECT_PATHS = {
-  LOGIN: "/login",
-  DASHBOARD: "/dashboard",
-};
-
-// Step 6: Helper function for login redirect
+// Step 5: Helper function for login redirect
 const redirectToLogin = () => {
   if (typeof window !== "undefined") {
+    // 4. Use the integrated redirect path
     window.location.href = REDIRECT_PATHS.LOGIN;
   }
 };
 
-// Step 7: Request Interceptor (optional, for logging or adding headers)
+// Step 6: Request Interceptor (optional, for logging or adding headers)
 instance.interceptors.request.use(
   (config) => {
     return config;
@@ -62,7 +74,7 @@ instance.interceptors.request.use(
   }
 );
 
-// Step 8: Enhanced Response Interceptor
+// Step 7: Enhanced Response Interceptor (using integrated AUTH_ENDPOINTS)
 instance.interceptors.response.use(
   (response) => response,
   async (error) => {
@@ -108,4 +120,5 @@ instance.interceptors.response.use(
   }
 );
 
+// Export the axios instance and the combined ENDPOINTS
 export default instance;
