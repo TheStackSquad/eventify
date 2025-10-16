@@ -5,21 +5,24 @@ import { useState, useEffect, useCallback } from "react";
 import { useSelector, useDispatch } from "react-redux";
 import { useRouter } from "next/navigation";
 
-// Imports for Modals
+// Layout & Views
+import DashboardLayout from "@/components/dashboard/dashboardLayout";
+import MyEventsDashboard from "@/components/dashboard/myEventsDashboard";
+import VendorsDashboard from "@/components/dashboard/vendorDashboard";
+
+// Modals
 import DeleteModal from "@/components/modal/delete";
 import AnalyticsModal from "@/components/modal/analytics";
 
-import DashboardUI from "@/components/dashboard/dashboardUI";
+// Redux Actions
 import { logoutUser } from "@/redux/action/actionAuth";
 import { fetchUserEvents } from "@/redux/action/eventAction";
-// TODO: Import fetchUserTickets when available
-// import { fetchUserTickets } from "@/redux/action/ticketAction";
 
 export default function DashboardPage() {
   const dispatch = useDispatch();
   const router = useRouter();
 
-  // Redux state selectors (Assuming a structure like state.events exists for analytics)
+  // Redux state
   const {
     user,
     status: authStatus,
@@ -28,24 +31,25 @@ export default function DashboardPage() {
 
   const { analyticsData, analyticsStatus } = useSelector(
     (state) => state.events
-  ); // <-- ASSUMPTION: Event state has analytics
+  );
 
-  // --- Local state for Content & Modals ---
+  // View state
+  const [activeView, setActiveView] = useState("events");
+
+  // Events data (only for MyEventsDashboard)
   const [events, setEvents] = useState([]);
   const [purchasedTickets, setPurchasedTickets] = useState([]);
-  const [isContentLoading, setIsContentLoading] = useState(true);
+  const [isEventsLoading, setIsEventsLoading] = useState(true);
   const [isAuthValidated, setIsAuthValidated] = useState(false);
   const [error, setError] = useState(null);
 
-  // Modal State for Delete
+  // Modal states
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState({ id: null, title: "" });
-
-  // Modal State for Analytics
   const [isAnalyticsModalOpen, setIsAnalyticsModalOpen] = useState(false);
   const [analyticsTargetId, setAnalyticsTargetId] = useState(null);
 
-
+  // Modal handlers
   const openDeleteModal = useCallback((id, title) => {
     setDeleteTarget({ id, title });
     setIsDeleteModalOpen(true);
@@ -55,7 +59,6 @@ export default function DashboardPage() {
     setIsDeleteModalOpen(false);
     setDeleteTarget({ id: null, title: "" });
   }, []);
-
 
   const openAnalyticsModal = useCallback((id) => {
     setAnalyticsTargetId(id);
@@ -67,29 +70,24 @@ export default function DashboardPage() {
     setAnalyticsTargetId(null);
   }, []);
 
-  /**
-   * Effect to monitor analytics fetch and show the modal when data is ready
-   */
+  // Analytics data ready check
   useEffect(() => {
     if (analyticsTargetId && analyticsStatus === "succeeded" && analyticsData) {
-      // Find the specific event title for the modal
       const targetEvent = events.find((e) => e.id === analyticsTargetId);
       if (targetEvent) {
         console.log(`✅ Analytics ready for: ${targetEvent.eventTitle}`);
         setIsAnalyticsModalOpen(true);
       }
     }
-    // Note: If status is 'failed', you might want to show an error toast here
   }, [analyticsStatus, analyticsTargetId, analyticsData, events]);
 
- 
-  const loadUserContent = useCallback(async () => {
-    console.log("📊 Loading dashboard content...");
-    setIsContentLoading(true);
+  // Load events data
+  const loadUserEvents = useCallback(async () => {
+    console.log("📊 Loading user events...");
+    setIsEventsLoading(true);
     setError(null);
 
     try {
-      // Fetch user's created events
       const eventsResult = await dispatch(fetchUserEvents());
 
       if (fetchUserEvents.fulfilled.match(eventsResult)) {
@@ -106,20 +104,18 @@ export default function DashboardPage() {
         setError(errorMsg);
       }
 
-      setPurchasedTickets([]); // Placeholder until tickets endpoint is ready
+      // Placeholder for purchased tickets
+      setPurchasedTickets([]);
     } catch (error) {
-      console.error("❌ Unexpected error loading content:", error);
+      console.error("❌ Unexpected error loading events:", error);
       setError("An unexpected error occurred");
       setEvents([]);
-      setPurchasedTickets([]);
     } finally {
-      setIsContentLoading(false);
+      setIsEventsLoading(false);
     }
   }, [dispatch]);
 
-  /**
-   * Authentication & redirect logic
-   */
+  // Authentication & redirect logic
   useEffect(() => {
     console.log("🔐 Auth Check:", {
       isInitialized,
@@ -127,36 +123,30 @@ export default function DashboardPage() {
       hasUser: !!user,
     });
 
-    // Wait for session initialization
     if (!isInitialized || authStatus === "loading") {
       setIsAuthValidated(false);
       return;
     }
 
-    // Redirect unauthenticated users
     if (isInitialized && !user) {
-      setIsContentLoading(false);
+      setIsEventsLoading(false);
       setIsAuthValidated(false);
       router.push("/account/auth/login");
       return;
     }
 
-    // User is authenticated - load content
     if (isInitialized && user && authStatus === "succeeded") {
       setIsAuthValidated(true);
-      loadUserContent();
+      loadUserEvents();
     }
-  }, [isInitialized, authStatus, user, router, loadUserContent]);
+  }, [isInitialized, authStatus, user, router, loadUserEvents]);
 
-  /**
-   * Logout handler
-   */
+  // Logout handler
   const handleLogout = async () => {
     console.log("👋 Logging out...");
-
     try {
       await dispatch(logoutUser());
-      console.log("✅ Logout successful. Redirecting...");
+      console.log("✅ Logout successful");
       router.push("/account/auth/login");
     } catch (error) {
       console.error("❌ Logout error:", error);
@@ -164,27 +154,17 @@ export default function DashboardPage() {
     }
   };
 
-  /**
-   * Navigate to create event page
-   */
+  // Navigate to create event
   const handleCreateEvent = () => {
     console.log("➕ Navigating to event creation...");
     router.push("/events/create-events");
   };
 
-  /**
-   * Comprehensive loading check
-   */
+  // Loading check
   const isLoading =
-    !isInitialized ||
-    authStatus === "loading" ||
-    !isAuthValidated ||
-    (isAuthValidated && isContentLoading) ||
-    !user;
+    !isInitialized || authStatus === "loading" || !isAuthValidated || !user;
 
-  /**
-   * Early return for loading state
-   */
+  // Loading state
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
@@ -202,18 +182,14 @@ export default function DashboardPage() {
     );
   }
 
-  /**
-   * Safety check before render
-   */
+  // Safety check
   if (!user || !isAuthValidated) {
     console.error("🚨 CRITICAL: Reached render without proper auth!");
     return null;
   }
 
-  /**
-   * Error state display
-   */
-  if (error && events.length === 0) {
+  // Error state (only for events view)
+  if (error && events.length === 0 && activeView === "events") {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center p-4">
         <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8 text-center">
@@ -225,7 +201,7 @@ export default function DashboardPage() {
           </h2>
           <p className="text-gray-600 mb-6">{error}</p>
           <button
-            onClick={loadUserContent}
+            onClick={loadUserEvents}
             className="px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-semibold"
           >
             Try Again
@@ -235,29 +211,33 @@ export default function DashboardPage() {
     );
   }
 
-  // Find the event object corresponding to the currently viewed analytics
   const currentEvent = events.find((e) => e.id === analyticsTargetId);
 
-  /**
-   * Main render
-   */
+  // Main render
   return (
     <>
-      <DashboardUI
+      <DashboardLayout
         userName={user.name}
-        isLoading={false}
-        events={events}
-        purchasedTickets={purchasedTickets}
+        activeView={activeView}
+        onViewChange={setActiveView}
         onLogout={handleLogout}
-        onCreateEvent={handleCreateEvent}
-        // 👇 PASS THE NEW HANDLERS DOWN TO THE UI/CARD COMPONENTS
-        openDeleteModal={openDeleteModal}
-        openAnalyticsModal={openAnalyticsModal}
-      />
+      >
+        {/* Conditional rendering based on active view */}
+        {activeView === "events" && (
+          <MyEventsDashboard
+            events={events}
+            purchasedTickets={purchasedTickets}
+            isLoading={isEventsLoading}
+            onCreateEvent={handleCreateEvent}
+            openDeleteModal={openDeleteModal}
+            openAnalyticsModal={openAnalyticsModal}
+          />
+        )}
 
-      {/* -------------------- MODALS -------------------- */}
+        {activeView === "vendor" && <VendorsDashboard />}
+      </DashboardLayout>
 
-      {/* 1. Delete Modal */}
+      {/* Modals */}
       <DeleteModal
         isOpen={isDeleteModalOpen}
         onClose={closeDeleteModal}
@@ -265,11 +245,9 @@ export default function DashboardPage() {
         eventTitle={deleteTarget.title}
       />
 
-      {/* 2. Analytics Modal */}
       <AnalyticsModal
         isOpen={isAnalyticsModalOpen && !!currentEvent}
         onClose={closeAnalyticsModal}
-        // Pass the fetched data from Redux
         analyticsData={analyticsData}
         eventTitle={
           currentEvent

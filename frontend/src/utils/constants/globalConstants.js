@@ -107,7 +107,7 @@ export const ERROR_MESSAGES = {
   FETCH_EVENT_FAILED: "Failed to fetch event",
   FETCH_ANALYTICS_FAILED: "Failed to fetch analytics",
   // Vendor Operations (New)
-  FETCH_VENDORS_FAILED: "Failed to fetch vendors list.",
+  FETCH_VENDORS_FAILED: "Failed to fetch vendors list",
   FETCH_PROFILE_FAILED: "Failed to load vendor profile.",
   REGISTER_VENDOR_FAILED: "Failed to complete vendor registration.",
 
@@ -135,7 +135,7 @@ export const SUCCESS_MESSAGES = {
 
 // ========== ROUTES ==========
 export const ROUTES = {
-  LOGIN: "/auth/login",
+  LOGIN: "/account/auth/login",
   MY_EVENTS: "/events/my-events",
   CREATE_EVENT: "/events/create-events",
 

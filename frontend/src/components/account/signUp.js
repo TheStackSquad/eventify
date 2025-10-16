@@ -87,7 +87,7 @@ export default function SignUpForm() {
 
        // 5.3. Success Handling
        console.log("LOG 5: Thunk successful. User signed up."); // Data flow ends here for success
-       toastAlert.success("Signup successful! Redirecting to login.");
+      // toastAlert.success("Signup successful! Redirecting to login.");
        router.push("/account/auth/login?signup=success");
      } catch (error) {
        // 5.4. Error Handling
