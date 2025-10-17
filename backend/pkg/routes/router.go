@@ -15,12 +15,11 @@ import (
 )
 
 // ConfigureRouter sets up all application routes and middleware.
-// FIX: Added the authRepo dependency required by the AdminMiddleware.
 func ConfigureRouter(
 	authHandler *handlers.AuthHandler,
 	eventHandler *handlers.EventHandler,
 	vendorHandler *handlers.VendorHandler,
-	authRepo repository.AuthRepository, // <--- FIX: Added Dependency Injection
+	authRepo repository.AuthRepository,
 ) *gin.Engine {
 	router := gin.New()
 
@@ -30,12 +29,12 @@ func ConfigureRouter(
 
 	// CORS Configuration
 	router.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"http://localhost:3000"},
-		AllowMethods:     []string{"GET", "POST", "PUT","HEAD", "PATCH", "DELETE", "OPTIONS"}, 
-		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
-		ExposeHeaders:    []string{"Content-Length"},
+		AllowOrigins:       []string{"http://localhost:3000"},
+		AllowMethods:       []string{"GET", "POST", "PUT", "HEAD", "PATCH", "DELETE", "OPTIONS"},
+		AllowHeaders:       []string{"Origin", "Content-Type", "Authorization"},
+		ExposeHeaders:      []string{"Content-Length"},
 		AllowCredentials: true,
-		MaxAge:           12 * time.Hour,
+		MaxAge:             12 * time.Hour,
 	}))
 
 	// Basic Health Check Route
@@ -47,7 +46,7 @@ func ConfigureRouter(
 	})
 
 	// -------------------------------------------------------------------
-	// 1. PUBLIC ROUTES (Authentication)
+	// 1. PUBLIC ROUTES
 	// -------------------------------------------------------------------
 	auth := router.Group("/auth")
 	{
@@ -57,9 +56,6 @@ func ConfigureRouter(
 		auth.POST("/logout", authHandler.Logout)
 	}
 
-	// -------------------------------------------------------------------
-	// 2. PUBLIC VENDOR LISTING ROUTES (No Auth Required)
-	// -------------------------------------------------------------------
 	vendorPublic := router.Group("/api/v1/vendors")
 	{
 		vendorPublic.GET("/", vendorHandler.ListVendors)
@@ -68,34 +64,39 @@ func ConfigureRouter(
 	}
 
 	// -------------------------------------------------------------------
-	// 3. PROTECTED ROUTES (Requiring AuthMiddleware)
+	// 2. PROTECTED ROUTES (Requiring AuthMiddleware)
 	// -------------------------------------------------------------------
-
-	// Protected Auth Routes (e.g., fetching current user)
-	protectedAuth := router.Group("/auth")
-	protectedAuth.Use(middleware.AuthMiddleware())
+	// Use a single protected group for routes that don't share a logical URL prefix
+	protected := router.Group("/")
+	protected.Use(middleware.AuthMiddleware())
 	{
-		protectedAuth.GET("/me", authHandler.GetCurrentUser)
+		// Protected Auth Routes (e.g., fetching current user)
+		protected.GET("/me", authHandler.GetCurrentUser)
+
+		// Protected Event Routes (The client is hitting /create-events)
+		// We define this route directly to ensure the path is exactly /create-events
+		protected.POST("/create-events", eventHandler.CreateEvent)
+        
+		// Protected Vendor Update
+	//	protected.PUT("/api/v1/vendors/:id", vendorHandler.UpdateVendorProfile)
 	}
 
-	// Protected Event Routes
+	// Protected Event Routes with /events prefix (for GET, PUT, DELETE)
+	// These routes will now have the full prefix /events/...
 	events := router.Group("/events")
 	events.Use(middleware.AuthMiddleware())
 	{
-		events.POST("/create", eventHandler.CreateEvent)
-		events.GET("/my-events", eventHandler.GetUserEventsHandler)
-		events.GET("/:eventId", eventHandler.GetEventByID)
-		events.PUT("/:eventId", eventHandler.UpdateEvent)
-		events.DELETE("/:eventId", eventHandler.DeleteEvent)
-		events.GET("/:eventId/analytics", eventHandler.FetchEventAnalytics)
+		events.GET("/my-events", eventHandler.GetUserEventsHandler) // /events/my-events
+		events.GET("/:eventId", eventHandler.GetEventByID)         // /events/:eventId
+		events.PUT("/:eventId", eventHandler.UpdateEvent)           // /events/:eventId
+		events.DELETE("/:eventId", eventHandler.DeleteEvent)        // /events/:eventId
+		events.GET("/:eventId/analytics", eventHandler.FetchEventAnalytics) // /events/:eventId/analytics
 	}
 
 	// -------------------------------------------------------------------
-	// 4. ADMIN VENDOR VERIFICATION ROUTES (Requires Admin Auth Middleware)
+	// 3. ADMIN VENDOR VERIFICATION ROUTES (Requires Admin Auth Middleware)
 	// -------------------------------------------------------------------
 	adminVendor := router.Group("/api/v1/admin/vendors")
-
-	// FIX: The AdminMiddleware function is now called with the required dependency.
 	adminVendor.Use(middleware.AuthMiddleware(), middleware.AdminMiddleware(authRepo))
 	{
 		adminVendor.PUT("/:id/verify/identity", vendorHandler.ToggleIdentityVerification)
