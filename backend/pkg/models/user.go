@@ -13,7 +13,7 @@ type User struct {
 	ID        primitive.ObjectID `bson:"_id,omitempty" json:"id,omitempty"`
 	Name      string             `bson:"name" json:"name" binding:"required"`
 	Email     string             `bson:"email" json:"email" binding:"required,email"`
-	Password  string             `bson:"password" json:"-" binding:"required,min=6"` // Omit password hash from JSON output
+	Password string 			 `json:"password" bson:"password" binding:"required,min=6"`// Omit password hash from JSON output
 	IsAdmin   bool               `bson:"is_admin" json:"is_admin"`                 // CRITICAL: Used by AdminMiddleware
 	CreatedAt time.Time          `bson:"created_at" json:"created_at"`
 	UpdatedAt time.Time          `bson:"updated_at" json:"updated_at"`

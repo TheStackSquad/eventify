@@ -94,11 +94,16 @@ func (h *AuthHandler) Signup(c *gin.Context) {
 	defer cancel()
 
 	if err := c.ShouldBindJSON(&user); err != nil {
+		// Log the exact binding error from Gin. This is the key to fixing the 400.
+        log.Error().Err(err).Msg("Signup request body binding failed (400 Bad Request)")
 		c.JSON(http.StatusBadRequest, gin.H{
 			"message": "Invalid input. Please check all fields.",
 		})
 		return
 	}
+
+	// Log only the non-sensitive fields (like Email and Name)
+    log.Info().Str("email", user.Email).Str("name", user.Name).Msg("Received valid signup request body.")
 
 	// FIX: Use AuthRepo to check if user already exists
 	_, err := h.AuthRepo.GetUserByEmail(ctx, user.Email)
@@ -145,7 +150,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	defer cancel()
 
 	if err := c.ShouldBindJSON(&loginReq); err != nil {
-		log.Error().Err(err).Msg("Invalid login request body format")
+		log.Error().Err(err).Msg("Invalid login request body format (400 Bad Request)")
 		c.JSON(http.StatusBadRequest, gin.H{
 			"message": "Invalid email or password.",
 		})
@@ -207,17 +212,26 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	})
 }
 
-// Step 7: Refresh Token handler (No changes needed, as it doesn't return user data)
+// Step 7: Refresh Token handler 
 func (h *AuthHandler) RefreshToken(c *gin.Context) {
-	// ... (Refresh token logic remains the same)
+	// --- LOGGING STEP 1: Check for the Refresh Token cookie ---
 	refreshToken, err := c.Cookie(RefreshTokenCookieName)
 	if err != nil {
+		// Log the failure to find the cookie
+		log.Warn().Err(err).Msg("Refresh token cookie not found on request.")
+		
+        // Note: For debugging, you can also log the headers to ensure 'Cookie' is present:
+        // log.Debug().Interface("headers", c.Request.Header).Msg("Request headers for 401")
+
 		c.JSON(http.StatusUnauthorized, gin.H{"message": "No refresh token provided."})
 		return
 	}
 
+	// --- LOGGING STEP 2: Validate JWT structure and expiration ---
 	claims, err := utils.ValidateJWT(refreshToken)
 	if err != nil {
+		// Log the validation failure (e.g., token expired or malformed)
+		log.Warn().Err(err).Msg("Refresh token failed JWT validation.")
 		c.JSON(http.StatusUnauthorized, gin.H{"message": "Session expired, please log in again."})
 		return
 	}
@@ -225,12 +239,23 @@ func (h *AuthHandler) RefreshToken(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
+	// --- LOGGING STEP 3: Validate token against the database/revocation list ---
 	isValid, err := h.refreshTokenService.ValidateRefreshToken(ctx, claims.UserID, refreshToken)
-	if err != nil || !isValid {
-		log.Warn().Str("user_id", claims.UserID).Msg("Invalid or revoked refresh token")
-		c.JSON(http.StatusUnauthorized, gin.H{"message": "Token revoked or invalid."})
+	if err != nil {
+		// Log database or service error
+		log.Error().Err(err).Str("user_id", claims.UserID).Msg("Database error during refresh token validation.")
+		c.JSON(http.StatusUnauthorized, gin.H{"message": "Token revoked or invalid."}) // Returning 401 for simplicity
 		return
 	}
+    if !isValid {
+        // Log the reason for invalidity (e.g., token was revoked or not found in DB)
+        log.Warn().Str("user_id", claims.UserID).Msg("Refresh token is invalid or revoked per database check.")
+        c.JSON(http.StatusUnauthorized, gin.H{"message": "Token revoked or invalid."})
+        return
+    }
+    
+    // --- LOGGING STEP 4: Success, token generation begins ---
+    log.Info().Str("user_id", claims.UserID).Msg("Refresh token successfully validated. Generating new access token.")
 
 	newAccessToken, accessErr := utils.GenerateAccessJWT(claims.UserID)
 	if accessErr != nil {
@@ -239,6 +264,7 @@ func (h *AuthHandler) RefreshToken(c *gin.Context) {
 		return
 	}
 
+	// Set the new Access Token cookie (no logging needed here unless the cookie setting fails, which is rare)
 	c.SetCookie(
 		AccessTokenCookieName,
 		newAccessToken,
@@ -249,7 +275,8 @@ func (h *AuthHandler) RefreshToken(c *gin.Context) {
 		true,
 	)
 
-	log.Info().Str("user_id", claims.UserID).Msg("Access token refreshed successfully")
+	// --- LOGGING STEP 5: Success response ---
+	log.Info().Str("user_id", claims.UserID).Msg("Access token refreshed and cookie set successfully.")
 
 	c.JSON(http.StatusOK, gin.H{"message": "Access token refreshed successfully."})
 }
