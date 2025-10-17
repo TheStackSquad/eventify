@@ -11,11 +11,6 @@ import {
   Users,
 } from "lucide-react";
 
-// The EventCard component is now defined locally to resolve the import error.
-// In a full, multi-file React project, this would be in its own file.
-
-// --- EventCard Component Definition ---
-// Mock Utility function for date formatting (should usually be external)
 const formatDate = (dateString) => {
   if (!dateString) return "N/A";
   const options = { year: "numeric", month: "short", day: "numeric" };
@@ -60,13 +55,15 @@ const EventCard = ({ event, openDeleteModal, openAnalyticsModal }) => {
       <div className="p-5 space-y-4">
         <div className="flex justify-between items-start">
           <h4 className="text-xl font-bold text-gray-900 leading-tight">
-            {event.title || "Untitled Event"}
+            {/* FIX: Changed to event.eventTitle */}
+            {event.eventTitle || "Untitled Event"}
           </h4>
           {statusBadge}
         </div>
 
         <p className="text-sm text-gray-600 mb-2 truncate">
-          {event.description || "No description provided."}
+          {/* FIX: Changed to event.eventDescription */}
+          {event.eventDescription || "No description provided."}
         </p>
 
         <div className="space-y-2 pt-2 border-t border-gray-100">
@@ -109,7 +106,7 @@ const EventCard = ({ event, openDeleteModal, openAnalyticsModal }) => {
             Analytics
           </button>
           <button
-            onClick={() => openDeleteModal(event.id, event.title)}
+            onClick={() => openDeleteModal(event.id, event.eventTitle)} // FIX: Use event.eventTitle here too
             className="p-2 text-red-600 bg-red-50 rounded-lg hover:bg-red-100 transition-colors"
             title="Delete Event"
           >
@@ -123,7 +120,7 @@ const EventCard = ({ event, openDeleteModal, openAnalyticsModal }) => {
 // --- End EventCard Component Definition ---
 
 export default function MyEvents({
-  // NEW PROPS: Receive pre-filtered event lists directly from container
+  // Props remain the same, receiving pre-filtered lists
   liveEvents = [],
   upcomingEvents = [],
   pastEvents = [],

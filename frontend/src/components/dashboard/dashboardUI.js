@@ -2,6 +2,7 @@
 "use client";
 
 import { motion } from "framer-motion";
+import { useSelector } from "react-redux";
 import {
   Calendar,
   LogOut,
@@ -19,7 +20,6 @@ import DashboardQuickActions from "@/components/dashboard/dashboardQuickActions"
 import VendorsDashboard from "@/components/dashboard/vendorDashboard";
 
 export default function DashboardUI({
-  userName,
   isLoading,
   onLogout,
   onCreateEvent, // Passed down for quick action button
@@ -34,20 +34,21 @@ export default function DashboardUI({
   // View Toggle props
   activeView = "events",
   onViewChange,
-
-  // Removed unused props: events, purchasedTickets
 }) {
+  const userName = useSelector((state) => state.auth.user?.name);
+
   const displayName = userName || "User";
   const welcomeMessage = isLoading
     ? "Loading your dashboard..."
     : `Welcome back, ${displayName}!`;
+  //console.log("display name:", displayName);
 
   // --- MINIMAL UI-BASED LOGIC ---
   // Only calculate the total event count if the filtered list exists (acceptable calculation for presentation)
-const totalEvents =
-  (filteredEvents?.liveEvents?.length ?? 0) +
-  (filteredEvents?.upcomingEvents?.length ?? 0) +
-  (filteredEvents?.pastEvents?.length ?? 0);
+  const totalEvents =
+    (filteredEvents?.liveEvents?.length ?? 0) +
+    (filteredEvents?.upcomingEvents?.length ?? 0) +
+    (filteredEvents?.pastEvents?.length ?? 0);
 
   // Loading state component
   const LoadingState = (
@@ -92,7 +93,6 @@ const totalEvents =
 
             {/* View Toggle and Logout */}
             <div className="flex items-center gap-4">
-
               {/* Logout Button */}
               {onLogout && !isLoading && (
                 <button

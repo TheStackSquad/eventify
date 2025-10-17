@@ -3,15 +3,6 @@
 import { Loader2 } from "lucide-react";
 import { motion } from "framer-motion";
 
-/**
- * Event Footer component using a simulated infinite scroll trigger.
- * This pattern is typically better for performance as it only renders
- * what the user needs and reduces initial page load time.
- * @param {object} props
- * @param {boolean} props.hasMore Flag indicating if more events are available.
- * @param {boolean} props.isLoading Flag for the current loading state.
- * @param {function} props.onLoadMore Function to call to load the next batch of events.
- */
 export default function EventsFooter({ hasMore, isLoading, onLoadMore }) {
   // In a real app, you would use an Intersection Observer to call onLoadMore
   // when the user scrolls this element into view.

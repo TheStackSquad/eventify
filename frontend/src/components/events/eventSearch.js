@@ -2,7 +2,6 @@
 
 import { MapPin, Calendar, Clock, Heart } from "lucide-react";
 import { motion } from "framer-motion";
-import Image from "next/image";
 
 export default function EventCard({ event }) {
   // FIX: Add defensive check to prevent the "Cannot read properties of undefined" error
