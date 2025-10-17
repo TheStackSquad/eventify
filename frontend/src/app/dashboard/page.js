@@ -29,6 +29,7 @@ export default function DashboardPage() {
     status: authStatus,
     isInitialized,
   } = useSelector((state) => state.auth);
+  // console.log('Inside The Main Page:', user);
 
   const { analyticsData, analyticsStatus } = useSelector(
     (state) => state.events

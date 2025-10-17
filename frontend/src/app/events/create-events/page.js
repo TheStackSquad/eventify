@@ -3,44 +3,70 @@
 
 import { useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useDispatch, useSelector } from "react-redux";
 import {
   createEvent,
   updateEvent,
   getEventById,
 } from "@/redux/action/eventAction";
-import { useDispatch, useSelector } from "react-redux";
 import CreateEventForm from "@/components/create-events/create";
 import toastAlert from "@/components/common/toast/toastAlert";
 import LoadingSpinner from "@/components/common/loading/loadingSpinner";
-import ErrorBoundary from "@/components/common/error/errorBoundary";
+import { INITIAL_FORM_DATA } from "@/components/create-events/constants/formConfig";
 import {
   ERROR_MESSAGES,
   SUCCESS_MESSAGES,
   ROUTES,
 } from "@/utils/constants/globalConstants";
 
-// Local constants for this component
-const COMPONENT_CONSTANTS = {
-  MESSAGES: {
-    LOADING_EVENT: "Loading event data...",
-    UPLOAD_ERROR: "Failed to upload cover image.",
-  },
+const transformEventToFormData = (event) => {
+  const safeParseDate = (dateString) => {
+    if (!dateString) return "";
+    const date = new Date(dateString);
+    return isNaN(date.getTime()) ? "" : date.toISOString().split("T")[0];
+  };
+
+  const safeParseTime = (dateString) => {
+    if (!dateString) return "";
+    const date = new Date(dateString);
+    return isNaN(date.getTime()) ? "" : date.toTimeString().slice(0, 5);
+  };
+
+  return {
+    eventTitle: event.eventTitle || "",
+    eventDescription: event.eventDescription || "",
+    category: event.category || "",
+    eventType: event.eventType || "physical",
+    eventImage: event.eventImage || "",
+    venueName: event.venueName || "",
+    venueAddress: event.venueAddress || "",
+    city: event.city || "",
+    state: event.state || "",
+    country: event.country || "",
+    virtualPlatform: event.virtualPlatform || "",
+    meetingLink: event.meetingLink || "",
+    startDate: safeParseDate(event.startDate),
+    startTime: safeParseTime(event.startDate),
+    endDate: safeParseDate(event.endDate),
+    endTime: safeParseTime(event.endDate),
+    tickets: event.tickets || [],
+    tags: event.tags || [],
+    maxAttendees: event.maxAttendees?.toString() || "",
+  };
 };
 
 export default function CreateEventsPage() {
-  // ========== STATE MANAGEMENT ==========
+  // ========== STATE MANAGEMENT (NOW OWNS FORM DATA) ==========
+  const [formData, setFormData] = useState(INITIAL_FORM_DATA);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoadingEvent, setIsLoadingEvent] = useState(false);
-  const [initialData, setInitialData] = useState(null);
   const [error, setError] = useState(null);
 
-  // ========== HOOKS & REDUX ==========
   const router = useRouter();
   const searchParams = useSearchParams();
   const dispatch = useDispatch();
   const eventId = searchParams.get("id");
 
-  // Redux state selectors
   const { user, isAuthenticated } = useSelector((state) => state.auth);
   const { currentEvent } = useSelector((state) => state.events);
 
@@ -56,7 +82,7 @@ export default function CreateEventsPage() {
   useEffect(() => {
     const fetchEventData = async () => {
       if (!eventId) {
-        setInitialData(null);
+        setFormData(INITIAL_FORM_DATA); // Reset for create mode
         return;
       }
 
@@ -64,7 +90,7 @@ export default function CreateEventsPage() {
       setError(null);
 
       try {
-        console.log("🎯 Fetching event with ID:", eventId);
+        console.debug("🎯 Fetching event with ID:", eventId);
         const result = await dispatch(getEventById(eventId));
 
         if (getEventById.rejected.match(result)) {
@@ -73,7 +99,7 @@ export default function CreateEventsPage() {
           );
         }
 
-        console.log("✅ Event fetched successfully");
+        console.debug("✅ Event fetched successfully");
       } catch (error) {
         console.error("Error fetching event:", error);
         setError(error.message);
@@ -86,65 +112,20 @@ export default function CreateEventsPage() {
     fetchEventData();
   }, [eventId, dispatch]);
 
-  // ========== DATA TRANSFORMATION ==========
+  // ========== UPDATE FORM DATA WHEN REDUX DATA ARRIVES ==========
   useEffect(() => {
-    if (currentEvent && eventId) {
-      console.log("🔄 Transforming currentEvent:", currentEvent);
+    if (eventId && currentEvent) {
+      console.debug("🔄 Transforming and setting form data:", currentEvent);
       const transformedData = transformEventToFormData(currentEvent);
-      console.log("✅ Transformed data:", transformedData);
-      setInitialData(transformedData);
+      setFormData(transformedData);
+      console.debug("✅ Form data updated:", transformedData);
     }
   }, [currentEvent, eventId]);
 
-  /**
-   * Transforms backend event data to form-compatible format
-   */
-  const transformEventToFormData = (event) => {
-    console.log("🔄 Raw event data for transformation:", event);
-
-    const formData = {
-      // Basic Information - FIXED: Use eventImage instead of eventImageURL
-      eventTitle: event.eventTitle || "",
-      eventDescription: event.eventDescription || "",
-      category: event.category || "",
-      eventType: event.eventType || "physical",
-      eventImage: event.eventImage || event.eventImageURL || "", // FIXED
-
-      // Location Details
-      venueName: event.venueName || "",
-      venueAddress: event.venueAddress || "",
-      city: event.city || "",
-      state: event.state || "",
-      country: event.country || "",
-
-      // Virtual Event Details
-      virtualPlatform: event.virtualPlatform || "",
-      meetingLink: event.meetingLink || "",
-
-      // Date & Time (Split for form inputs)
-      startDate: event.startDate
-        ? new Date(event.startDate).toISOString().split("T")[0]
-        : "",
-      startTime: event.startDate
-        ? new Date(event.startDate).toTimeString().slice(0, 5)
-        : "",
-      endDate: event.endDate
-        ? new Date(event.endDate).toISOString().split("T")[0]
-        : "",
-      endTime: event.endDate
-        ? new Date(event.endDate).toTimeString().slice(0, 5)
-        : "",
-
-      // Ticket Information - FIXED: Use tickets instead of ticketTiers
-      tickets: event.tickets || event.ticketTiers || [], // FIXED
-
-      // Additional Options
-      tags: event.tags || [],
-      maxAttendees: event.maxAttendees?.toString() || "",
-    };
-
-    console.log("✅ Final transformed formData:", formData);
-    return formData;
+  // ========== FORM CHANGE HANDLER ==========
+  const handleFormChange = (updatedFormData) => {
+    console.debug("📝 Form data changed:", updatedFormData);
+    setFormData(updatedFormData);
   };
 
   // ========== IMAGE UPLOAD HANDLER ==========
@@ -159,9 +140,7 @@ export default function CreateEventsPage() {
 
     if (!response.ok) {
       const errorData = await response.json();
-      throw new Error(
-        errorData.error || COMPONENT_CONSTANTS.MESSAGES.UPLOAD_ERROR
-      );
+      throw new Error(errorData.error || "Failed to upload cover image.");
     }
 
     const result = await response.json();
@@ -175,17 +154,18 @@ export default function CreateEventsPage() {
       organizerId: user.id,
     };
 
-    // Add image URL if available
+    console.log("📦 Preparing payload from formData:", formData);
+
     if (imageUrl) {
       payload.eventImage = imageUrl;
     }
 
-    // Combine date and time fields
     if (payload.startDate && payload.startTime) {
-      const startDateTime = new Date(
-        `${payload.startDate}T${payload.startTime}`
-      );
-      const endDateTime = new Date(`${payload.endDate}T${payload.endTime}`);
+      const startDateTimeStr = `${payload.startDate}T${payload.startTime}:00`;
+      const endDateTimeStr = `${payload.endDate}T${payload.endTime}:00`;
+
+      const startDateTime = new Date(startDateTimeStr);
+      const endDateTime = new Date(endDateTimeStr);
 
       if (!isNaN(startDateTime.getTime())) {
         payload.startDate = startDateTime.toISOString();
@@ -195,12 +175,15 @@ export default function CreateEventsPage() {
       }
     }
 
-    // Convert numeric fields
     if (payload.maxAttendees) {
       payload.maxAttendees = parseInt(payload.maxAttendees, 10);
+      if (isNaN(payload.maxAttendees)) {
+        delete payload.maxAttendees;
+      }
+    } else {
+      delete payload.maxAttendees;
     }
 
-    // Remove temporary form fields
     const fieldsToRemove = [
       "eventImagePreview",
       "startTime",
@@ -208,18 +191,30 @@ export default function CreateEventsPage() {
       "timezone",
     ];
 
-    fieldsToRemove.forEach((field) => delete payload[field]);
+    fieldsToRemove.forEach((field) => {
+      if (Object.prototype.hasOwnProperty.call(payload, field)) {
+        delete payload[field];
+      }
+    });
 
+    console.log("✅ Final payload:", payload);
     return payload;
   };
 
   // ========== MAIN SUBMIT HANDLER ==========
-  const handleSubmit = async (formData, resetForm) => {
-    // Validation Checks
+  const handleSubmit = async (finalFormData) => {
     if (!user?.id) {
       toastAlert.error(ERROR_MESSAGES.AUTH_REQUIRED);
       return;
     }
+
+    if (typeof finalFormData !== "object" || Array.isArray(finalFormData)) {
+      toastAlert.error("Form submission error: Invalid data received.");
+      console.error("❌ Invalid formData:", finalFormData);
+      return;
+    }
+
+    console.log("🚀 Submitting form with data:", finalFormData);
 
     setIsSubmitting(true);
     setError(null);
@@ -227,19 +222,19 @@ export default function CreateEventsPage() {
     try {
       let imageUrl = null;
 
-      // Handle Image Upload (only for new files)
-      if (formData.eventImage && typeof formData.eventImage !== "string") {
-        imageUrl = await handleImageUpload(formData.eventImage);
-      } else if (formData.eventImage) {
-        imageUrl = formData.eventImage; // Existing URL
+      if (
+        finalFormData.eventImage &&
+        typeof finalFormData.eventImage !== "string"
+      ) {
+        imageUrl = await handleImageUpload(finalFormData.eventImage);
+      } else if (finalFormData.eventImage) {
+        imageUrl = finalFormData.eventImage;
       }
 
-      // Prepare final payload
-      const finalPayload = prepareEventPayload(formData, imageUrl);
+      const finalPayload = prepareEventPayload(finalFormData, imageUrl);
 
-      console.debug("Final payload to backend:", finalPayload);
+      console.debug("📤 Sending payload to backend:", finalPayload);
 
-      // Dispatch appropriate action
       let resultAction;
       if (eventId) {
         resultAction = await dispatch(
@@ -252,29 +247,25 @@ export default function CreateEventsPage() {
         resultAction = await dispatch(createEvent(finalPayload));
       }
 
-      // Handle action result
       if (resultAction.error) {
         throw new Error(resultAction.payload?.message || "Operation failed");
       }
 
-      // Success handling
       const successMessage = eventId
         ? SUCCESS_MESSAGES.EVENT_UPDATED
         : SUCCESS_MESSAGES.EVENT_CREATED;
 
       toastAlert.success(successMessage);
 
-      // Reset form and redirect
-      if (resetForm) resetForm();
-
-      // Redirect after successful creation
+      // Reset form on successful create
       if (!eventId) {
+        setFormData(INITIAL_FORM_DATA);
         router.push(ROUTES.MY_EVENTS);
       }
     } catch (error) {
-      console.error("Error processing event:", error);
+      console.error("❌ Error processing event:", error);
       setError(error.message);
-      // Error toast is handled by the thunk
+      toastAlert.error(error.message);
     } finally {
       setIsSubmitting(false);
     }
@@ -289,53 +280,45 @@ export default function CreateEventsPage() {
     router.push(ROUTES.MY_EVENTS);
   };
 
-  // Debug logging
-  console.log("🎯 Page State:", {
+  console.debug("🎯 Page State:", {
     eventId,
     hasCurrentEvent: !!currentEvent,
-    hasInitialData: !!initialData,
+    formDataTitle: formData.eventTitle,
     isLoadingEvent,
+    isSubmitting,
     error,
   });
 
   // ========== RENDER LOGIC ==========
-
-  // Show loading state
   if (isLoadingEvent) {
     return (
       <LoadingSpinner
-        message={COMPONENT_CONSTANTS.MESSAGES.LOADING_EVENT}
+        message="Loading event data..."
         size="lg"
         color="indigo"
       />
     );
   }
 
-  // Show error state
-  if (error && !initialData) {
-    return (
-      <ErrorBoundary
-        error={error}
-        onRetry={() => window.location.reload()}
-        onBack={handleBack}
-      />
-    );
-  }
-
-  // Main render
   return (
-    <ErrorBoundary>
-      <div className="min-h-screen bg-gradient-to-br from-gray-900 to-black py-8 px-4 sm:px-6 lg:px-8">
-        <CreateEventForm
-          onSubmit={handleSubmit}
-          onBack={handleBack}
-          onCancel={handleCancel}
-          isSubmitting={isSubmitting}
-          initialData={initialData}
-          mode={eventId ? "edit" : "create"}
-          isEditMode={!!eventId}
-        />
-      </div>
-    </ErrorBoundary>
+    <div className="min-h-screen bg-gradient-to-br from-gray-900 to-black py-8 px-4 sm:px-6 lg:px-8">
+      {error && (
+        <div className="bg-red-900/10 border border-red-500 text-red-300 p-3 mb-4 rounded-lg">
+          <p className="font-medium">Error:</p>
+          <p>{error}</p>
+        </div>
+      )}
+
+      <CreateEventForm
+        formData={formData}
+        onFormChange={handleFormChange}
+        onSubmit={handleSubmit}
+        onBack={handleBack}
+        onCancel={handleCancel}
+        isSubmitting={isSubmitting}
+        mode={eventId ? "edit" : "create"}
+        isEditMode={!!eventId}
+      />
+    </div>
   );
 }

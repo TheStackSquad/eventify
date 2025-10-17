@@ -15,7 +15,7 @@ export const createEvent = createAsyncThunk(
     console.log("Data IN redux:", eventData);
     try {
       const response = await axios.post(API_ENDPOINTS.EVENTS.CREATE, eventData);
-      toastAlert("success", SUCCESS_MESSAGES.EVENT_CREATED);
+      toastAlert.success(SUCCESS_MESSAGES.EVENT_CREATED);
       return response.data;
     } catch (error) {
       const message =
@@ -83,7 +83,7 @@ export const updateEvent = createAsyncThunk(
     try {
       const endpoint = API_ENDPOINTS.EVENTS.UPDATE.replace(":id", eventId);
       const response = await axios.put(endpoint, updates);
-      toastAlert("success", SUCCESS_MESSAGES.EVENT_UPDATED);
+      toastAlert.success(SUCCESS_MESSAGES.EVENT_UPDATED);
       return response.data;
     } catch (error) {
       const message =
@@ -100,7 +100,7 @@ export const deleteEvent = createAsyncThunk(
     try {
       const endpoint = API_ENDPOINTS.EVENTS.DELETE.replace(":id", eventId);
       await axios.delete(endpoint);
-      toastAlert("success", SUCCESS_MESSAGES.EVENT_DELETED);
+      toastAlert.success(SUCCESS_MESSAGES.EVENT_DELETED);
       return { eventId };
     } catch (error) {
       const message =
@@ -124,6 +124,7 @@ export const publishEvent = createAsyncThunk(
         "success",
         isPublished ? "Event published! 🚀" : "Event unpublished"
       );
+    
       return response.data;
     } catch (error) {
       const message =

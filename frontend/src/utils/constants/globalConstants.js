@@ -24,7 +24,7 @@ export const REDUX_ACTION_TYPES = {
 export const API_ENDPOINTS = {
   EVENTS: {
     BASE: "/events",
-    CREATE: "/events",
+    CREATE: "/create-events",
     GET_BY_ID: "/events/:eventId",
     UPDATE: "/events/:id",
     DELETE: "/events/:id",

@@ -8,17 +8,12 @@ import DashboardUI from "./dashboardUI";
 import {
   Plus,
   Users,
-  DollarSign,
+  Wallet,
   Activity,
   Settings,
   BarChart3,
 } from "lucide-react";
 
-/**
- * MyEventsDashboard is the main Container Component for the dashboard view.
- * It's responsible for calculating stats, defining actions (like redirects),
- * and structuring the data before passing it to the presentation layer (DashboardUI).
- */
 export default function MyEventsDashboard({
   events, // The raw list of events from the parent data layer
   isLoading,
@@ -65,8 +60,8 @@ export default function MyEventsDashboard({
       },
       {
         label: "Total Revenue (Mock)",
-        value: `$${mockRevenue.toLocaleString()}`,
-        icon: DollarSign,
+        value: `₦${mockRevenue.toLocaleString()}`,
+        icon: Wallet,
         color: "bg-green-50 text-green-600",
       },
       {
