@@ -24,7 +24,6 @@ const REDIRECT_PATHS = {
 };
 
 // 3. EXPORT ALL ENDPOINTS: Exporting all endpoints from this file for easy use
-// This is the main reason to integrate them into your central Axios file.
 export const ENDPOINTS = {
   ...API_ENDPOINTS, // Includes EVENTS, VENDORS, ADMIN_VENDORS, UPLOAD
   AUTH: AUTH_ENDPOINTS,
