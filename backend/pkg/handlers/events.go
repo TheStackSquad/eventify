@@ -16,16 +16,18 @@ import (
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
-// EventHandler holds the EventService dependency.
+// EventHandler holds the service dependencies.
 type EventHandler struct {
-	EventService *services.EventService // Now holds the service interface/struct
+    EventService services.EventService 
+    LikeService  services.LikeService 
 }
 
 // NewEventHandler creates a new instance of EventHandler.
-func NewEventHandler(eventService *services.EventService) *EventHandler {
-	return &EventHandler{
-		EventService: eventService,
-	}
+func NewEventHandler(eventService services.EventService, likeService services.LikeService) *EventHandler {
+    return &EventHandler{
+        EventService: eventService,
+        LikeService: likeService,
+    }
 }
 
 // CreateEvent handles the creation of a new event.
@@ -251,4 +253,51 @@ func (h *EventHandler) FetchEventAnalytics(c *gin.Context) {
 	
 	// 3. Success Response
 	c.JSON(http.StatusOK, analytics)
+}
+
+func (h *EventHandler) ToggleLikeHandler(c *gin.Context) {
+    // 1. Extract IDs
+    userIDContext, exists := c.Get("user_id")
+    if !exists {
+        c.JSON(http.StatusUnauthorized, gin.H{"message": "User ID not found in context. Authentication required."})
+        return
+    }
+    userID, ok := userIDContext.(primitive.ObjectID)
+    if !ok {
+        c.JSON(http.StatusInternalServerError, gin.H{"message": "Invalid user ID format in context."})
+        return
+    }
+
+    eventIDStr := c.Param("eventId")
+    if eventIDStr == "" {
+        c.JSON(http.StatusBadRequest, gin.H{"message": "Missing event ID."})
+        return
+    }
+    
+    fmt.Printf("🎯 DEBUG: ToggleLike request for Event: %s by User: %s\n", eventIDStr, userID.Hex())
+
+    // 2. Call the Service Layer using the directly available h.LikeService
+    ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+    defer cancel()
+    
+    // 🛑 FIX 3: DIRECTLY CALL THE CORRECT SERVICE
+    // Pass the ObjectID (userID) as its Hex string representation, as the service expects strings.
+    res, err := h.LikeService.ToggleLike(ctx, eventIDStr, userID.Hex()) 
+    
+    // The previous complex dependency access is no longer needed:
+    // likeService, isLikeService := h.EventService.LikeService.(services.LikeService) 
+    // ...
+
+    if err != nil {
+        appErr, ok := err.(*utils.AppError)
+        if ok {
+            c.JSON(appErr.HTTPStatus(), gin.H{"message": appErr.Message}) // Use HTTPStatus from AppError
+            return
+        }
+        c.JSON(http.StatusInternalServerError, gin.H{"message": "Failed to toggle like status.", "error": err.Error()})
+        return
+    }
+
+    // 3. Success Response
+    c.JSON(http.StatusOK, res)
 }
