@@ -48,15 +48,16 @@ func main() {
 	eventsCollection := dbClient.Collection("events")
 	vendorsCollection := dbClient.Collection("vendors")
 	usersCollection := dbClient.Collection("users")
+	likesCollection := dbClient.Collection("likes")
 
 	// Step 4: Initialize Services & Repositories (The Dependency Graph)
 
 	// Repositories
 	vendorRepo := repository.NewMongoVendorRepository(vendorsCollection)
 	authRepo := repository.NewMongoAuthRepository(usersCollection)
-
-	// Services (Using mock/assumed service initialization for events)
+	likeRepo := repository.NewLikeRepository(likesCollection)
 	eventService := services.NewEventService(eventsCollection)
+    likeService := services.NewLikeService(likeRepo)
 
 	// Step 5: Initialize Handlers (Injecting Repositories/Services)
 
@@ -64,7 +65,7 @@ func main() {
 	authHandler := handlers.NewAuthHandler(authRepo, dbClient)
 
 	// EventHandler needs the EventService
-	eventHandler := handlers.NewEventHandler(eventService)
+	eventHandler := handlers.NewEventHandler(*eventService, likeService)
 
 	// VendorHandler needs the VendorRepository
 	vendorHandler := handlers.NewVendorHandler(vendorRepo)
@@ -73,22 +74,6 @@ func main() {
 	// FIX 2: Pass the required authRepo to the ConfigureRouter function
 	router := routes.ConfigureRouter(authHandler, eventHandler, vendorHandler, authRepo)
 
-	// router.Use(cors.New(cors.Config{
-	// 	// Allow your frontend origin
-	// 	AllowOrigins:     []string{"http://localhost:3000"},
-		
-	// 	// Allow the methods your frontend uses (GET, POST, PATCH for vendor update, etc.)
-	// 	AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
-		
-	// 	// CRITICAL: Allows cookies and session credentials to be sent (matching your Axios config)
-	// 	AllowCredentials: true,
-		
-	// 	// Allow headers needed for authentication and content type
-	// 	AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization"},
-	// 	MaxAge:           12 * time.Hour,
-	// }))
-
-	// ------------------------------------------------------------------------------------------------------
 	// Step 7: Retrieve PORT and Server Configuration
 	port := os.Getenv("PORT")
 	if port == "" {
