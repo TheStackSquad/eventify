@@ -16,7 +16,8 @@ const storage =
 import authReducer from "./authReducers";
 import eventReducer from "./eventReducer";
 import ticketReducer from "./ticketReducer";
-import vendorReducer from "./vendorReducer"; // <-- NEW: Import Vendor Reducer
+import vendorReducer from "./vendorReducer";
+// update with likeReducer
 
 const persistConfig = {
   key: "root",
@@ -29,6 +30,7 @@ const combinedReducer = combineReducers({
   events: eventReducer,
   tickets: ticketReducer,
   vendors: vendorReducer,
+  // update with likeReducer
 });
 
 const persistedReducer = persistReducer(persistConfig, combinedReducer);

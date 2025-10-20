@@ -1,12 +1,15 @@
 "use client";
 
 import { useState, useMemo, useEffect } from "react";
-import { useSelector } from "react-redux";
+import { useSelector, useDispatch } from "react-redux"; // 🎯 Import useDispatch
 import EventSearch from "@/components/events/eventSearch";
 import FilterControls from "@/components/events/category";
 import EventsUI from "@/components/events/eventsUI";
 import EventsFooter from "@/components/events/eventsFooter";
 import { MapPin } from "lucide-react";
+
+// 🎯 Import the thunk action to fetch events
+import { fetchUserEvents } from "@/redux/action/eventAction";
 
 // Configuration for infinite scroll simulation
 const EVENTS_PER_LOAD = 8;
@@ -45,6 +48,10 @@ const normalizeEvents = (rawEvents) => {
       tag = "Trending";
     }
 
+    // Include the like state and count from the Redux store (important for EventCard)
+    const isLikedByUser = event.isLikedByUser || false;
+    const likeCount = event.likeCount || 0;
+
     return {
       id: event.id,
       title: event.eventTitle,
@@ -53,6 +60,10 @@ const normalizeEvents = (rawEvents) => {
       price: startingPrice,
       isFree: startingPrice === 0,
       tag: tag,
+
+      // 💡 NEW: Include dynamic like state for EventCard
+      isLikedByUser: isLikedByUser,
+      likeCount: likeCount,
 
       // Pre-formatted fields for the UI layer (EventCard props)
       date: formatDate(event.startDate),
@@ -67,14 +78,33 @@ const normalizeEvents = (rawEvents) => {
 };
 
 export default function EventsPage() {
+  const dispatch = useDispatch(); // 🎯 Initialize useDispatch
+
   // Redux state selection
   const eventsState = useSelector((state) => state.events);
-  console.log('check events slice:', eventsState);
-const rawEvents = useMemo(
-  () => eventsState?.payload || [],
-  [eventsState?.payload]
-);
-   console.log("check raw-events:", rawEvents);
+
+  // 🎯 Add a memoized rawEvents selector for clarity and dependency
+  const rawEvents = useMemo(
+    () => eventsState?.userEvents || [],
+    [eventsState?.userEvents]
+  );
+
+  // -----------------------------------------------------------
+  // 🎯 FIX: FETCH EVENTS ON MOUNT
+  // -----------------------------------------------------------
+  useEffect(() => {
+    // Check if events have already been loaded or are currently loading
+    // to avoid unnecessary re-fetches if the component remounts or re-renders
+    if (
+      eventsState.status === "idle" ||
+      (eventsState.status === "failed" && rawEvents.length === 0)
+    ) {
+      // Since this page shows ALL events, the thunk name might be misleading.
+      // Assuming fetchUserEvents is currently used to populate the list.
+      dispatch(fetchUserEvents());
+    }
+  }, [dispatch, eventsState.status, rawEvents.length]); // Dependencies ensure it runs only when needed
+  // -----------------------------------------------------------
 
   // Local state for UI controls
   const [searchTerm, setSearchTerm] = useState("");
@@ -164,8 +194,9 @@ const rawEvents = useMemo(
     setDisplayedEventsCount(EVENTS_PER_LOAD);
   }, [searchTerm, selectedCategory, selectedLocation]);
 
-  // Loading state while Redux data is being fetched
-  if (eventsState?.meta?.requestStatus === "pending") {
+  // 6. Loading state while Redux data is being fetched
+  // Using eventsState.status which should be set by the thunk's 'pending' case
+  if (eventsState?.status === "loading") {
     return (
       <div className="min-h-screen bg-gray-50 py-10 px-4 sm:px-6 lg:px-8 font-body">
         <div className="max-w-7xl mx-auto text-center">
@@ -175,8 +206,8 @@ const rawEvents = useMemo(
     );
   }
 
-  // Error state
-  if (eventsState?.meta?.requestStatus === "rejected") {
+  // 7. Error state
+  if (eventsState?.status === "failed" && rawEvents.length === 0) {
     return (
       <div className="min-h-screen bg-gray-50 py-10 px-4 sm:px-6 lg:px-8 font-body">
         <div className="max-w-7xl mx-auto text-center">

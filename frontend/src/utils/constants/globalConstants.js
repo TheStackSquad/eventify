@@ -30,6 +30,7 @@ export const API_ENDPOINTS = {
     DELETE: "/events/:id",
     MY_EVENTS: "/events/my-events",
     ANALYTICS: "/events/:id/analytics",
+    LIKE: "/events/:eventId/like",
     PUBLISH: "/events/:id/publish",
   },
   VENDORS: {
