@@ -12,31 +12,54 @@ import { STATUS } from "@/utils/constants/globalConstants";
 import LoadingSpinner from "@/components/common/loading/loadingSpinner";
 import VendorListingView from "@/components/vendorUI/vendorListingView";
 
-
 const VendorListingPage = () => {
   const dispatch = useDispatch();
   const { vendors, status, error, filters } = useSelector(
     (state) => state.vendors
   );
 
-  // --- REMOVED: showRegistrationForm state (no longer needed here)
+  console.log("🔍 Vendor State Check:", {
+    vendorsCount: vendors?.length,
+    status,
+    error,
+    filters,
+  });
+
   const isLoading = status === STATUS.LOADING;
 
   // Fetch vendors on initial load and whenever filters change
   useEffect(() => {
-    // --- SIMPLIFIED: Removed !showRegistrationForm condition
-    dispatch(fetchVendors(filters));
+    console.log(
+      "🚀 useEffect triggered - Fetching vendors with filters:",
+      filters
+    );
+
+    // Add a small delay to ensure component is properly mounted
+    const timer = setTimeout(() => {
+      dispatch(fetchVendors(filters))
+        .unwrap()
+        .then((result) => {
+          console.log(
+            "✅ Vendors fetched successfully:",
+            result?.length || 0,
+            "vendors"
+          );
+        })
+        .catch((err) => {
+          console.error("❌ Failed to fetch vendors:", err);
+        });
+    }, 100);
+
+    return () => clearTimeout(timer);
   }, [dispatch, filters]);
 
   const handleFilterChange = (newFilters) => {
+    console.log("🔄 Filter change:", newFilters);
     dispatch(setVendorFilters(newFilters));
   };
 
-  // --- REMOVED: navigateToRegistration and navigateToListing functions
-
-  // Loading state (Full screen only when initially loading with no data)
-  if (isLoading && vendors.length === 0) {
-    // --- SIMPLIFIED: Removed !showRegistrationForm condition
+  // Enhanced loading state with more context
+  if (isLoading && (!vendors || vendors.length === 0)) {
     return (
       <LoadingSpinner
         fullScreen={true}
@@ -46,14 +69,31 @@ const VendorListingPage = () => {
     );
   }
 
-  // --- REMOVED: Registration view conditional rendering block
+  // Error state
+  if (error && (!vendors || vendors.length === 0)) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-screen">
+        <div className="text-center">
+          <h2 className="text-2xl font-bold text-red-600 mb-4">
+            Failed to Load Vendors
+          </h2>
+          <p className="text-gray-600 mb-4">{error}</p>
+          <button
+            onClick={() => dispatch(fetchVendors(filters))}
+            className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
 
-  // Main listing view (handles its own local loading/error display once data is present/failed)
+  // Main listing view
   return (
     <VendorListingView
-      vendors={vendors}
+      vendors={vendors || []}
       filters={filters}
-      // --- REMOVED: onRegisterClick prop (registration is now handled via the sidebar/router)
       onFilterChange={handleFilterChange}
       isLoading={isLoading}
       isError={!!error}

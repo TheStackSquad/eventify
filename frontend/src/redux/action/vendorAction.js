@@ -15,16 +15,33 @@ export const fetchVendors = createAsyncThunk(
   REDUX_ACTION_TYPES.FETCH_VENDORS,
   async (filters, { rejectWithValue }) => {
     const queryParams = new URLSearchParams(filters).toString();
+    console.log("🔍 Fetch Vendors - Query Params:", queryParams);
+
     const endpoint = `${API_ENDPOINTS.VENDORS.LIST}?${queryParams}`;
+    console.log("🔍 Relative Endpoint:", endpoint);
+    console.log("🔍 Full URL will be: http://localhost:8081" + endpoint);
 
     try {
+      console.log("🚀 Making API request...");
       const response = await axios.get(endpoint);
+      console.log("✅ Vendor Response Status:", response.status);
+      console.log("📊 Vendors Data Received:", response.data);
+      console.log(
+        "📋 Vendors Count:",
+        response.data?.length || response.data?.vendors?.length || 0
+      );
       return response.data;
     } catch (error) {
+      console.error("❌ API Error Details:", {
+        message: error.message,
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        data: error.response?.data,
+        url: error.config?.url,
+      });
       const message =
         error.response?.data?.message || ERROR_MESSAGES.FETCH_VENDORS_FAILED;
-      // 2. FIX: Access the .error method on the imported object
-    //  toastAlert.error(message);
+      toastAlert.error(message);
       return rejectWithValue({ message });
     }
   }
