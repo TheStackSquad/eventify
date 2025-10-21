@@ -38,7 +38,6 @@ export const API_ENDPOINTS = {
     LIST: "/api/v1/vendors",
     GET_PROFILE: "/api/v1/vendors/:id",
     REGISTER: "/api/v1/vendors/register",
-    // 👈 FIX: Added the UPDATE endpoint for use in the updateVendor thunk
     UPDATE: "/api/v1/vendors/:id",
   },
   ADMIN_VENDORS: {

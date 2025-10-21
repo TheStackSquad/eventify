@@ -4,7 +4,7 @@ import axios from "axios";
 import { API_ENDPOINTS, ROUTES } from "../utils/constants/globalConstants";
 
 // Step 1: Define the base URL using environment variable
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8081";
 
 console.log("Axios Base URL set to:", API_BASE_URL);
 

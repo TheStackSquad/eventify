@@ -5,20 +5,6 @@
 import React from "react";
 import { Search, SlidersHorizontal, BarChart4 } from "lucide-react";
 
-// The Vendor Listing View is now a clean presentation component.
-// It relies on props from the container (VendorListingPage) for state.
-
-/**
- * VendorListingView
- * Renders the main vendor search and results layout.
- * It is a presentation component, receiving data, loading state, and handlers via props.
- * * @param {Array} vendors - List of vendor objects to display.
- * @param {boolean} isLoading - True if data is currently being fetched.
- * @param {boolean} isError - True if a fetching error occurred.
- * @param {Object} filters - Current filter state.
- * @param {function} onRegisterClick - Handler to switch to the registration view.
- * @param {function} onFilterChange - Handler for when filters are updated.
- */
 const VendorListingView = ({
   vendors,
   isLoading,
