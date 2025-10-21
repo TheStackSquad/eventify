@@ -20,7 +20,6 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
-	//"github.com/gin-contrib/cors"
 )
 
 // Flow: Configure Logging/Mode -> Connect DB -> Init Services -> Init Handlers -> Configure Router -> Start/Manage HTTP Server
@@ -56,8 +55,11 @@ func main() {
 	vendorRepo := repository.NewMongoVendorRepository(vendorsCollection)
 	authRepo := repository.NewMongoAuthRepository(usersCollection)
 	likeRepo := repository.NewLikeRepository(likesCollection)
+
+	// Services
 	eventService := services.NewEventService(eventsCollection)
-    likeService := services.NewLikeService(likeRepo)
+	likeService := services.NewLikeService(likeRepo)
+	vendorService := services.NewVendorService(vendorRepo) // FIX: Create vendor service
 
 	// Step 5: Initialize Handlers (Injecting Repositories/Services)
 
@@ -67,17 +69,17 @@ func main() {
 	// EventHandler needs the EventService
 	eventHandler := handlers.NewEventHandler(*eventService, likeService)
 
-	// VendorHandler needs the VendorRepository
-	vendorHandler := handlers.NewVendorHandler(vendorRepo)
+	// FIX 2: VendorHandler now needs the VendorService, not the repository
+	vendorHandler := handlers.NewVendorHandler(vendorService)
 
 	// Step 6: Gin Router Setup
-	// FIX 2: Pass the required authRepo to the ConfigureRouter function
+	// FIX 3: Pass the required authRepo to the ConfigureRouter function
 	router := routes.ConfigureRouter(authHandler, eventHandler, vendorHandler, authRepo)
 
 	// Step 7: Retrieve PORT and Server Configuration
 	port := os.Getenv("PORT")
 	if port == "" {
-		port = "8080"
+		port = "8081"
 	}
 	serverAddr := fmt.Sprintf(":%s", port)
 

@@ -15,6 +15,12 @@ import (
 // Step 1: AuthMiddleware validates the access token from cookies
 func AuthMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
+
+		if c.Request.Method == "OPTIONS" {
+			c.Next()
+			return
+		}
+		
 		// Step 2: Extract access token from cookie
 		accessToken, err := c.Cookie("access_token")
 		

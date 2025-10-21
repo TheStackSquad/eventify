@@ -1,4 +1,5 @@
 // backend/pkg/routes/router.go
+
 package routes
 
 import (
@@ -12,6 +13,7 @@ import (
 	"github.com/gin-contrib/cors"
 	ginzerolog "github.com/gin-contrib/logger"
 	"github.com/gin-gonic/gin"
+	"github.com/rs/zerolog/log"
 )
 
 // ConfigureRouter sets up all application routes and middleware.
@@ -22,10 +24,16 @@ func ConfigureRouter(
 	authRepo repository.AuthRepository,
 ) *gin.Engine {
 	router := gin.New()
+	router.RedirectTrailingSlash = false
 
 	// Global Middleware
 	router.Use(gin.Recovery())
 	router.Use(ginzerolog.SetLogger())
+
+	router.Use(func(c *gin.Context) {
+        log.Info().Str("path", c.Request.URL.Path).Msg("TRACE: Before CORS")
+        c.Next()
+    })
 
 	// CORS Configuration
 	router.Use(cors.New(cors.Config{
@@ -36,6 +44,12 @@ func ConfigureRouter(
 		AllowCredentials: true,
 		MaxAge:           12 * time.Hour,
 	}))
+	
+	// 💡 TRACE POINT 2: Log AFTER CORS
+    router.Use(func(c *gin.Context) {
+        log.Info().Str("path", c.Request.URL.Path).Msg("TRACE: After CORS")
+        c.Next()
+    })
 
 	// Basic Health Check Route
 	router.GET("/", func(c *gin.Context) {
@@ -43,6 +57,15 @@ func ConfigureRouter(
 			"message": "Eventify API is running",
 			"status":  "healthy",
 		})
+	})
+
+	// Handle OPTIONS requests for CORS preflight
+	router.OPTIONS("/*path", func(c *gin.Context) {
+		c.Header("Access-Control-Allow-Origin", "http://localhost:3000")
+		c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+		c.Header("Access-Control-Allow-Headers", "Origin, Content-Type, Authorization")
+		c.Header("Access-Control-Allow-Credentials", "true")
+		c.Status(http.StatusOK)
 	})
 
 	// -------------------------------------------------------------------
@@ -61,6 +84,8 @@ func ConfigureRouter(
 		vendorPublic.GET("/", vendorHandler.ListVendors)
 		vendorPublic.GET("/:id", vendorHandler.GetVendorProfile)
 		vendorPublic.POST("/register", vendorHandler.RegisterVendor)
+		vendorPublic.OPTIONS("/", vendorHandler.HandleOptions) // CORS preflight
+		vendorPublic.OPTIONS("/:id", vendorHandler.HandleOptions) // CORS preflight
 	}
 
 	// -------------------------------------------------------------------
@@ -77,8 +102,8 @@ func ConfigureRouter(
 		// We define this route directly to ensure the path is exactly /create-events
 		protected.POST("/create-events", eventHandler.CreateEvent)
 		
-		// Protected Vendor Update
-	//	protected.PUT("/api/v1/vendors/:id", vendorHandler.UpdateVendorProfile)
+		// FIX: Uncommented and corrected vendor update route
+		protected.PUT("/api/v1/vendors/:id", vendorHandler.UpdateVendor)
 	}
 
 	// Protected Event Routes with /events prefix (for GET, PUT, DELETE, and LIKE)
@@ -106,6 +131,9 @@ func ConfigureRouter(
 		adminVendor.PUT("/:id/verify/identity", vendorHandler.ToggleIdentityVerification)
 		adminVendor.PUT("/:id/verify/business", vendorHandler.ToggleBusinessVerification)
 		adminVendor.DELETE("/:id", vendorHandler.DeleteVendor)
+		adminVendor.OPTIONS("/:id/verify/identity", vendorHandler.HandleOptions) // CORS preflight
+		adminVendor.OPTIONS("/:id/verify/business", vendorHandler.HandleOptions) // CORS preflight
+		adminVendor.OPTIONS("/:id", vendorHandler.HandleOptions) // CORS preflight
 	}
 
 	return router
