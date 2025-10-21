@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"time"
+	"strconv"
 
 	"eventify/backend/pkg/models" // Assumed path based on your structure
 
@@ -30,10 +31,6 @@ type VendorRepository interface {
 	GetByID(ctx context.Context, id string) (models.Vendor, error)
 	FindPublicVendors(ctx context.Context, filters map[string]interface{}) ([]models.Vendor, error)
 }
-
-// --------------------------------------------------------------------------------------
-// CONCRETE IMPLEMENTATION: MongoVendorRepository
-// --------------------------------------------------------------------------------------
 
 // MongoVendorRepository implements the VendorRepository interface using a MongoDB collection.
 type MongoVendorRepository struct {
@@ -165,48 +162,63 @@ func (r *MongoVendorRepository) Delete(ctx context.Context, id string) (int64, e
 	return result.DeletedCount, nil
 }
 
-// FindPublicVendors retrieves vendors based on filter criteria, ensuring they meet public visibility standards.
+// FindPublicVendors method
 func (r *MongoVendorRepository) FindPublicVendors(ctx context.Context, filters map[string]interface{}) ([]models.Vendor, error) {
 	var vendors []models.Vendor
 
 	// Start with a list of filters (BSON M's).
 	mongoFilters := []bson.M{}
 
-	// 1. Enforce Public Visibility Rule (PVSScore >= 40 OR IsBusinessRegistered=true)
-	// This ensures only quality or verified vendors are listed publicly.
-	visibilityCriteria := bson.M{
-		"$or": []bson.M{
-			{"pvs_score": bson.M{"$gte": 40}}, // High enough PVS Score
-			{"is_business_registered": true},  // CAC verified
-		},
-	}
-	mongoFilters = append(mongoFilters, visibilityCriteria)
-
+	// 1. NEW: Flexible Visibility Rule - Show all vendors but prioritize verified ones
+	// Remove the strict $or condition that was hiding unverified vendors
+	// All vendors are now publicly visible by default
+	
 	// 2. Apply user-supplied filters (state, category, etc.)
 	for key, value := range filters {
-		// Only apply non-empty string filters
-		if valStr, ok := value.(string); ok && valStr != "" {
-			mongoFilters = append(mongoFilters, bson.M{key: valStr})
+		// Handle different filter types
+		switch key {
+		case "min_price":
+			// Convert string to integer for numeric comparison
+			if valStr, ok := value.(string); ok && valStr != "" {
+				if minPrice, err := strconv.Atoi(valStr); err == nil {
+					mongoFilters = append(mongoFilters, bson.M{"min_price": bson.M{"$gte": minPrice}})
+				}
+			}
+		case "category", "state", "city", "area":
+			// Only apply non-empty string filters
+			if valStr, ok := value.(string); ok && valStr != "" {
+				mongoFilters = append(mongoFilters, bson.M{key: valStr})
+			}
+		case "is_verified": 
+			// Allow filtering by verification status if explicitly requested
+			if isVerified, ok := value.(bool); ok {
+				mongoFilters = append(mongoFilters, bson.M{"is_identity_verified": isVerified})
+			}
 		}
 	}
 
-	// 3. Combine all filters using $and
+	// 3. Combine all filters (if any)
 	finalFilter := bson.M{}
 	if len(mongoFilters) > 0 {
 		finalFilter = bson.M{"$and": mongoFilters}
 	}
 
-	// Optional: Sort results by PVS score descending
-	opts := options.Find().SetSort(bson.D{{Key: "pvs_score", Value: -1}})
+	// 4. NEW: Enhanced sorting - prioritize verified vendors, then by PVS score
+	opts := options.Find().SetSort(bson.D{
+		{Key: "is_business_registered", Value: -1},  // Business registered first
+		{Key: "is_identity_verified", Value: -1},    // Identity verified next  
+		{Key: "pvs_score", Value: -1},               // Then by PVS score
+		{Key: "created_at", Value: -1},              // Finally by newest
+	})
 
-	// 4. Execute the query
+	// 5. Execute the query
 	cursor, err := r.Collection.Find(ctx, finalFilter, opts)
 	if err != nil {
 		return nil, err
 	}
 	defer cursor.Close(ctx)
 
-	// 5. Decode results
+	// 6. Decode results
 	if err = cursor.All(ctx, &vendors); err != nil {
 		return nil, err
 	}
