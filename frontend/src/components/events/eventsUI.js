@@ -1,4 +1,5 @@
 //frontend/src/components/events/eventsUI.js
+
 import EventCard from "@/components/events/eventsCard";
 
 export default function EventsUI({ events }) {
@@ -23,3 +24,4 @@ export default function EventsUI({ events }) {
     </div>
   );
 }
+

@@ -15,7 +15,8 @@ const EventDetailClient = ({ eventId }) => {
   const { addItem } = useCart();
 
   // 1. DATA SELECTION from Redux State
-  const allEvents = useSelector((state) => state.events?.userEvents || []);
+  // const allEvents = useSelector((state) => state.events?.userEvents || []);
+const allEvents = useSelector((state) => state.events?.allEvents || []);
 
   // Find the specific event based on the slug ID
   const event = useMemo(() => {
