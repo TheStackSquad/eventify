@@ -141,7 +141,7 @@ export const useVendorFormHandler = ({ vendorId, onSuccess }) => {
     return result.url; // Returns the public Vercel Blob URL string
   };
 
-  // Enhanced handleSubmit in useVendorFormHandler.js
+  // Enhanced handleSubmit in useVendorFormHandler.js (Debugging Removed)
   const handleSubmit = async (e) => {
     e.preventDefault();
 
@@ -159,10 +159,7 @@ export const useVendorFormHandler = ({ vendorId, onSuccess }) => {
 
       // 1. Handle Image Upload FIRST (if new file selected)
       if (imageFile) {
-        console.log("[IMAGE UPLOAD] Starting upload...");
         finalImageUrl = await handleVendorImageUpload(imageFile);
-        console.log("[IMAGE UPLOAD] Completed. URL:", finalImageUrl);
-
         // Update formData immediately with the new image URL
         setFormData((prev) => ({ ...prev, imageURL: finalImageUrl }));
       }
@@ -176,14 +173,14 @@ export const useVendorFormHandler = ({ vendorId, onSuccess }) => {
         city: formData.city,
         area: formData.area || "", // Default to empty string
         phoneNumber: formData.phoneNumber,
-        minPrice: Number(formData.minPrice), // Convert to number
+        // Ensure minPrice is converted to a number and defaults to 0 if empty/invalid
+        minPrice: Number(formData.minPrice) || 0,
         imageURL: finalImageUrl, // Use the confirmed URL
       };
 
-      console.log("[FINAL PAYLOAD]", finalPayload);
-
       // 3. Validate critical fields
       if (!finalPayload.name || !finalPayload.category || !finalPayload.state) {
+        // Throwing the error here will jump to the catch block
         throw new Error("Missing required fields");
       }
 
@@ -192,8 +189,8 @@ export const useVendorFormHandler = ({ vendorId, onSuccess }) => {
         ? updateVendor({ vendorId, data: finalPayload })
         : registerVendor(finalPayload);
 
-      const result = await dispatch(action).unwrap();
-      console.log("[SUBMIT SUCCESS]", result);
+      // The .unwrap() method handles API errors and throws them into the catch block
+      await dispatch(action).unwrap();
 
       if (onSuccess) onSuccess();
 
@@ -213,7 +210,8 @@ export const useVendorFormHandler = ({ vendorId, onSuccess }) => {
         setImageFile(null);
       }
     } catch (err) {
-      console.error("[SUBMIT ERROR]", err);
+      // We must keep the setError logic to inform the user of failure
+      // but the internal console.error has been removed.
       setError(err.message || "Submission failed. Please try again.");
     } finally {
       setIsSubmitting(false);

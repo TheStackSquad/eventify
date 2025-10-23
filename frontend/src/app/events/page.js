@@ -1,24 +1,27 @@
+
+// src/app/events/page.jsx
+
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { useSelector, useDispatch } from "react-redux";
-import EventSearch from "@/components/events/eventSearch";
-import FilterControls from "@/components/events/category";
+import { fetchAllEvents } from "@/redux/action/eventAction";
+
+// Import new components
+import EventsHero from "@/components/events/hero/eventsHero";
+import CategoryPills from "@/components/events/hero/categoryPills";
+import FilterBar from "@/components/events/filters/filterBar";
+import ActiveFilters from "@/components/events/filters/activeFilters";
 import EventsUI from "@/components/events/eventsUI";
 import EventsFooter from "@/components/events/eventsFooter";
-import { MapPin } from "lucide-react";
 
-// 🎯 FIX: Import the correct thunk action for fetching ALL events
-import { fetchAllEvents } from "@/redux/action/eventAction"; // Changed from fetchUserEvents
-
-// Configuration for infinite scroll simulation
 const EVENTS_PER_LOAD = 8;
 
+// Normalize events data
 const normalizeEvents = (rawEvents) => {
   if (!rawEvents || !Array.isArray(rawEvents)) return [];
 
   return rawEvents.map((event) => {
-    // Helper function to format ISO date string
     const formatDate = (isoDate) => {
       if (!isoDate) return "Date N/A";
       return new Date(isoDate).toLocaleDateString("en-US", {
@@ -26,7 +29,7 @@ const normalizeEvents = (rawEvents) => {
         day: "numeric",
         year: "numeric",
       });
-    }; // Helper function to format ISO time string
+    };
 
     const formatTime = (isoDate) => {
       if (!isoDate) return "Time N/A";
@@ -37,14 +40,14 @@ const normalizeEvents = (rawEvents) => {
       });
     };
 
-    const startingPrice = event.tickets?.[0]?.price ?? 0; // Determine the tag based on criteria
+    const startingPrice = event.tickets?.[0]?.price ?? 0;
 
     let tag = "New";
     if (startingPrice === 0) {
       tag = "Free Ticket";
     } else if (startingPrice > 10000) {
       tag = "Trending";
-    } // Include the like state and count from the Redux store (important for EventCard)
+    }
 
     const isLikedByUser = event.isLikedByUser || false;
     const likeCount = event.likeCount || 0;
@@ -56,56 +59,58 @@ const normalizeEvents = (rawEvents) => {
       image: event.eventImage,
       price: startingPrice,
       isFree: startingPrice === 0,
-      tag: tag, // 💡 NEW: Include dynamic like state for EventCard
-
+      tag: tag,
       isLikedByUser: isLikedByUser,
-      likeCount: likeCount, // Pre-formatted fields for the UI layer (EventCard props)
-
+      likeCount: likeCount,
       date: formatDate(event.startDate),
       time: formatTime(event.startDate),
-      location: `${event.venueName || "Venue N/A"}, ${event.city || "N/A"}`, // Data used only for filtering
-
+      location: `${event.venueName || "Venue N/A"}, ${event.city || "N/A"}`,
       filterTitle: event.eventTitle.toLowerCase(),
-      filterCity: event.city?.trim() || "N/A", // Trim city name for cleaner comparison and list generation
+      filterCity: event.city?.trim() || "N/A",
+      startDate: event.startDate, // Keep for sorting
     };
   });
 };
 
 export default function EventsPage() {
-  const dispatch = useDispatch(); // Redux state selection
-
-  const eventsState = useSelector((state) => state.events); // 🎯 FIX 1: Use the correct state field for ALL events and its corresponding status. // Based on the reducer, these are likely `allEvents` and `allEventsStatus`.
-
+  const dispatch = useDispatch();
+  const eventsState = useSelector((state) => state.events);
   const eventsStatus = eventsState?.allEventsStatus ?? "idle";
   const rawEvents = useMemo(
-    () => eventsState?.allEvents || [], // 🎯 Changed from userEvents to allEvents
-    [eventsState?.allEvents] // 🎯 Changed dependency to allEvents
-  ); // ----------------------------------------------------------- // 🎯 FIX 2: FETCH EVENTS ON MOUNT with improved status check // -----------------------------------------------------------
+    () => eventsState?.allEvents || [],
+    [eventsState?.allEvents]
+  );
 
+  // Fetch events on mount
   useEffect(() => {
-    // We only fetch if the status is 'idle' (first load)
-    // OR if it 'failed' AND we have no data, allowing a retry on initial failure.
     if (
       eventsStatus === "idle" ||
       (eventsStatus === "failed" && rawEvents.length === 0)
     ) {
-      // 🎯 Dispatch the correct action for the public listing page
-      dispatch(fetchAllEvents()); // Changed from fetchUserEvents
-    } // Dependencies: dispatch is stable. The effect runs only when the status // changes to 'idle' or on initial mount. The `rawEvents.length` dependency // is included for the 'failed, no data' retry condition.
-  }, [dispatch, eventsStatus, rawEvents.length]); // ----------------------------------------------------------- // Local state for UI controls
+      dispatch(fetchAllEvents());
+    }
+  }, [dispatch, eventsStatus, rawEvents.length]);
+
+  // Local state
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("All");
-  const [selectedLocation, setSelectedLocation] = useState("All Locations"); // State for infinite scroll
-
+  const [selectedLocation, setSelectedLocation] = useState("All Locations");
+  const [sortBy, setSortBy] = useState("date-asc");
   const [displayedEventsCount, setDisplayedEventsCount] =
     useState(EVENTS_PER_LOAD);
-  const [isLoadingMore, setIsLoadingMore] = useState(false); // =============================================== // DATA TRANSFORMATION AND FILTER OPTIONS GENERATION (No change needed here) // =============================================== // 1. Normalized events list from Redux
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [isFilterSticky, setIsFilterSticky] = useState(false);
 
+  // Refs for sticky behavior
+  const heroRef = useRef(null);
+
+  // Normalized events
   const EVENTS_DATA_SOURCE = useMemo(
     () => normalizeEvents(rawEvents),
     [rawEvents]
-  ); // 2. Deriving Filter Data from the normalized source
+  );
 
+  // Derive filter options
   const allCategories = useMemo(
     () => [
       "All",
@@ -124,153 +129,190 @@ export default function EventsPage() {
       ),
     ],
     [EVENTS_DATA_SOURCE]
-  ); // 3. Filtering Logic (Memoized)
+  );
 
+  // Filtering logic
   const filteredEvents = useMemo(() => {
-    return EVENTS_DATA_SOURCE.filter((event) => {
-      // Use the pre-lowercased filterTitle field for search
+    let result = EVENTS_DATA_SOURCE.filter((event) => {
       const matchesSearch = event.filterTitle.includes(
         searchTerm.toLowerCase()
       );
-
       const matchesCategory =
-        selectedCategory === "All" || event.category === selectedCategory; // Use the filterCity field for location filtering
-
+        selectedCategory === "All" || event.category === selectedCategory;
       const matchesLocation =
         selectedLocation === "All Locations" ||
         event.filterCity === selectedLocation;
 
       return matchesSearch && matchesCategory && matchesLocation;
     });
-  }, [EVENTS_DATA_SOURCE, searchTerm, selectedCategory, selectedLocation]); // Slice the filtered list for display based on the count state (Pagination Logic)
 
+    // Apply sorting
+    if (sortBy === "date-asc") {
+      result.sort((a, b) => new Date(a.startDate) - new Date(b.startDate));
+    } else if (sortBy === "date-desc") {
+      result.sort((a, b) => new Date(b.startDate) - new Date(a.startDate));
+    } else if (sortBy === "price-asc") {
+      result.sort((a, b) => a.price - b.price);
+    } else if (sortBy === "price-desc") {
+      result.sort((a, b) => b.price - a.price);
+    } else if (sortBy === "location") {
+      result.sort((a, b) => a.filterCity.localeCompare(b.filterCity));
+    }
+
+    return result;
+  }, [
+    EVENTS_DATA_SOURCE,
+    searchTerm,
+    selectedCategory,
+    selectedLocation,
+    sortBy,
+  ]);
+
+  // Displayed events (pagination)
   const displayedEvents = useMemo(() => {
     return filteredEvents.slice(0, displayedEventsCount);
-  }, [filteredEvents, displayedEventsCount]); // Determine if there are more events to load
+  }, [filteredEvents, displayedEventsCount]);
 
-  const hasMore = displayedEventsCount < filteredEvents.length; // 4. Infinite Scroll/Load More Handler
+  const hasMore = displayedEventsCount < filteredEvents.length;
 
+  // Load more handler
   const handleLoadMore = () => {
     if (hasMore && !isLoadingMore) {
-      setIsLoadingMore(true); // Simulate network delay for loading more data
-
+      setIsLoadingMore(true);
       setTimeout(() => {
         setDisplayedEventsCount((prevCount) => prevCount + EVENTS_PER_LOAD);
         setIsLoadingMore(false);
       }, 800);
     }
-  }; // 5. Reset display count when filters change
+  };
 
+  // Reset display count on filter change
   useEffect(() => {
-    // Always reset the displayed count to the initial load amount whenever a filter changes
     setDisplayedEventsCount(EVENTS_PER_LOAD);
-  }, [searchTerm, selectedCategory, selectedLocation]); // 6. Loading state while Redux data is being fetched // 🎯 FIX: Use the correct status field for all events
+  }, [searchTerm, selectedCategory, selectedLocation, sortBy]);
 
+  // Sticky filter bar behavior
+  // Sticky filter bar behavior
+  useEffect(() => {
+    // 1. Capture the mutable ref value in a stable variable
+    const currentHeroRef = heroRef.current;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        setIsFilterSticky(!entry.isIntersecting);
+      },
+      { threshold: 0, rootMargin: "-80px 0px 0px 0px" }
+    );
+
+    // 2. Use the stable variable for observing
+    if (currentHeroRef) {
+      observer.observe(currentHeroRef);
+    }
+
+    return () => {
+      // 3. Use the stable variable for cleanup
+      // This guarantees you unobserve the exact element you observed.
+      if (currentHeroRef) {
+        observer.unobserve(currentHeroRef);
+      }
+    };
+  }, []);
+
+  // Clear all filters
+  const handleClearFilters = () => {
+    setSearchTerm("");
+    setSelectedCategory("All");
+    setSelectedLocation("All Locations");
+    setSortBy("date-asc");
+  };
+
+  // Check if any filters are active
+  const hasActiveFilters =
+    searchTerm !== "" ||
+    selectedCategory !== "All" ||
+    selectedLocation !== "All Locations" ||
+    sortBy !== "date-asc";
+
+  // Loading state
   if (eventsStatus === "loading") {
     return (
-      <div className="min-h-screen bg-gray-50 py-10 px-4 sm:px-6 lg:px-8 font-body">
-               {" "}
+      <div className="min-h-screen bg-gray-50 py-10 px-4 sm:px-6 lg:px-8">
         <div className="max-w-7xl mx-auto text-center">
-                   {" "}
-          <div className="text-lg text-gray-600">Loading events...</div>       {" "}
+          <div className="text-lg text-gray-600">Loading events...</div>
         </div>
-             {" "}
       </div>
     );
-  } // 7. Error state // 🎯 FIX: Use the correct status field for all events
+  }
 
+  // Error state
   if (eventsStatus === "failed" && rawEvents.length === 0) {
     return (
-      <div className="min-h-screen bg-gray-50 py-10 px-4 sm:px-6 lg:px-8 font-body">
-               {" "}
+      <div className="min-h-screen bg-gray-50 py-10 px-4 sm:px-6 lg:px-8">
         <div className="max-w-7xl mx-auto text-center">
-                   {" "}
           <div className="text-lg text-red-600">
-                        Error loading events. Please try again.          {" "}
+            Error loading events. Please try again.
           </div>
-                 {" "}
         </div>
-             {" "}
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 py-10 px-4 sm:px-6 lg:px-8 font-body">
-           {" "}
-      <div className="max-w-7xl mx-auto">
-                {/* 1. Top Section: Headline & Search */}       {" "}
-        <section className="mb-8">
-                   {" "}
-          <h1 className="text-4xl font-extrabold text-gray-900 mb-6 font-header">
-                        Explore Exciting Events          {" "}
-          </h1>
-                   {" "}
-          {/* Unified Control Bar for Search and Filters (Responsive Stacking) */}
-                   {" "}
-          <div className="space-y-4 lg:space-y-0 lg:flex lg:justify-between lg:items-end lg:gap-6">
-                       {" "}
-            {/* Search (Takes full width on mobile, 2/3 on desktop) */}         
-             {" "}
-            <div className="lg:w-1/3">
-                           {" "}
-              <EventSearch
-                searchTerm={searchTerm}
-                onSearchChange={setSearchTerm}
-              />
-                         {" "}
-            </div>
-                       {" "}
-            {/* Category and Location Filters (Takes full width on mobile, 1/3 on desktop) */}
-                       {" "}
-            <div className="lg:w-2/3">
-                           {" "}
-              {/* FilterControls is assumed to handle category and location dropdowns */}
-                           {" "}
-              <FilterControls
-                categories={allCategories} // Passed dynamically from Redux data
-                selectedCategory={selectedCategory}
-                onCategoryChange={setSelectedCategory}
-                locations={locations} // Passed dynamically from Redux data
-                selectedLocation={selectedLocation}
-                onLocationChange={setSelectedLocation}
-              />
-                         {" "}
-            </div>
-                     {" "}
-          </div>
-                   {" "}
-          {/* Location Info (Moved below filters for better organization) */}   
-               {" "}
-          <div className="mt-4 flex items-center justify-start text-sm text-gray-600 font-body">
-                        <MapPin className="w-4 h-4 mr-1 text-red-500" />{" "}
-            Currently             Filtering: Lagos, Nigeria          {" "}
-          </div>
-                 {" "}
-        </section>
-                {/* 2. Event Grid */}       {" "}
-        <section className="mt-8">
-                   {" "}
-          <h2 className="text-2xl font-semibold text-gray-900 font-header mb-4">
-                        {filteredEvents.length} Results          {" "}
-          </h2>
-                   {" "}
-          {/* Passing the clean, displayed (paginated) events to the UI */}
-                    <EventsUI events={displayedEvents} />       {" "}
-        </section>
-                {/* 3. Footer/Loading Trigger */}       {" "}
-        <footer>
-                   {" "}
-          <EventsFooter
-            hasMore={hasMore}
-            isLoading={isLoadingMore}
-            onLoadMore={handleLoadMore}
-          />
-                 {" "}
-        </footer>
-             {" "}
+    <div className="min-h-screen bg-gradient-to-b from-orange-50 to-gray-50">
+      {/* Hero Section */}
+      <div ref={heroRef}>
+        <EventsHero searchTerm={searchTerm} onSearchChange={setSearchTerm} />
       </div>
-         {" "}
+
+      {/* Category Pills */}
+      <div className="bg-white border-b border-gray-200">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <CategoryPills
+            categories={allCategories}
+            selectedCategory={selectedCategory}
+            onCategoryChange={setSelectedCategory}
+          />
+        </div>
+      </div>
+
+      {/* Filter Bar (Sticky) */}
+      <FilterBar
+        location={selectedLocation}
+        onLocationChange={setSelectedLocation}
+        locations={locations}
+        sortBy={sortBy}
+        onSortChange={setSortBy}
+        resultsCount={filteredEvents.length}
+        isSticky={isFilterSticky}
+      />
+
+      {/* Main Content */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Active Filters */}
+        {hasActiveFilters && (
+          <ActiveFilters
+            searchTerm={searchTerm}
+            selectedCategory={selectedCategory}
+            selectedLocation={selectedLocation}
+            sortBy={sortBy}
+            onClearSearch={() => setSearchTerm("")}
+            onClearCategory={() => setSelectedCategory("All")}
+            onClearLocation={() => setSelectedLocation("All Locations")}
+            onClearSort={() => setSortBy("date-asc")}
+            onClearAll={handleClearFilters}
+          />
+        )}
+
+        {/* Events Grid */}
+        <EventsUI events={displayedEvents} />
+
+        {/* Load More Footer */}
+        <EventsFooter
+          hasMore={hasMore}
+          isLoading={isLoadingMore}
+          onLoadMore={handleLoadMore}
+        />
+      </div>
     </div>
   );
 }
