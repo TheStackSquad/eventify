@@ -1,16 +1,17 @@
 //backend/pkg/handlers/vendor.go
 
+
 package handlers
 
 import (
 	"net/http"
-	//"strconv" //imported but not used
+	// "strconv" //imported but not used
 
 	"eventify/backend/pkg/models"
 	"eventify/backend/pkg/services"
-	//"eventify/backend/pkg/repository" //imported but not used
+	// "eventify/backend/pkg/repository" //imported but not used
 
-	"github.com/rs/zerolog/log" 
+	"github.com/rs/zerolog/log"
 	"github.com/gin-gonic/gin"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
@@ -28,51 +29,51 @@ func NewVendorHandler(vendorService services.VendorService) *VendorHandler {
 
 // RegisterVendor handles POST /api/v1/vendors/register
 func (h *VendorHandler) RegisterVendor(c *gin.Context) {
-    var vendor models.Vendor
-    
-    var bindVendor struct {
-        models.Vendor
-        MinPrice int `json:"minPrice"`
-    }
-    
-    // Log the incoming request
-    log.Info().Msg("Received vendor registration request")
-    
-    if err := c.ShouldBindJSON(&bindVendor); err != nil {
-        log.Error().Err(err).Msg("JSON binding failed for vendor registration")
-        c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input format or missing required fields."})
-        return
-    }
-    
-    vendor = bindVendor.Vendor
-    
-    // Log the received data (excluding sensitive info)
-    log.Info().
-        Str("name", vendor.Name).
-        Str("category", vendor.Category).
-        Str("state", vendor.State).
-        Str("city", vendor.City).
-        Msg("Processing vendor registration")
-    
-    // Use service layer to create vendor (handles PVS calculation internally)
-    vendorID, err := h.VendorService.CreateVendor(c.Request.Context(), &vendor)
-    if err != nil {
-        log.Error().Err(err).Msg("Failed to create vendor")
-        c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to register vendor profile."})
-        return
-    }
+	var vendor models.Vendor
 
-    log.Info().Str("vendorID", vendorID).Msg("Vendor registered successfully")
-    
-    // Set CORS headers
-    c.Header("Access-Control-Allow-Origin", "*")
-    c.Header("Access-Control-Allow-Methods", "POST, OPTIONS")
-    c.Header("Access-Control-Allow-Headers", "Content-Type")
-    
-    c.JSON(http.StatusCreated, gin.H{
-        "message": "Vendor profile created. Pending verification.",
-        "vendor_id": vendorID,
-    })
+	var bindVendor struct {
+		models.Vendor
+		MinPrice int `json:"minPrice"`
+	}
+
+	// Log the incoming request
+	log.Info().Msg("Received vendor registration request")
+
+	if err := c.ShouldBindJSON(&bindVendor); err != nil {
+		log.Error().Err(err).Msg("JSON binding failed for vendor registration")
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input format or missing required fields."})
+		return
+	}
+
+	vendor = bindVendor.Vendor
+
+	// Log the received data (excluding sensitive info)
+	log.Info().
+		Str("name", vendor.Name).
+		Str("category", vendor.Category).
+		Str("state", vendor.State).
+		Str("city", vendor.City).
+		Msg("Processing vendor registration")
+
+	// Use service layer to create vendor (handles PVS calculation internally)
+	vendorID, err := h.VendorService.CreateVendor(c.Request.Context(), &vendor)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to create vendor")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to register vendor profile."})
+		return
+	}
+
+	log.Info().Str("vendorID", vendorID).Msg("Vendor registered successfully")
+
+	// REMOVED MANUAL CORS HEADERS (lines ~56-58)
+	// c.Header("Access-Control-Allow-Origin", "*")
+	// c.Header("Access-Control-Allow-Methods", "POST, OPTIONS")
+	// c.Header("Access-Control-Allow-Headers", "Content-Type")
+
+	c.JSON(http.StatusCreated, gin.H{
+		"message": "Vendor profile created. Pending verification.",
+		"vendor_id": vendorID,
+	})
 }
 
 // ListVendors handles GET /api/v1/vendors to retrieve filtered public listings.
@@ -87,14 +88,14 @@ func (h *VendorHandler) ListVendors(c *gin.Context) {
 
 	// Extract optional query parameters for filtering
 	state := c.Query("state")
-	category := c.Query("category") 
+	category := c.Query("category")
 	city := c.Query("city")
 	area := c.Query("area")
 	minPriceStr := c.Query("minPrice")
 
 	// Build filters map (all values as strings for repository compatibility)
 	filters := make(map[string]interface{})
-	
+
 	if state != "" {
 		filters["state"] = state
 	}
@@ -129,12 +130,12 @@ func (h *VendorHandler) ListVendors(c *gin.Context) {
 	}
 
 	log.Info().Int("count", len(vendors)).Msg("✅ Vendors fetched successfully")
-	
-	// Set CORS headers
-	c.Header("Access-Control-Allow-Origin", "http://localhost:3000")
-	c.Header("Access-Control-Allow-Methods", "GET, OPTIONS")
-	c.Header("Access-Control-Allow-Headers", "Content-Type")
-	
+
+	// REMOVED MANUAL CORS HEADERS (lines ~119-121)
+	// c.Header("Access-Control-Allow-Origin", "http://localhost:3000")
+	// c.Header("Access-Control-Allow-Methods", "GET, OPTIONS")
+	// c.Header("Access-Control-Allow-Headers", "Content-Type")
+
 	if len(vendors) == 0 {
 		log.Info().Msg("📭 No vendors found, returning empty array")
 		c.JSON(http.StatusOK, []models.Vendor{}) // Return empty array for consistency
@@ -162,11 +163,11 @@ func (h *VendorHandler) GetVendorProfile(c *gin.Context) {
 		return
 	}
 
-	// Set CORS headers
-	c.Header("Access-Control-Allow-Origin", "*")
-	c.Header("Access-Control-Allow-Methods", "GET, OPTIONS")
-	c.Header("Access-Control-Allow-Headers", "Content-Type")
-	
+	// REMOVED MANUAL CORS HEADERS (lines ~143-145)
+	// c.Header("Access-Control-Allow-Origin", "*")
+	// c.Header("Access-Control-Allow-Methods", "GET, OPTIONS")
+	// c.Header("Access-Control-Allow-Headers", "Content-Type")
+
 	c.JSON(http.StatusOK, vendor)
 }
 
@@ -194,11 +195,11 @@ func (h *VendorHandler) UpdateVendor(c *gin.Context) {
 		return
 	}
 
-	// Set CORS headers
-	c.Header("Access-Control-Allow-Origin", "*")
-	c.Header("Access-Control-Allow-Methods", "PUT, OPTIONS")
-	c.Header("Access-Control-Allow-Headers", "Content-Type")
-	
+	// REMOVED MANUAL CORS HEADERS (lines ~167-169)
+	// c.Header("Access-Control-Allow-Origin", "*")
+	// c.Header("Access-Control-Allow-Methods", "PUT, OPTIONS")
+	// c.Header("Access-Control-Allow-Headers", "Content-Type")
+
 	c.JSON(http.StatusOK, gin.H{
 		"message": "Vendor updated successfully",
 	})
@@ -235,11 +236,11 @@ func (h *VendorHandler) ToggleIdentityVerification(c *gin.Context) {
 		return
 	}
 
-	// Set CORS headers
-	c.Header("Access-Control-Allow-Origin", "*")
-	c.Header("Access-Control-Allow-Methods", "PUT, OPTIONS")
-	c.Header("Access-Control-Allow-Headers", "Content-Type")
-	
+	// REMOVED MANUAL CORS HEADERS (lines ~194-196)
+	// c.Header("Access-Control-Allow-Origin", "*")
+	// c.Header("Access-Control-Allow-Methods", "PUT, OPTIONS")
+	// c.Header("Access-Control-Allow-Headers", "Content-Type")
+
 	c.JSON(http.StatusOK, gin.H{
 		"message": "Identity verification updated successfully.",
 	})
@@ -272,11 +273,11 @@ func (h *VendorHandler) ToggleBusinessVerification(c *gin.Context) {
 		return
 	}
 
-	// Set CORS headers
-	c.Header("Access-Control-Allow-Origin", "*")
-	c.Header("Access-Control-Allow-Methods", "PUT, OPTIONS")
-	c.Header("Access-Control-Allow-Headers", "Content-Type")
-	
+	// REMOVED MANUAL CORS HEADERS (lines ~220-222)
+	// c.Header("Access-Control-Allow-Origin", "*")
+	// c.Header("Access-Control-Allow-Methods", "PUT, OPTIONS")
+	// c.Header("Access-Control-Allow-Headers", "Content-Type")
+
 	c.JSON(http.StatusOK, gin.H{
 		"message": "Business verification updated successfully.",
 	})
@@ -299,18 +300,10 @@ func (h *VendorHandler) DeleteVendor(c *gin.Context) {
 		return
 	}
 
-	// Set CORS headers
-	c.Header("Access-Control-Allow-Origin", "*")
-	c.Header("Access-Control-Allow-Methods", "DELETE, OPTIONS")
-	c.Header("Access-Control-Allow-Headers", "Content-Type")
-	
-	c.JSON(http.StatusOK, gin.H{"message": "Vendor profile deleted successfully."})
-}
+	// REMOVED MANUAL CORS HEADERS (lines ~247-249)
+	// c.Header("Access-Control-Allow-Origin", "*")
+	// c.Header("Access-Control-Allow-Methods", "DELETE, OPTIONS")
+	// c.Header("Access-Control-Allow-Headers", "Content-Type")
 
-// HandleOptions handles preflight CORS requests
-func (h *VendorHandler) HandleOptions(c *gin.Context) {
-	c.Header("Access-Control-Allow-Origin", "*")
-	c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-	c.Header("Access-Control-Allow-Headers", "Content-Type, Authorization")
-	c.Status(http.StatusOK)
+	c.JSON(http.StatusOK, gin.H{"message": "Vendor profile deleted successfully."})
 }
