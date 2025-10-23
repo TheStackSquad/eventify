@@ -5,6 +5,7 @@ export const REDUX_ACTION_TYPES = {
   CREATE_EVENT: "events/createEvent",
   GET_EVENT_BY_ID: "events/getEventById",
   FETCH_USER_EVENTS: "events/fetchUserEvents",
+  FETCH_ALL_EVENTS: "events/fetchAllEvents",
   FETCH_EVENT_ANALYTICS: "events/fetchEventAnalytics",
   UPDATE_EVENT: "events/updateEvent",
   DELETE_EVENT: "events/deleteEvent",

@@ -1,109 +1,122 @@
-// frontend/src/components/vendorUI/VendorListingView.js
-
+// frontend/src/components/vendorUI/vendorListingView.js
 "use client";
 
-import React from "react";
-import { Search, SlidersHorizontal, BarChart4 } from "lucide-react";
+import React, { useState } from "react";
+import { useRouter } from "next/navigation";
+import { SlidersHorizontal, Building2, Loader2 } from "lucide-react";
+
+// Import split components
+import VendorCard from "@/components/vendorUI/vendorCard";
+import SearchWithSuggestions from "@/components/vendorUI/searchWithSuggestion";
+import LoadingState from "@/components/vendorUI/loadingState";
+import ErrorState from "@/components/vendorUI/errorState";
+import EmptyState from "@/components/vendorUI/emptyState";
 
 const VendorListingView = ({
   vendors,
   isLoading,
   isError,
-  filters,
+  filters = {},
   onRegisterClick,
   onFilterChange,
+  onSearch,
+  onVendorClick,
+  onLoadMore, // NEW: Pagination handler
+  pagination = {
+    // NEW: Pagination info
+    currentPage: 1,
+    hasMore: false,
+    totalCount: 0,
+  },
 }) => {
+  const router = useRouter();
+  const [searchTerm, setSearchTerm] = useState(filters.search || "");
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+
   const vendorCount = vendors.length;
+  const { currentPage, hasMore, totalCount } = pagination;
+
+  // Format price in Naira
+  const formatPrice = (price) => {
+    if (!price || price === 0) return "Contact for price";
+
+    if (price >= 1000000) {
+      return `₦${(price / 1000000).toFixed(1)}M+`;
+    } else if (price >= 1000) {
+      return `₦${(price / 1000).toFixed(0)}k+`;
+    }
+    return `₦${price}+`;
+  };
+
+  // Calculate rating percentage (assuming pvsScore is out of 100)
+  const getRatingPercentage = (pvsScore) => {
+    return Math.min(100, Math.max(0, pvsScore));
+  };
+
+  // Handle search submission
+  const handleSearchSubmit = (term) => {
+    onSearch?.(term);
+  };
+
+  // Handle suggestion click
+  const handleSuggestionClick = (suggestion) => {
+    setSearchTerm(suggestion.label);
+    onSearch?.(suggestion.value);
+  };
+
+  // Handle vendor card click
+  const handleVendorClick = (vendor) => {
+    if (onVendorClick) {
+      onVendorClick(vendor);
+    }
+  };
+
+  // Handle load more with loading state
+  const handleLoadMoreClick = async () => {
+    if (onLoadMore && !isLoadingMore) {
+      setIsLoadingMore(true);
+      try {
+        await onLoadMore();
+      } finally {
+        setIsLoadingMore(false);
+      }
+    }
+  };
+
+  // Handle retry
+  const handleRetry = () => {
+    window.location.reload();
+  };
 
   // Render Loading State
   if (isLoading && vendorCount === 0) {
-    // Note: The container handles full-screen loading, but this handles local loading animation if needed.
-    return (
-      <div className="flex justify-center items-center py-20 bg-white shadow-lg rounded-xl">
-        <svg
-          className="animate-spin h-8 w-8 text-indigo-500"
-          xmlns="http://www.w3.org/2000/svg"
-          fill="none"
-          viewBox="0 0 24 24"
-        >
-          <circle
-            className="opacity-25"
-            cx="12"
-            cy="12"
-            r="10"
-            stroke="currentColor"
-            strokeWidth="4"
-          ></circle>
-          <path
-            className="opacity-75"
-            fill="currentColor"
-            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-          ></path>
-        </svg>
-        <p className="ml-3 text-lg text-gray-700">Loading vendors...</p>
-      </div>
-    );
+    return <LoadingState />;
   }
 
   // Render Error State
   if (isError) {
-    return (
-      <div className="text-center px-12 mx-5 mt-12 h-[400px] lg:h-[300px] py-7 bg-red-50 border-2 border-red-300 rounded-xl shadow-lg">
-        <p className="text-2xl font-bold text-red-700 mb-4">
-          Connection Failed
-        </p>
-        <p className="text-gray-600 mb-6">
-          We couldn&apos;t retrieve the list of vendors. Please check your network or
-          try again later.
-        </p>
-        <button
-          onClick={() => window.location.reload()}
-          className="px-6 py-2 bg-red-600 text-white font-semibold rounded-lg shadow-md hover:bg-red-700 transition duration-150"
-        >
-          Reload Page
-        </button>
-      </div>
-    );
+    return <ErrorState onRetry={handleRetry} />;
   }
 
   // Render No Results State
   const hasVendors = vendorCount > 0;
   if (!hasVendors) {
-    return (
-      <div className="text-center p-16 bg-white rounded-xl shadow-lg">
-        <BarChart4 className="w-12 h-12 text-indigo-500 mx-auto mb-4" />
-        <p className="text-2xl font-semibold text-gray-800 mb-3">
-          No Vendors Found
-        </p>
-        <p className="text-gray-600 mb-6">
-          Your search criteria returned no results. Try adjusting your filters
-          or be the first to
-          <button
-            onClick={onRegisterClick}
-            className="text-indigo-600 hover:text-indigo-800 font-medium ml-1 underline"
-          >
-            register your business!
-          </button>
-        </p>
-      </div>
-    );
+    return <EmptyState onRegisterClick={onRegisterClick} />;
   }
 
-  // Main Content Rendering
   return (
-    <main className="min-h-screen">
+    <main className="min-h-screen bg-gray-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
         {/* Search and Filter Bar */}
-        <div className="flex flex-col md:flex-row items-center justify-between space-y-4 md:space-y-0 p-4 bg-white rounded-xl shadow-lg border border-gray-100">
-          {/* Search Input */}
-          <div className="relative w-full md:w-1/3">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Search by vendor name or category..."
-              className="w-full py-2 pl-10 pr-4 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500"
-            />
-          </div>
+        <div className="flex flex-col md:flex-row items-center justify-between space-y-4 md:space-y-0 p-6 bg-white rounded-2xl shadow-lg border border-gray-100">
+          {/* Enhanced Search with Suggestions */}
+          <SearchWithSuggestions
+            searchTerm={searchTerm}
+            onSearchChange={setSearchTerm}
+            onSearchSubmit={handleSearchSubmit}
+            onSuggestionClick={handleSuggestionClick}
+            vendors={vendors}
+          />
 
           {/* Filters and CTA */}
           <div className="flex items-center space-x-4 w-full md:w-auto justify-end">
@@ -112,81 +125,101 @@ const VendorListingView = ({
               onClick={() => {
                 /* Placeholder for filter logic */
               }}
-              className="flex items-center space-x-2 px-4 py-2 bg-white text-gray-700 border border-gray-300 rounded-lg shadow-sm hover:bg-gray-50 transition duration-150"
+              className="flex items-center space-x-2 px-5 py-3 bg-white text-gray-700 border border-gray-300 rounded-xl shadow-sm hover:bg-gray-50 transition duration-150 hover:shadow-md hover:border-indigo-200"
               aria-label="Open filter options"
             >
               <SlidersHorizontal className="w-5 h-5" />
               <span className="hidden sm:inline">Filters</span>
             </button>
 
-            {/* Registration CTA (Moved from VendorCTA) */}
+            {/* Registration CTA */}
             <button
               onClick={onRegisterClick}
-              className="px-4 py-2 bg-indigo-600 text-white font-semibold rounded-lg shadow-md hover:bg-indigo-700 transition duration-150 transform hover:scale-[1.02] active:scale-[0.98]"
+              className="px-6 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-semibold rounded-xl shadow-lg hover:shadow-xl transition duration-150 transform hover:scale-[1.02] active:scale-[0.98] hover:from-indigo-700 hover:to-purple-700 flex items-center space-x-2"
             >
-              Register Your Business
+              <Building2 className="w-4 h-4" />
+              <span>Register Business</span>
             </button>
           </div>
         </div>
 
         {/* Results Count and Grid */}
         <div className="pt-4 space-y-6">
-          {/* Results Count */}
-          <p className="text-xl font-medium text-gray-800">
-            Showing{" "}
-            <span className="font-bold text-indigo-600">{vendorCount}</span>{" "}
-            Vendors matching your criteria.
-          </p>
+          {/* Results Count - Enhanced with pagination info */}
+          <div className="flex items-center justify-between">
+            <div className="flex flex-col space-y-2">
+              <p className="text-xl font-medium text-gray-800">
+                Showing{" "}
+                <span className="font-bold text-indigo-600">{vendorCount}</span>{" "}
+                {vendorCount === 1 ? "vendor" : "vendors"}
+                {totalCount > vendorCount && (
+                  <span className="text-gray-600">
+                    {" "}
+                    of <span className="font-semibold">{totalCount}</span> total
+                  </span>
+                )}
+                {searchTerm && (
+                  <span className="text-gray-600">
+                    {" "}
+                    for &quot;
+                    <span className="font-semibold">{searchTerm}</span>&quot;
+                  </span>
+                )}
+              </p>
+              {currentPage > 1 && (
+                <p className="text-sm text-gray-500">
+                  Page {currentPage} •{" "}
+                  {hasMore ? "Scroll to load more" : "All vendors loaded"}
+                </p>
+              )}
+            </div>
+          </div>
 
-          {/* Vendor Grid (Simplified placeholder for the actual list) */}
+          {/* Vendor Grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
             {vendors.map((vendor) => (
-              <div
-                key={vendor._id.$oid}
-                className="bg-white p-6 rounded-xl shadow-xl hover:shadow-2xl transition duration-300 border border-gray-100 cursor-pointer flex flex-col space-y-3"
-              >
-                <div className="flex items-center space-x-3">
-                  {/* Placeholder image/icon for the vendor */}
-                  <div className="w-12 h-12 bg-indigo-100 rounded-full flex items-center justify-center text-indigo-600 font-bold text-xl">
-                    {vendor.name.charAt(0)}
-                  </div>
-                  <div>
-                    <h3 className="text-xl font-bold text-gray-900">
-                      {vendor.name}
-                    </h3>
-                    <p className="text-sm font-medium text-indigo-600">
-                      {vendor.category}
-                    </p>
-                  </div>
-                </div>
-                <p className="text-sm text-gray-500 line-clamp-2">
-                  {vendor.city} | Min Price:{" "}
-                  <span className="font-semibold text-gray-700">
-                    ${(vendor.min_price / 1000).toFixed(0)}k+
-                  </span>
-                </p>
-                <div className="mt-2 text-xs font-medium text-gray-500 space-y-1">
-                  <p
-                    className={
-                      vendor.is_identity_verified
-                        ? "text-green-600"
-                        : "text-red-500"
-                    }
-                  >
-                    {vendor.is_identity_verified
-                      ? "✅ Identity Verified"
-                      : "❌ Identity Not Verified"}
-                  </p>
-                  <p>
-                    Profile Completion:{" "}
-                    <span className="text-indigo-600">
-                      {vendor.profile_completion}%
-                    </span>
-                  </p>
-                </div>
-              </div>
+              <VendorCard
+                key={vendor.id}
+                vendor={vendor}
+                formatPrice={formatPrice}
+                getRatingPercentage={getRatingPercentage}
+                onVendorClick={handleVendorClick}
+              />
             ))}
           </div>
+
+          {/* Load More Button */}
+          {hasMore && (
+            <div className="flex justify-center pt-8">
+              <button
+                onClick={handleLoadMoreClick}
+                disabled={isLoadingMore}
+                className="px-8 py-3 bg-white text-indigo-600 border border-indigo-300 rounded-xl shadow-md hover:shadow-lg transition duration-150 hover:bg-indigo-50 hover:border-indigo-400 disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2 font-semibold"
+              >
+                {isLoadingMore ? (
+                  <>
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                    <span>Loading More...</span>
+                  </>
+                ) : (
+                  <span>Load More Vendors</span>
+                )}
+              </button>
+            </div>
+          )}
+
+          {/* End of Results Message */}
+          {!hasMore && vendorCount > 0 && (
+            <div className="text-center py-8">
+              <p className="text-gray-500 text-lg">
+                🎉 You&apos;ve seen all {totalCount} vendors!
+              </p>
+              <p className="text-gray-400 text-sm mt-2">
+                Can&apos;t find what you&apos;re looking for? Try adjusting your
+                search filters.
+              </p>
+            </div>
+          )}
         </div>
       </div>
     </main>

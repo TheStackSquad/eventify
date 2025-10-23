@@ -1,19 +1,22 @@
 //frontend src/components/homepage/ticketCard.js
 "use client";
 
-import React from "react";
+import React, { useMemo } from "react"; // 🎯 Import useMemo for optimization
 import Image from "next/image";
 import Link from "next/link";
-import { useSelector} from "react-redux";
+import { useSelector } from "react-redux";
 import { TicketSelector, formatPrice } from "./ticketElements";
 
 // Utility function to format date/time and location from the raw API data
 const mapEventData = (rawEvent) => {
   const startDate = new Date(rawEvent.startDate);
+  // NOTE: The Z in the date string means UTC. Setting timeZone: "UTC" ensures
+  // the time displayed is the *exact* UTC time stored. If the events are meant
+  // to be displayed in the user's local time, the 'timeZone' parameter should be removed.
   const startTime = startDate.toLocaleTimeString("en-US", {
     hour: "2-digit",
     minute: "2-digit",
-    timeZone: "UTC", // Assuming the raw Z date is UTC
+    // timeZone: "UTC", // 💡 Commented out to potentially display in local time zone
     hour12: true,
   });
   const formattedDate = startDate.toLocaleDateString("en-US", {
@@ -23,19 +26,26 @@ const mapEventData = (rawEvent) => {
     year: "numeric",
   });
 
+  // Determine starting price and tag (Logic added based on event structure)
+  const startingPrice = rawEvent.tickets?.[0]?.price ?? 0;
+  let tag = null;
+  if (startingPrice === 0) {
+    tag = "Free Entry";
+  } else if (startingPrice > 10000) {
+    tag = "High Demand"; // Placeholder logic
+  }
+
   return {
     id: rawEvent.id,
     title: rawEvent.eventTitle,
     image: rawEvent.eventImage,
     category: rawEvent.category,
-    tag: null, // No tag in the payload, defaulting to null
+    tag: tag, // 🎯 Included dynamic tag logic
     date: formattedDate,
     time: startTime,
     location: `${rawEvent.venueName}, ${rawEvent.city}`,
     tickets: rawEvent.tickets.map((ticket) => ({
       ...ticket,
-      // Assuming all tickets are 'available' if quantity > 0,
-      // you might need real 'available' flag from API if different.
       available: ticket.quantity > 0,
     })),
   };
@@ -43,7 +53,6 @@ const mapEventData = (rawEvent) => {
 
 // Enhanced EventCard with external TicketSelector
 const EventCard = ({ event }) => {
-
   // Check if all tickets are sold out (based on the 'available' flag in the mapped ticket)
   const allSoldOut = event.tickets.every((t) => !t.available);
 
@@ -57,7 +66,7 @@ const EventCard = ({ event }) => {
           alt={event.title}
           fill
           sizes="(max-width: 768px) 85vw, (max-width: 1024px) 75vw, 384px"
-          priority={false} // Removed hardcoded priority based on dummy ID
+          priority={false}
           className="object-cover transition-transform duration-500 group-hover:scale-105"
         />
 
@@ -161,15 +170,36 @@ const EventCard = ({ event }) => {
 };
 
 export default function UpcomingEvents() {
-  // 2. ACCESS REDUX STATE
-  const { userEvents } = useSelector((state) => state.events || {});
+  // 🎯 FIX 1: Access the correct Redux state field: `allEvents`
+  // This field is updated by the 'events/fetchAllEvents/fulfilled' action.
+  const { allEvents, allEventsStatus } = useSelector(
+    (state) => state.events || {}
+  );
 
-  // 3. MAP RAW DATA TO COMPONENT FORMAT
-  const eventsToDisplay = (userEvents || []).map(mapEventData);
-  console.log('Peek:', eventsToDisplay);
+  // 🎯 FIX 2: Use useMemo to map and normalize data only when raw data changes.
+  const eventsToDisplay = useMemo(() => {
+    return (allEvents || []).map(mapEventData);
+  }, [allEvents]);
 
-  // NOTE: I'm assuming the events are already sorted by date in the Redux state
-  // or that sorting will be done later.
+  // Handle Loading State
+  if (allEventsStatus === "loading") {
+    return (
+      <section className="py-20 text-center text-gray-400 bg-gradient-to-b from-black via-gray-900 to-black">
+        <p className="text-xl font-medium">Loading amazing events...</p>
+      </section>
+    );
+  }
+
+  // Handle No Events Found State
+  if (eventsToDisplay.length === 0 && allEventsStatus !== "loading") {
+    return (
+      <section className="py-20 text-center text-gray-400 bg-gradient-to-b from-black via-gray-900 to-black">
+        <p className="text-xl font-medium">
+          No upcoming events found. Check back soon! 😔
+        </p>
+      </section>
+    );
+  }
 
   return (
     <section className="relative px-1 md:px-6 py-12 md:py-16 bg-gradient-to-b from-black via-gray-900 to-black">
@@ -228,7 +258,7 @@ export default function UpcomingEvents() {
             }}
           >
             <div className="flex px-6 md:px-10 lg:px-12">
-              {/* 4. USE REDUX DATA INSTEAD OF dummyEvents */}
+              {/* 4. USE MEMOIZED REDUX DATA */}
               {eventsToDisplay.map((event) => (
                 <EventCard key={event.id} event={event} />
               ))}

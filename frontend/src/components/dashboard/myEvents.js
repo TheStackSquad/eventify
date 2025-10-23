@@ -49,68 +49,98 @@ const EventCard = ({ event, openDeleteModal, openAnalyticsModal }) => {
   );
 
   return (
+    // Assuming you have imported all necessary icons (Calendar, Users, TrendingUp, Edit, BarChart3, Trash2)
+    // and have the helper functions like formatDate, statusClass, statusBadge, mockAttendees, mockRevenue, etc. available in scope.
+
+    // Component body
     <div
-      className={`bg-white rounded-xl overflow-hidden shadow-lg hover:shadow-2xl transition-all duration-300 transform hover:scale-[1.02] border-t-4 ${statusClass}`}
+      className={`bg-white rounded-xl overflow-hidden shadow-xl transition-all duration-300 transform hover:scale-[1.01] border-t-4 ${statusClass} flex flex-col h-full`}
     >
-      <div className="p-5 space-y-4">
-        <div className="flex justify-between items-start">
-          <h4 className="text-xl font-bold text-gray-900 leading-tight">
-            {/* FIX: Changed to event.eventTitle */}
+      <div className="p-5 flex flex-col flex-grow">
+        {/* Header: Title and Status Badge */}
+        <div className="flex justify-between items-start mb-3">
+          <h4 className="text-xl md:text-2xl font-extrabold text-gray-900 leading-snug line-clamp-2 pr-2">
             {event.eventTitle || "Untitled Event"}
           </h4>
           {statusBadge}
         </div>
 
-        <p className="text-sm text-gray-600 mb-2 truncate">
-          {/* FIX: Changed to event.eventDescription */}
+        {/* Description (Truncated to 2 lines for card view) */}
+        <p className="text-sm text-gray-600 line-clamp-2 mb-4">
           {event.eventDescription || "No description provided."}
         </p>
 
-        <div className="space-y-2 pt-2 border-t border-gray-100">
-          <div className="flex items-center text-sm text-gray-700">
-            <Calendar className="w-4 h-4 mr-2 text-indigo-500" />
-            <span className="font-medium">Date:</span>{" "}
-            {formatDate(event.startDate)}
+        {/* Metadata Grid (Responsive stack/side-by-side) */}
+        <div className="space-y-3 pt-4 border-t border-gray-100 flex-grow">
+          {/* Date/Time */}
+          <div className="flex items-start text-sm text-gray-700">
+            <Calendar className="w-4 h-4 mt-[2px] mr-3 flex-shrink-0 text-indigo-600" />
+            <div className="flex-1 min-w-0">
+              <span className="font-semibold block sm:inline-block sm:mr-1">
+                Date:
+              </span>{" "}
+              <span className="truncate block sm:inline-block">
+                {formatDate(event.startDate)}
+              </span>
+            </div>
           </div>
-          <div className="flex items-center text-sm text-gray-700">
-            <Users className="w-4 h-4 mr-2 text-indigo-500" />
-            <span className="font-medium">Attendees:</span> {mockAttendees}
+          {/* Attendees */}
+          <div className="flex items-start text-sm text-gray-700">
+            <Users className="w-4 h-4 mt-[2px] mr-3 flex-shrink-0 text-indigo-600" />
+            <div className="flex-1 min-w-0">
+              <span className="font-semibold block sm:inline-block sm:mr-1">
+                Attendees:
+              </span>{" "}
+              <span className="truncate block sm:inline-block">
+                {mockAttendees}
+              </span>
+            </div>
           </div>
         </div>
 
-        <div className="flex justify-between items-center bg-gray-50 p-3 rounded-lg mt-3">
-          <div className="text-sm font-semibold text-gray-700 flex items-center">
-            <TrendingUp className="w-4 h-4 mr-1.5 text-green-500" />
-            Revenue:{" "}
-            <span className="text-green-600 ml-1 font-bold">
-              ${mockRevenue}
-            </span>{" "}
-            (Mock)
+        {/* Revenue Section (Always at the bottom of the content) */}
+        <div className="mt-5">
+          <div className="flex justify-between items-center bg-indigo-50/70 p-4 rounded-lg">
+            <div className="text-base font-semibold text-gray-800 flex items-center min-w-0">
+              <TrendingUp className="w-5 h-5 mr-2 text-green-600 flex-shrink-0" />
+              <span className="truncate">Revenue:</span>
+            </div>
+            <div className="text-lg font-bold text-green-700 ml-3 flex-shrink-0">
+              {/* 🎯 FIX: Changed to Naira sign (₦) */}
+              <span className="text-sm font-normal mr-1">₦</span>
+              {mockRevenue}
+              <span className="text-xs font-normal text-gray-600 ml-1">
+                (Mock)
+              </span>
+            </div>
           </div>
         </div>
 
-        {/* Action Buttons */}
-        <div className="flex space-x-3 pt-3 border-t border-gray-100">
+        {/* Action Buttons (Full width on mobile, maintains structure) */}
+        <div className="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-3 pt-4 border-t border-gray-100 mt-4">
           <button
             onClick={() => console.log(`Editing event ${event.id}`)}
-            className="flex-1 flex items-center justify-center p-2 text-sm font-medium text-indigo-600 bg-indigo-50 rounded-lg hover:bg-indigo-100 transition-colors"
+            className="flex-1 flex items-center justify-center p-2.5 text-sm font-medium text-indigo-700 bg-indigo-100 rounded-lg hover:bg-indigo-200 transition-colors shadow-sm min-w-0"
           >
-            <Edit className="w-4 h-4 mr-1" />
-            Edit
+            <Edit className="w-4 h-4 mr-1.5 flex-shrink-0" />
+            <span className="truncate">Edit</span>
           </button>
+
           <button
             onClick={() => openAnalyticsModal(event.id)}
-            className="flex-1 flex items-center justify-center p-2 text-sm font-medium text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors"
+            className="flex-1 flex items-center justify-center p-2.5 text-sm font-medium text-blue-700 bg-blue-100 rounded-lg hover:bg-blue-200 transition-colors shadow-sm min-w-0"
           >
-            <BarChart3 className="w-4 h-4 mr-1" />
-            Analytics
+            <BarChart3 className="w-4 h-4 mr-1.5 flex-shrink-0" />
+            <span className="truncate">Analytics</span>
           </button>
+
+          {/* Delete button remains small for quick action */}
           <button
-            onClick={() => openDeleteModal(event.id, event.eventTitle)} // FIX: Use event.eventTitle here too
-            className="p-2 text-red-600 bg-red-50 rounded-lg hover:bg-red-100 transition-colors"
+            onClick={() => openDeleteModal(event.id, event.eventTitle)}
+            className="flex-shrink-0 p-2.5 text-red-700 bg-red-100 rounded-lg hover:bg-red-200 transition-colors shadow-sm self-stretch sm:w-auto"
             title="Delete Event"
           >
-            <Trash2 className="w-4 h-4" />
+            <Trash2 className="w-5 h-5" />
           </button>
         </div>
       </div>

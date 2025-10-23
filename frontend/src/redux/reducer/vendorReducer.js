@@ -6,107 +6,170 @@ import {
   registerVendor,
 } from "@/redux/action/vendorAction";
 import { STATUS, VENDOR_DEFAULTS } from "@/utils/constants/globalConstants";
-import { ERROR_MESSAGES } from "@/utils/constants/globalConstants"; // Import error messages
-import  toastAlert from "@/components/common/toast/toastAlert";
+import { ERROR_MESSAGES } from "@/utils/constants/globalConstants";
+import toastAlert from "@/components/common/toast/toastAlert";
 
-const initialState = VENDOR_DEFAULTS.INITIAL_STATE;
+// ✅ SIMPLIFIED: Flat structure, separate statuses per operation
+const initialState = {
+  // Simple flat array - no normalization
+  vendors: [],
+
+  // Separate status for each operation to prevent interference
+  fetchStatus: STATUS.IDLE,
+  profileStatus: STATUS.IDLE,
+  registerStatus: STATUS.IDLE,
+
+  // Errors
+  fetchError: null,
+  profileError: null,
+  registerError: null,
+
+  // Current vendor for detail page
+  selectedVendor: null,
+
+  // Filters (keep as-is)
+  filters: VENDOR_DEFAULTS.INITIAL_STATE.filters,
+
+  // Pagination (keep as-is)
+  pagination: {
+    currentPage: 1,
+    pageSize: 12,
+    totalCount: 0,
+  },
+};
 
 const vendorSlice = createSlice({
   name: "vendors",
   initialState,
   reducers: {
-    // Clear errors
-    clearVendorError(state) {
-      state.error = null;
+    // ✅ SIMPLIFIED: Clear specific errors
+    clearFetchError(state) {
+      state.fetchError = null;
     },
 
-    // Clear the list of vendors (e.g., when leaving the search page)
+    clearProfileError(state) {
+      state.profileError = null;
+    },
+
+    // ✅ SIMPLIFIED: Clear vendors list
     clearVendorList(state) {
       state.vendors = [];
+      state.pagination.currentPage = 1;
+      state.pagination.totalCount = 0;
     },
 
-    // Clear the selected vendor (e.g., when leaving the profile page)
+    // ✅ SIMPLIFIED: Clear selected vendor
     clearSelectedVendor(state) {
       state.selectedVendor = null;
     },
 
-    // Update filter parameters (synchronous action)
+    // ✅ KEEP: Filter management
     setVendorFilters(state, action) {
       state.filters = {
         ...state.filters,
         ...action.payload,
       };
+      state.pagination.currentPage = 1;
     },
 
-    // Reset filters to initial state
     resetVendorFilters(state) {
-      state.filters = initialState.filters;
+      state.filters = VENDOR_DEFAULTS.INITIAL_STATE.filters;
+      state.pagination.currentPage = 1;
+    },
+
+    // ✅ KEEP: Pagination
+    setCurrentPage(state, action) {
+      state.pagination.currentPage = action.payload;
     },
   },
+
   extraReducers: (builder) => {
     builder
+      // ============================================
       // FETCH VENDORS (LISTING PAGE)
+      // ============================================
       .addCase(fetchVendors.pending, (state) => {
-        state.status = STATUS.LOADING;
-        state.error = null;
+        state.fetchStatus = STATUS.LOADING;
+        state.fetchError = null;
       })
       .addCase(fetchVendors.fulfilled, (state, action) => {
-        state.status = STATUS.SUCCEEDED;
-        // The payload should be an array of Vendor objects
-        state.vendors = action.payload || [];
-        state.error = null;
+        state.fetchStatus = STATUS.SUCCEEDED;
+
+        const { vendors, pagination } = action.payload;
+
+        // ✅ SIMPLIFIED: Just store the array directly
+        // The thunk already transforms _id.$oid to id
+        if (vendors && Array.isArray(vendors)) {
+          state.vendors = vendors;
+        }
+
+        // ✅ Update pagination
+        if (pagination) {
+          state.pagination = {
+            ...state.pagination,
+            ...pagination,
+          };
+        }
+
+        state.fetchError = null;
       })
       .addCase(fetchVendors.rejected, (state, action) => {
-        state.status = STATUS.FAILED;
-        state.vendors = [];
-        state.error = action.payload?.message || "Failed to fetch vendor list.";
-        // Show toast only here - removed from thunk
+        state.fetchStatus = STATUS.FAILED;
+        state.fetchError =
+          action.payload?.message || "Failed to fetch vendor list.";
         toastAlert.error(
           action.payload?.message || ERROR_MESSAGES.FETCH_VENDORS_FAILED
         );
       })
 
+      // ============================================
       // GET VENDOR PROFILE (DETAIL PAGE)
+      // ============================================
       .addCase(getVendorProfile.pending, (state) => {
-        // Use the same status, but it only applies to the profile fetch
-        state.status = STATUS.LOADING;
-        state.selectedVendor = null;
-        state.error = null;
+        state.profileStatus = STATUS.LOADING;
+        state.profileError = null;
       })
       .addCase(getVendorProfile.fulfilled, (state, action) => {
-        state.status = STATUS.SUCCEEDED;
-        // The payload should be a single Vendor object
+        state.profileStatus = STATUS.SUCCEEDED;
+
+        // ✅ SIMPLIFIED: Just store the vendor object
         state.selectedVendor = action.payload;
-        state.error = null;
+        state.profileError = null;
       })
       .addCase(getVendorProfile.rejected, (state, action) => {
-        state.status = STATUS.FAILED;
+        state.profileStatus = STATUS.FAILED;
         state.selectedVendor = null;
-        state.error =
+        state.profileError =
           action.payload?.message || "Failed to load vendor profile.";
-        // Show toast for profile fetch failure
         toastAlert.error(
           action.payload?.message || "Failed to load vendor profile."
         );
       })
 
-      // VENDOR REGISTRATION (Initial POST)
+      // ============================================
+      // VENDOR REGISTRATION
+      // ============================================
       .addCase(registerVendor.pending, (state) => {
-        // Can use a separate status if needed, but 'status' works fine
-        state.status = STATUS.LOADING;
-        state.error = null;
+        state.registerStatus = STATUS.LOADING;
+        state.registerError = null;
       })
       .addCase(registerVendor.fulfilled, (state, action) => {
-        state.status = STATUS.SUCCEEDED;
-        // Registration usually doesn't update the list, but we can clear the error
-        state.error = null;
-        // Show success toast for registration
+        state.registerStatus = STATUS.SUCCEEDED;
+
+        // ✅ SIMPLIFIED: Add to beginning of array
+        const vendor = action.payload;
+        if (vendor) {
+          state.vendors.unshift(vendor);
+          state.pagination.totalCount += 1;
+        }
+
+        state.registerError = null;
         toastAlert.success("Vendor registered successfully!");
       })
       .addCase(registerVendor.rejected, (state, action) => {
-        state.status = STATUS.FAILED;
-        state.error = action.payload?.message || "Failed to register vendor.";
-        // Show toast for registration failure
+        state.registerStatus = STATUS.FAILED;
+        state.registerError =
+          action.payload?.message || "Failed to register vendor.";
         toastAlert.error(
           action.payload?.message || "Failed to register vendor."
         );
@@ -115,11 +178,13 @@ const vendorSlice = createSlice({
 });
 
 export const {
-  clearVendorError,
+  clearFetchError,
+  clearProfileError,
   clearVendorList,
   clearSelectedVendor,
   setVendorFilters,
   resetVendorFilters,
+  setCurrentPage,
 } = vendorSlice.actions;
 
 export default vendorSlice.reducer;

@@ -5,7 +5,7 @@ import { useEffect } from "react";
 import { useDispatch } from "react-redux";
 import Hero from "@/components/homepage/hero";
 import TicketCard from "@/components/homepage/ticketCard";
-import { fetchUserEvents } from "@/redux/action/eventAction";
+import { fetchAllEvents } from "@/redux/action/eventAction";
 
 export default function Home() {
   // 💡 STEP 3: Initialize dispatch
@@ -13,8 +13,8 @@ export default function Home() {
 
   // 💡 STEP 4: Dispatch the fetch action on mount
   useEffect(() => {
-    if (fetchUserEvents) {
-      dispatch(fetchUserEvents());
+    if (fetchAllEvents) {
+      dispatch(fetchAllEvents());
     }
   }, [dispatch]);
 

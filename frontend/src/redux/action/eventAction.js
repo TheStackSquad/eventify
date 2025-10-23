@@ -40,6 +40,21 @@ export const fetchUserEvents = createAsyncThunk(
   }
 );
 
+// NEW: Fetch ALL events (for public event listing page)
+export const fetchAllEvents = createAsyncThunk(
+  REDUX_ACTION_TYPES.FETCH_ALL_EVENTS,
+  async (_, { rejectWithValue }) => {
+    try {
+      const response = await axios.get(API_ENDPOINTS.EVENTS.BASE);
+      return response.data;
+    } catch (error) {
+      const message =
+        error.response?.data?.message || ERROR_MESSAGES.FETCH_EVENTS_FAILED;
+      return rejectWithValue({ message });
+    }
+  }
+);
+
 export const fetchEventAnalytics = createAsyncThunk(
   REDUX_ACTION_TYPES.FETCH_EVENT_ANALYTICS,
   async (eventId, { rejectWithValue }) => {

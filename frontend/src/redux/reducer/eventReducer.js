@@ -151,6 +151,30 @@ const eventSlice = createSlice({
         state.currentEvent = null;
       }) // FETCH USER EVENTS
 
+      // FETCH ALL EVENTS
+      .addCase(eventActions.fetchAllEvents.pending, (state) => {
+        console.log("🔍 [DEBUG] fetchAllEvents.pending triggered");
+        state.allEventsStatus = STATUS.LOADING;
+        state.error = null;
+      })
+      .addCase(eventActions.fetchAllEvents.fulfilled, (state, action) => {
+        console.log(
+          "🔍 [DEBUG] fetchAllEvents.fulfilled triggered with payload:",
+          action.payload
+        );
+        state.allEventsStatus = STATUS.SUCCEEDED;
+        state.allEvents = action.payload || [];
+        state.error = null;
+      })
+      .addCase(eventActions.fetchAllEvents.rejected, (state, action) => {
+        console.log(
+          "🔍 [DEBUG] fetchAllEvents.rejected triggered with error:",
+          action.payload
+        );
+        state.allEventsStatus = STATUS.FAILED;
+        state.error = action.payload?.message || "Failed to fetch all events";
+      })
+    
       .addCase(eventActions.fetchUserEvents.pending, (state) => {
         console.log("🔍 [DEBUG] fetchUserEvents.pending triggered");
         state.status = STATUS.LOADING;
