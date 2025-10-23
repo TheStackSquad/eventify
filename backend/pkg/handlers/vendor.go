@@ -77,6 +77,14 @@ func (h *VendorHandler) RegisterVendor(c *gin.Context) {
 
 // ListVendors handles GET /api/v1/vendors to retrieve filtered public listings.
 func (h *VendorHandler) ListVendors(c *gin.Context) {
+	// Log the full request details
+	log.Info().
+		Str("method", c.Request.Method).
+		Str("path", c.Request.URL.Path).
+		Str("query", c.Request.URL.RawQuery).
+		Str("full_url", c.Request.URL.String()).
+		Msg("🎯 ListVendors handler called")
+
 	// Extract optional query parameters for filtering
 	state := c.Query("state")
 	category := c.Query("category") 
@@ -109,28 +117,31 @@ func (h *VendorHandler) ListVendors(c *gin.Context) {
 		Str("city", city).
 		Str("area", area).
 		Str("minPrice", minPriceStr).
-		Msg("Fetching vendors with filters")
+		Interface("filters", filters).
+		Msg("🔍 Fetching vendors with filters")
 
 	// Use service layer to get vendors
 	vendors, err := h.VendorService.GetVendors(c.Request.Context(), filters)
 	if err != nil {
-		log.Error().Err(err).Msg("Failed to fetch vendors")
+		log.Error().Err(err).Msg("❌ Failed to fetch vendors")
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch vendor list due to internal error."})
 		return
 	}
 
-	log.Info().Int("count", len(vendors)).Msg("Vendors fetched successfully")
+	log.Info().Int("count", len(vendors)).Msg("✅ Vendors fetched successfully")
 	
 	// Set CORS headers
-	c.Header("Access-Control-Allow-Origin", "*")
+	c.Header("Access-Control-Allow-Origin", "http://localhost:3000")
 	c.Header("Access-Control-Allow-Methods", "GET, OPTIONS")
 	c.Header("Access-Control-Allow-Headers", "Content-Type")
 	
 	if len(vendors) == 0 {
+		log.Info().Msg("📭 No vendors found, returning empty array")
 		c.JSON(http.StatusOK, []models.Vendor{}) // Return empty array for consistency
 		return
 	}
 
+	log.Info().Int("vendors_count", len(vendors)).Msg("📦 Sending vendors response")
 	c.JSON(http.StatusOK, vendors)
 }
 
