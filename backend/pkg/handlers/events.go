@@ -146,6 +146,24 @@ func (h *EventHandler) GetEventByID(c *gin.Context) {
     c.JSON(http.StatusOK, event)
 }
 
+// GetAllEventsHandler fetches all non-deleted events (public listing)
+func (h *EventHandler) GetAllEventsHandler(c *gin.Context) {
+    fmt.Printf("🎯 DEBUG: Fetching all events\n")
+
+    ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
+    defer cancel()
+
+    // Call service to get all events (you'll need to create this method)
+    events, err := h.EventService.FindAll(ctx)
+    if err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"message": "Failed to fetch events."})
+        return
+    }
+    
+    fmt.Printf("✅ DEBUG: Retrieved %d events from database\n", len(events))
+    c.JSON(http.StatusOK, events)
+}
+
 // UpdateEvent handles the updating of an existing event.
 func (h *EventHandler) UpdateEvent(c *gin.Context) {
 	organizerID, _ := c.Get("user_id")

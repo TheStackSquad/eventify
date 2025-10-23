@@ -62,6 +62,33 @@ func (s *EventService) FindAllByOrganizer(ctx context.Context, organizerID primi
     return events, nil
 }
 
+// FindAll fetches all non-deleted events from the database (public listing).
+func (s *EventService) FindAll(ctx context.Context) ([]models.Event, error) {
+    // Filter to include only non-deleted events (no organizer filter)
+    filter := bson.M{
+        "is_deleted": false,
+    }
+    
+    // Debug logging
+    fmt.Printf("🔍 DEBUG: MongoDB filter for all events: %+v\n", filter)
+    
+    cursor, err := s.EventCollection.Find(ctx, filter)
+    if err != nil {
+        fmt.Printf("❌ DEBUG: MongoDB Find error: %v\n", err)
+        return nil, err
+    }
+    defer cursor.Close(ctx)
+    
+    var events []models.Event
+    if err = cursor.All(ctx, &events); err != nil {
+        fmt.Printf("❌ DEBUG: cursor.All error: %v\n", err)
+        return nil, err
+    }
+    
+    fmt.Printf("✅ DEBUG: Total events found: %d\n", len(events))
+    return events, nil
+}
+
 // FindByID finds a single event by ID and organizer ID
 func (s *EventService) FindByID(ctx context.Context, eventID, organizerID primitive.ObjectID) (*models.Event, error) {
     filter := bson.M{
