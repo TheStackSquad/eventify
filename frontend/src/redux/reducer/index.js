@@ -17,6 +17,7 @@ import authReducer from "./authReducers";
 import eventReducer from "./eventReducer";
 import ticketReducer from "./ticketReducer";
 import vendorReducer from "./vendorReducer";
+import inquiryReducer from "./inquiryReducer"; 
 // update with likeReducer
 
 const persistConfig = {
@@ -30,6 +31,7 @@ const combinedReducer = combineReducers({
   events: eventReducer,
   tickets: ticketReducer,
   vendors: vendorReducer,
+  inquiry: inquiryReducer,
   // update with likeReducer
 });
 

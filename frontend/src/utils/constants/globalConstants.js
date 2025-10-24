@@ -15,6 +15,14 @@ export const REDUX_ACTION_TYPES = {
   GET_VENDOR_PROFILE: "vendors/getVendorProfile",
   REGISTER_VENDOR: "vendors/registerVendor",
 
+  // INQUIRY ACTIONS (NEW)
+  CREATE_INQUIRY: "inquiry/createInquiry", // <-- NEW
+  GET_VENDOR_INQUIRIES: "inquiry/getVendorInquiries", // <-- NEW
+  UPDATE_INQUIRY_STATUS: "inquiry/updateInquiryStatus", // <-- NEW
+  RESET_CREATE_INQUIRY_STATUS: "inquiry/resetCreateInquiryStatus",
+  SUBMIT_RATING: "inquiry/submitRating",
+  RESET_RATING_STATUS: "inquiry/resetRatingStatus",
+
   // ADMIN VENDOR ACTIONS (New)
   TOGGLE_IDENTITY_VERIFICATION: "admin/toggleIdentityVerification",
   TOGGLE_BUSINESS_VERIFICATION: "admin/toggleBusinessVerification",
@@ -40,6 +48,17 @@ export const API_ENDPOINTS = {
     GET_PROFILE: "/api/v1/vendors/:id",
     REGISTER: "/api/v1/vendors/register",
     UPDATE: "/api/v1/vendors/:id",
+  },
+  INQUIRIES: {
+    // <-- NEW
+    BASE: "/api/v1/vendors/:vendor_id/inquiries",
+    CREATE: "/api/v1/vendors/:vendor_id/inquiries",
+    GET_VENDOR: "/api/v1/vendors/:vendor_id/inquiries",
+  },
+  ADMIN_INQUIRIES: {
+    // <-- NEW ADMIN ENDPOINT
+    BASE: "/api/v1/admin/inquiries",
+    UPDATE_STATUS: "/api/v1/admin/inquiries/:id",
   },
   ADMIN_VENDORS: {
     BASE: "/api/v1/admin/vendors",
