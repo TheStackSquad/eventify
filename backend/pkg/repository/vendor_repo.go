@@ -1,12 +1,12 @@
-//backend/pkg/repository/vendor_repo.go
+//backend/pkg/repository/vendor_repo.
 
 package repository
 
 import (
 	"context"
 	"errors"
-	"time"
 	"strconv"
+	"time"
 
 	"eventify/backend/pkg/models" // Assumed path based on your structure
 
@@ -21,16 +21,18 @@ import (
 type VendorRepository interface {
 	// Write operations
 	Create(ctx context.Context, vendor *models.Vendor) (primitive.ObjectID, error)
-	// NOTE: We keep the ID as string here to match the handler's request parameter source,
-	// but convert it immediately inside the method for safety.
 	UpdateVerificationFlag(ctx context.Context, id string, field string, isVerified bool, reason string) error
 	UpdatePVSScore(ctx context.Context, id string, score int) error
-	Delete(ctx context.Context, id string) (int64, error) // Returns count of deleted documents
+	Delete(ctx context.Context, id string) (int64, error)
+	// Write operations - General Update
+	UpdateFields(ctx context.Context, id string, updates map[string]interface{}) error // <-- REQUIRED METHOD
+	IncrementField(ctx context.Context, id primitive.ObjectID, field string, delta int) error
 
 	// Read operations
 	GetByID(ctx context.Context, id string) (models.Vendor, error)
 	FindPublicVendors(ctx context.Context, filters map[string]interface{}) ([]models.Vendor, error)
 }
+
 
 // MongoVendorRepository implements the VendorRepository interface using a MongoDB collection.
 type MongoVendorRepository struct {
@@ -45,25 +47,86 @@ func NewMongoVendorRepository(collection *mongo.Collection) *MongoVendorReposito
 	}
 }
 
-// Create inserts a new vendor document into the database.
+// Create implements the VendorRepository interface, inserting a new vendor document.
 func (r *MongoVendorRepository) Create(ctx context.Context, vendor *models.Vendor) (primitive.ObjectID, error) {
-	// 1. Set audit fields and MongoDB ID
+	if vendor == nil {
+		return primitive.NilObjectID, errors.New("vendor is nil")
+	}
+
+	// Set timestamps and ID if not already set (good practice)
+	now := time.Now()
 	if vendor.ID.IsZero() {
 		vendor.ID = primitive.NewObjectID()
 	}
-	now := time.Now()
 	vendor.CreatedAt = now
 	vendor.UpdatedAt = now
-
-	// 2. Perform the insert operation
+	
+	// Insert the document
 	result, err := r.Collection.InsertOne(ctx, vendor)
 	if err != nil {
 		return primitive.NilObjectID, err
 	}
-
-	// 3. Return the inserted ID
-	return result.InsertedID.(primitive.ObjectID), nil
+	
+	// Return the newly created ID
+	if oid, ok := result.InsertedID.(primitive.ObjectID); ok {
+		return oid, nil
+	}
+	
+	return primitive.NilObjectID, errors.New("failed to retrieve inserted object ID")
 }
+
+// IncrementField increments or decrements a numerical field in the vendor document.
+func (r *MongoVendorRepository) IncrementField(ctx context.Context, id primitive.ObjectID, field string, delta int) error {
+	update := bson.M{
+		"$inc": bson.M{field: delta},
+		"$set": bson.M{"updated_at": time.Now()},
+	}
+
+	result, err := r.Collection.UpdateByID(ctx, id, update)
+	if err != nil {
+		return err
+	}
+	if result.MatchedCount == 0 {
+		return errors.New("vendor not found")
+	}
+	return nil
+}
+
+// UpdateFields performs a partial update on a vendor document using a map of fields.
+// This implements the missing method required by the VendorRepository interface.
+func (r *MongoVendorRepository) UpdateFields(ctx context.Context, id string, updates map[string]interface{}) error {
+	objID, err := primitive.ObjectIDFromHex(id)
+	if err != nil {
+		return errors.New("invalid id format")
+	}
+
+	// 1. Prepare the update document
+	setUpdates := bson.M{}
+	
+	// Copy all fields from the input map to the $set operator
+	for k, v := range updates {
+		setUpdates[k] = v
+	}
+
+	// Always update the timestamp
+	setUpdates["updated_at"] = time.Now()
+
+	// Create the final BSON update query
+	updateDoc := bson.M{"$set": setUpdates}
+
+	// 2. Perform the update
+	result, err := r.Collection.UpdateByID(ctx, objID, updateDoc)
+	if err != nil {
+		return err
+	}
+
+	if result.ModifiedCount == 0 && result.UpsertedCount == 0 {
+		return errors.New("vendor not found or no changes made")
+	}
+
+	return nil
+}
+
 
 // GetByID retrieves a single vendor document by its string ID.
 func (r *MongoVendorRepository) GetByID(ctx context.Context, id string) (models.Vendor, error) {
@@ -103,7 +166,7 @@ func (r *MongoVendorRepository) UpdateVerificationFlag(ctx context.Context, id s
 	// Dynamic BSON update document. We use primitive.M for flexible updates.
 	update := bson.M{
 		"$set": bson.M{
-			field:       isVerified,
+			field: isVerified,
 			"updated_at": time.Now(),
 		},
 	}
@@ -129,7 +192,7 @@ func (r *MongoVendorRepository) UpdatePVSScore(ctx context.Context, id string, s
 
 	update := bson.M{
 		"$set": bson.M{
-			"pvs_score":  score,
+			"pvs_score": score,
 			"updated_at": time.Now(),
 		},
 	}
@@ -205,10 +268,10 @@ func (r *MongoVendorRepository) FindPublicVendors(ctx context.Context, filters m
 
 	// 4. NEW: Enhanced sorting - prioritize verified vendors, then by PVS score
 	opts := options.Find().SetSort(bson.D{
-		{Key: "is_business_registered", Value: -1},  // Business registered first
-		{Key: "is_identity_verified", Value: -1},    // Identity verified next  
-		{Key: "pvs_score", Value: -1},               // Then by PVS score
-		{Key: "created_at", Value: -1},              // Finally by newest
+		{Key: "is_business_registered", Value: -1},
+		{Key: "is_identity_verified", Value: -1},
+		{Key: "pvs_score", Value: -1},
+		{Key: "created_at", Value: -1},
 	})
 
 	// 5. Execute the query
