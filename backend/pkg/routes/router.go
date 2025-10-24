@@ -21,45 +21,19 @@ func ConfigureRouter(
 	authHandler *handlers.AuthHandler,
 	eventHandler *handlers.EventHandler,
 	vendorHandler *handlers.VendorHandler,
+	reviewHandler *handlers.ReviewHandler, // 👈 added review handler
 	authRepo repository.AuthRepository,
 ) *gin.Engine {
 	router := gin.New()
 	router.RedirectTrailingSlash = false
 
-	// Global Middleware - ORDER MATTERS!
+	// --- Middleware Stack ---
 	router.Use(gin.Recovery())
-	
-	// Custom request logger - put this BEFORE ginzerolog
-	router.Use(func(c *gin.Context) {
-		start := time.Now()
-		path := c.Request.URL.Path
-		query := c.Request.URL.RawQuery
-		
-		c.Next()
-		
-		log.Info().
-			Str("method", c.Request.Method).
-			Str("path", path).
-			Str("query", query).
-			Int("status", c.Writer.Status()).
-			Str("latency", time.Since(start).String()).
-			Msg("📥 HTTP Request")
-	})
+	router.Use(requestLogger())     // Custom logger
+	router.Use(ginzerolog.SetLogger()) // Zerolog middleware
+	router.Use(corsConfig())        // CORS setup
 
-	// Gin zerolog middleware
-	router.Use(ginzerolog.SetLogger())
-
-	// CORS Configuration
-	router.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"http://localhost:3000"},
-		AllowMethods:     []string{"GET", "POST", "PUT", "HEAD", "PATCH", "DELETE", "OPTIONS"},
-		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
-		ExposeHeaders:    []string{"Content-Length"},
-		AllowCredentials: true,
-		MaxAge:           12 * time.Hour,
-	}))
-
-	// Basic Health Check Route
+	// --- Health Check ---
 	router.GET("/", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
 			"message": "Eventify API is running",
@@ -78,19 +52,17 @@ func ConfigureRouter(
 		auth.POST("/logout", authHandler.Logout)
 	}
 
-	// VENDOR PUBLIC ROUTES - Make this explicit
 	log.Info().Msg("🚀 Registering vendor routes...")
-	
+
 	vendorRoutes := router.Group("/api/v1/vendors")
 	{
-		// Add debug logging to each route handler
-		vendorRoutes.GET("", func(c *gin.Context) {
-			log.Info().Str("path", c.Request.URL.Path).Msg("🎯 ListVendors route hit!")
-			vendorHandler.ListVendors(c)
-		})
+		vendorRoutes.GET("", vendorHandler.ListVendors)
 		vendorRoutes.GET("/:id", vendorHandler.GetVendorProfile)
 		vendorRoutes.POST("/register", vendorHandler.RegisterVendor)
 	}
+
+	// ✅ Register review routes — supports optional auth
+	RegisterReviewRoutes(router, reviewHandler)
 
 	// -------------------------------------------------------------------
 	// 2. PROTECTED ROUTES
@@ -103,11 +75,10 @@ func ConfigureRouter(
 		protected.PUT("/api/v1/vendors/:id", vendorHandler.UpdateVendor)
 	}
 
-	// Protected Event Routes
 	events := router.Group("/events")
 	events.Use(middleware.AuthMiddleware())
 	{
-		events.GET("", eventHandler.GetAllEventsHandler)  
+		events.GET("", eventHandler.GetAllEventsHandler)
 		events.GET("/my-events", eventHandler.GetUserEventsHandler)
 		events.GET("/:eventId", eventHandler.GetEventByID)
 		events.PUT("/:eventId", eventHandler.UpdateEvent)
@@ -127,13 +98,59 @@ func ConfigureRouter(
 		adminVendor.DELETE("/:id", vendorHandler.DeleteVendor)
 	}
 
-	// Print all registered routes for debugging
+	// Print all routes for debugging
 	printRegisteredRoutes(router)
 
 	return router
 }
 
-// Helper function to print all registered routes
+// ✅ Review route registration 
+func RegisterReviewRoutes(r *gin.Engine, reviewHandler *handlers.ReviewHandler) {
+	reviews := r.Group("/api/vendors/:vendor_id/reviews")
+	{
+		reviews.GET("", reviewHandler.GetVendorReviews)
+		reviews.POST("", middleware.OptionalAuth(), reviewHandler.CreateReview)
+	}
+}
+
+func RegisterInquiryRoutes(r *gin.Engine, inquiryHandler *handlers.InquiryHandler) {
+	inquiries := r.Group("/api/vendors/:vendor_id/inquiries")
+	inquiries.POST("", inquiryHandler.CreateInquiry)
+	inquiries.GET("", inquiryHandler.GetVendorInquiries)
+
+	admin := r.Group("/api/inquiries")
+	admin.PATCH("/:id", inquiryHandler.UpdateInquiryStatus)
+}
+// --- Utility Middleware Helpers ---
+func requestLogger() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		start := time.Now()
+		path := c.Request.URL.Path
+		query := c.Request.URL.RawQuery
+
+		c.Next()
+
+		log.Info().
+			Str("method", c.Request.Method).
+			Str("path", path).
+			Str("query", query).
+			Int("status", c.Writer.Status()).
+			Str("latency", time.Since(start).String()).
+			Msg("📥 HTTP Request")
+	}
+}
+
+func corsConfig() gin.HandlerFunc {
+	return cors.New(cors.Config{
+		AllowOrigins:     []string{"http://localhost:3000"},
+		AllowMethods:     []string{"GET", "POST", "PUT", "HEAD", "PATCH", "DELETE", "OPTIONS"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
+		ExposeHeaders:    []string{"Content-Length"},
+		AllowCredentials: true,
+		MaxAge:           12 * time.Hour,
+	})
+}
+
 func printRegisteredRoutes(router *gin.Engine) {
 	log.Info().Msg("🔍 === REGISTERED ROUTES ===")
 	for _, route := range router.Routes() {

@@ -1,5 +1,4 @@
 // backend/main.go
-
 package main
 
 import (
@@ -22,12 +21,13 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-// Flow: Configure Logging/Mode -> Connect DB -> Init Services -> Init Handlers -> Configure Router -> Start/Manage HTTP Server
 func main() {
-	// Step 1: Zerolog Setup and Gin Mode (Logging and Environment)
+	// ------------------------------------------------------------
+	// 1️⃣ Logging / Mode Setup
+	// ------------------------------------------------------------
 	zerolog.SetGlobalLevel(zerolog.InfoLevel)
 	log.Logger = log.Output(zerolog.ConsoleWriter{
-		Out:        os.Stderr,
+		Out: 		os.Stderr,
 		TimeFormat: time.RFC3339,
 	}).With().Timestamp().Logger()
 
@@ -37,46 +37,77 @@ func main() {
 		gin.SetMode(gin.DebugMode)
 	}
 
-	// ------------------------------------------------------------------------------------------------------
-	// Step 2: Database Initialization and Connection
+	// ------------------------------------------------------------
+	// 2️⃣ Database Initialization
+	// ------------------------------------------------------------
 	db.ConnectDB()
 	log.Info().Msg("Database connection established successfully.")
 
-	// Step 3: Get MongoDB database instance and collections
 	dbClient := db.GetDB()
+
 	eventsCollection := dbClient.Collection("events")
 	vendorsCollection := dbClient.Collection("vendors")
 	usersCollection := dbClient.Collection("users")
 	likesCollection := dbClient.Collection("likes")
 
-	// Step 4: Initialize Services & Repositories (The Dependency Graph)
+	// 🧩 NEW: Reviews + Inquiries collections
+	reviewsCollection := dbClient.Collection("reviews")
+	inquiriesCollection := dbClient.Collection("inquiries")
 
-	// Repositories
+	// ------------------------------------------------------------
+	// 3️⃣ Repositories
+	// ------------------------------------------------------------
 	vendorRepo := repository.NewMongoVendorRepository(vendorsCollection)
 	authRepo := repository.NewMongoAuthRepository(usersCollection)
 	likeRepo := repository.NewLikeRepository(likesCollection)
 
-	// Services
+	// 🧩 NEW:
+	// FIX 1: Using the correct constructor name NewMongoReviewRepository
+	reviewRepo := repository.NewMongoReviewRepository(reviewsCollection) 
+	// FIX 2: Using the correct constructor name NewMongoInquiryRepository
+	inquiryRepo := repository.NewMongoInquiryRepository(inquiriesCollection) 
+
+	// ------------------------------------------------------------
+	// 4️⃣ Services
+	// ------------------------------------------------------------
 	eventService := services.NewEventService(eventsCollection)
 	likeService := services.NewLikeService(likeRepo)
-	vendorService := services.NewVendorService(vendorRepo) // FIX: Create vendor service
+	vendorService := services.NewVendorService(vendorRepo)
 
-	// Step 5: Initialize Handlers (Injecting Repositories/Services)
+	// 🧩 NEW: review service uses both repo + vendorRepo (for PVS updates)
+	// (Errors 3 & 5 solved by previous update to vendor_repo.go)
+	reviewService := services.NewReviewService(reviewRepo, vendorRepo)
 
-	// FIX 1: Pass both the authRepo and the raw dbClient to satisfy the NewAuthHandler signature
+	// ------------------------------------------------------------
+	// 5️⃣ Handlers
+	// ------------------------------------------------------------
 	authHandler := handlers.NewAuthHandler(authRepo, dbClient)
-
-	// EventHandler needs the EventService
 	eventHandler := handlers.NewEventHandler(*eventService, likeService)
-
-	// FIX 2: VendorHandler now needs the VendorService, not the repository
 	vendorHandler := handlers.NewVendorHandler(vendorService)
 
-	// Step 6: Gin Router Setup
-	// FIX 3: Pass the required authRepo to the ConfigureRouter function
-	router := routes.ConfigureRouter(authHandler, eventHandler, vendorHandler, authRepo)
+	// 🧩 NEW:
+	reviewHandler := handlers.NewReviewHandler(reviewService)
+	// NOTE: The InquiryService needs to be created before its handler, 
+	// but the inquiryService implementation is missing from the list above.
+	// Assuming NewInquiryService is defined and takes the InquiryRepo and VendorRepo
+	inquiryService := services.NewInquiryService(inquiryRepo, vendorRepo)
+	inquiryHandler := handlers.NewInquiryHandler(inquiryService)
 
-	// Step 7: Retrieve PORT and Server Configuration
+
+	// ------------------------------------------------------------
+	// 6️⃣ Router Setup
+	// ------------------------------------------------------------
+	// FIX 3: Added reviewHandler as the 4th argument to ConfigureRouter
+	router := routes.ConfigureRouter(authHandler, eventHandler, vendorHandler, reviewHandler, authRepo)
+
+	// 🧩 Register new feature routes
+	// NOTE: RegisterReviewRoutes is already called inside ConfigureRouter (from router.go)
+	// so we only need to call the one we just defined locally.
+	routes.RegisterInquiryRoutes(router, inquiryHandler)
+
+	// ------------------------------------------------------------
+	// 7️⃣ Server Setup
+	// ------------------------------------------------------------
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8081"
@@ -84,19 +115,21 @@ func main() {
 	serverAddr := fmt.Sprintf(":%s", port)
 
 	srv := &http.Server{
-		Addr:         serverAddr,
-		Handler:      router,
-		ReadTimeout:  10 * time.Second,
+		Addr: 		serverAddr,
+		Handler: 	router,
+		ReadTimeout: 	10 * time.Second,
 		WriteTimeout: 10 * time.Second,
-		IdleTimeout:  60 * time.Second,
+		IdleTimeout: 	60 * time.Second,
 	}
 
-	// Step 8: Start Server in Goroutine
+	// ------------------------------------------------------------
+	// 8️⃣ Start Server
+	// ------------------------------------------------------------
 	go func() {
 		log.Info().
 			Str("service", "eventify-api").
 			Str("addr", serverAddr).
-			Msgf("Starting server on %s (http://localhost%s)", serverAddr, serverAddr)
+			Msgf("🚀 Starting server on %s (http://localhost%s)", serverAddr, serverAddr)
 
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatal().Err(err).
@@ -105,12 +138,14 @@ func main() {
 		}
 	}()
 
-	// Step 9: Graceful Shutdown
+	// ------------------------------------------------------------
+	// 9️⃣ Graceful Shutdown
+	// ------------------------------------------------------------
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 
-	log.Warn().Msg("Server shutting down...")
+	log.Warn().Msg("🧨 Server shutting down...")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -120,5 +155,5 @@ func main() {
 	}
 
 	db.CloseDB()
-	log.Info().Msg("MongoDB disconnected and server stopped gracefully.")
+	log.Info().Msg("✅ MongoDB disconnected and server stopped gracefully.")
 }
