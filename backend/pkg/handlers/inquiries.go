@@ -9,6 +9,7 @@ import (
 	"eventify/backend/pkg/services"
 	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog/log"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
 // InquiryHandler handles inquiry-related routes
@@ -29,6 +30,13 @@ func (h *InquiryHandler) CreateInquiry(c *gin.Context) {
 		return
 	}
 
+	// Convert vendorID string to ObjectID
+	vendorObjID, err := primitive.ObjectIDFromHex(vendorID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "Invalid vendor ID format"})
+		return
+	}
+
 	var req struct {
 		Name    string `json:"name" binding:"required"`
 		Email   string `json:"email" binding:"required,email"`
@@ -41,11 +49,12 @@ func (h *InquiryHandler) CreateInquiry(c *gin.Context) {
 	}
 
 	inquiry := &models.Inquiry{
-		Name:    req.Name,
-		Email:   req.Email,
-		Phone:   req.Phone,
-		Message: req.Message,
-		Status:  "pending",
+		VendorID: vendorObjID,  // ✅ ADD THIS LINE
+		Name:     req.Name,
+		Email:    req.Email,
+		Phone:    req.Phone,
+		Message:  req.Message,
+		Status:   "pending",
 	}
 
 	if err := h.Service.CreateInquiry(c.Request.Context(), inquiry); err != nil {

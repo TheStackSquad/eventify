@@ -21,7 +21,8 @@ func ConfigureRouter(
 	authHandler *handlers.AuthHandler,
 	eventHandler *handlers.EventHandler,
 	vendorHandler *handlers.VendorHandler,
-	reviewHandler *handlers.ReviewHandler, // 👈 added review handler
+	reviewHandler *handlers.ReviewHandler,
+	inquiryHandler *handlers.InquiryHandler,
 	authRepo repository.AuthRepository,
 ) *gin.Engine {
 	router := gin.New()
@@ -29,9 +30,9 @@ func ConfigureRouter(
 
 	// --- Middleware Stack ---
 	router.Use(gin.Recovery())
-	router.Use(requestLogger())     // Custom logger
-	router.Use(ginzerolog.SetLogger()) // Zerolog middleware
-	router.Use(corsConfig())        // CORS setup
+	router.Use(requestLogger())
+	router.Use(ginzerolog.SetLogger())
+	router.Use(corsConfig())
 
 	// --- Health Check ---
 	router.GET("/", func(c *gin.Context) {
@@ -63,6 +64,9 @@ func ConfigureRouter(
 
 	// ✅ Register review routes — supports optional auth
 	RegisterReviewRoutes(router, reviewHandler)
+
+	// ✅ Register inquiry routes
+	RegisterInquiryRoutes(router, inquiryHandler)
 
 	// -------------------------------------------------------------------
 	// 2. PROTECTED ROUTES
@@ -98,29 +102,44 @@ func ConfigureRouter(
 		adminVendor.DELETE("/:id", vendorHandler.DeleteVendor)
 	}
 
+	// ✅ Admin review routes (for moderation)
+	adminReviews := router.Group("/api/v1/admin/reviews")
+	adminReviews.Use(middleware.AuthMiddleware(), middleware.AdminMiddleware(authRepo))
+	{
+		adminReviews.PATCH("/:id/status", reviewHandler.UpdateReviewApprovalStatus)
+	}
+
+	// ✅ Admin inquiry routes
+	adminInquiries := router.Group("/api/v1/admin/inquiries")
+	adminInquiries.Use(middleware.AuthMiddleware(), middleware.AdminMiddleware(authRepo))
+	{
+		adminInquiries.PATCH("/:id", inquiryHandler.UpdateInquiryStatus)
+	}
+
 	// Print all routes for debugging
 	printRegisteredRoutes(router)
 
 	return router
 }
 
-// ✅ Review route registration 
+// ✅ Review route registration
 func RegisterReviewRoutes(r *gin.Engine, reviewHandler *handlers.ReviewHandler) {
 	reviews := r.Group("/api/vendors/:vendor_id/reviews")
 	{
-		reviews.GET("", reviewHandler.GetVendorReviews)
-		reviews.POST("", middleware.OptionalAuth(), reviewHandler.CreateReview)
+		reviews.GET("", reviewHandler.GetVendorReviews)                        // Public - gets approved reviews
+		reviews.POST("", middleware.OptionalAuth(), reviewHandler.CreateReview) // Optional auth - supports anonymous
 	}
 }
 
+// ✅ Inquiry route registration
 func RegisterInquiryRoutes(r *gin.Engine, inquiryHandler *handlers.InquiryHandler) {
-	inquiries := r.Group("/api/vendors/:vendor_id/inquiries")
-	inquiries.POST("", inquiryHandler.CreateInquiry)
-	inquiries.GET("", inquiryHandler.GetVendorInquiries)
-
-	admin := r.Group("/api/inquiries")
-	admin.PATCH("/:id", inquiryHandler.UpdateInquiryStatus)
+	inquiries := r.Group("/api/v1/inquiries")
+	{
+		inquiries.POST("/vendor/:vendor_id", inquiryHandler.CreateInquiry)
+		inquiries.GET("/vendor/:vendor_id", inquiryHandler.GetVendorInquiries)
+	}
 }
+
 // --- Utility Middleware Helpers ---
 func requestLogger() gin.HandlerFunc {
 	return func(c *gin.Context) {
