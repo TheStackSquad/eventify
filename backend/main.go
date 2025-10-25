@@ -73,37 +73,33 @@ func main() {
 	eventService := services.NewEventService(eventsCollection)
 	likeService := services.NewLikeService(likeRepo)
 	vendorService := services.NewVendorService(vendorRepo)
-
-	// 🧩 NEW: review service uses both repo + vendorRepo (for PVS updates)
-	// (Errors 3 & 5 solved by previous update to vendor_repo.go)
 	reviewService := services.NewReviewService(reviewRepo, vendorRepo)
 
 	// ------------------------------------------------------------
 	// 5️⃣ Handlers
 	// ------------------------------------------------------------
 	authHandler := handlers.NewAuthHandler(authRepo, dbClient)
-	eventHandler := handlers.NewEventHandler(*eventService, likeService)
-	vendorHandler := handlers.NewVendorHandler(vendorService)
+eventHandler := handlers.NewEventHandler(*eventService, likeService)
+vendorHandler := handlers.NewVendorHandler(vendorService)
+reviewHandler := handlers.NewReviewHandler(reviewService)
 
-	// 🧩 NEW:
-	reviewHandler := handlers.NewReviewHandler(reviewService)
-	// NOTE: The InquiryService needs to be created before its handler, 
-	// but the inquiryService implementation is missing from the list above.
-	// Assuming NewInquiryService is defined and takes the InquiryRepo and VendorRepo
-	inquiryService := services.NewInquiryService(inquiryRepo, vendorRepo)
-	inquiryHandler := handlers.NewInquiryHandler(inquiryService)
+// Create inquiry service and handler
+inquiryService := services.NewInquiryService(inquiryRepo, vendorRepo)
+inquiryHandler := handlers.NewInquiryHandler(inquiryService)
 
 
 	// ------------------------------------------------------------
 	// 6️⃣ Router Setup
 	// ------------------------------------------------------------
 	// FIX 3: Added reviewHandler as the 4th argument to ConfigureRouter
-	router := routes.ConfigureRouter(authHandler, eventHandler, vendorHandler, reviewHandler, authRepo)
-
-	// 🧩 Register new feature routes
-	// NOTE: RegisterReviewRoutes is already called inside ConfigureRouter (from router.go)
-	// so we only need to call the one we just defined locally.
-	routes.RegisterInquiryRoutes(router, inquiryHandler)
+router := routes.ConfigureRouter(
+    authHandler, 
+    eventHandler, 
+    vendorHandler, 
+    reviewHandler,
+    inquiryHandler,
+    authRepo,
+)
 
 	// ------------------------------------------------------------
 	// 7️⃣ Server Setup

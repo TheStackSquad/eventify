@@ -1,3 +1,4 @@
+// backend/pkg/handlers/reviews_handler.go
 package handlers
 
 import (
@@ -40,8 +41,8 @@ func (h *ReviewHandler) CreateReview(c *gin.Context) {
 	}
 
 	var req struct {
-		Rating  int    `json:"rating" binding:"required"`
-		Content string `json:"content"` // Keep as Content for frontend compatibility
+		Rating  int    `json:"rating" binding:"required,min=1,max=5"`
+		Content string `json:"content"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"message": "Invalid request body", "error": err.Error()})
@@ -51,23 +52,28 @@ func (h *ReviewHandler) CreateReview(c *gin.Context) {
 	// Get client IP address for duplicate prevention
 	ipAddress := utils.GetClientIP(c.Request)
 
-	// Hybrid approach — store both userID (if authenticated) and IP
-	var userObjectID *primitive.ObjectID
-	if uid, exists := c.Get("user_id_string"); exists {
-		if oid, err := primitive.ObjectIDFromHex(uid.(string)); err == nil {
-			userObjectID = &oid
-		}
-	}
-
+	// Build review with proper types
 	review := &models.Review{
 		VendorID:   vendorObjectID,
-		UserID:     userObjectID,
-		IPAddress:  ipAddress, // Add IP address for duplicate prevention
+		UserID:     primitive.NilObjectID, // Default to zero value
+		IPAddress:  ipAddress,
 		Rating:     req.Rating,
-		Comment:    req.Content, // Map Content from request to Comment in model
+		Comment:    req.Content,
 		CreatedAt:  time.Now(),
 		UpdatedAt:  time.Now(),
-		IsApproved: false, // Default to false for moderation
+		IsApproved: false,
+	}
+
+	// Handle authenticated user
+	if userIDStr, exists := c.Get("user_id_string"); exists {
+		if userObjID, err := primitive.ObjectIDFromHex(userIDStr.(string)); err == nil {
+			review.UserID = userObjID
+
+			// Get username from context if available
+			if userName, exists := c.Get("user_name"); exists {
+				review.UserName = userName.(string)
+			}
+		}
 	}
 
 	if err := h.reviewService.CreateReview(c.Request.Context(), review); err != nil {
@@ -78,6 +84,7 @@ func (h *ReviewHandler) CreateReview(c *gin.Context) {
 
 	c.JSON(http.StatusCreated, gin.H{
 		"message": "Review submitted successfully",
+		"note":    "Review pending moderation",
 	})
 }
 
@@ -89,7 +96,23 @@ func (h *ReviewHandler) GetVendorReviews(c *gin.Context) {
 		return
 	}
 
-	reviews, err := h.reviewService.GetReviewsByVendor(c.Request.Context(), vendorIDParam)
+	// Check if user is admin
+	isAdmin := false
+	if adminVal, exists := c.Get("is_admin"); exists {
+		isAdmin, _ = adminVal.(bool)
+	}
+
+	var reviews []models.Review
+	var err error
+
+	if isAdmin {
+		// Admin can see all reviews (including unapproved)
+		reviews, err = h.reviewService.GetReviewsByVendor(c.Request.Context(), vendorIDParam)
+	} else {
+		// Public only sees approved reviews
+		reviews, err = h.reviewService.GetApprovedReviewsByVendor(c.Request.Context(), vendorIDParam)
+	}
+
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to fetch reviews")
 		c.JSON(http.StatusInternalServerError, gin.H{"message": "Failed to fetch reviews"})
@@ -101,4 +124,38 @@ func (h *ReviewHandler) GetVendorReviews(c *gin.Context) {
 		"count":     len(reviews),
 		"reviews":   reviews,
 	})
+}
+
+// UpdateReviewApprovalStatus handles PATCH /api/v1/admin/reviews/:id/status
+func (h *ReviewHandler) UpdateReviewApprovalStatus(c *gin.Context) {
+	reviewID := c.Param("id")
+	if reviewID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "Review ID is required"})
+		return
+	}
+
+	var req struct {
+		IsApproved bool   `json:"isApproved" binding:"required"`
+		Response   string `json:"response,omitempty"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "Invalid request body", "error": err.Error()})
+		return
+	}
+
+	// Convert string ID to ObjectID
+	reviewObjID, err := primitive.ObjectIDFromHex(reviewID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "Invalid review ID format"})
+		return
+	}
+
+	err = h.reviewService.UpdateReviewApprovalStatus(c.Request.Context(), reviewObjID, req.IsApproved)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to update review approval status")
+		c.JSON(http.StatusInternalServerError, gin.H{"message": "Failed to update review status"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Review status updated successfully"})
 }
