@@ -18,6 +18,7 @@ import eventReducer from "./eventReducer";
 import ticketReducer from "./ticketReducer";
 import vendorReducer from "./vendorReducer";
 import inquiryReducer from "./inquiryReducer"; 
+import reviewsReducer from "./reviewReducer"; 
 // update with likeReducer
 
 const persistConfig = {
@@ -32,6 +33,7 @@ const combinedReducer = combineReducers({
   tickets: ticketReducer,
   vendors: vendorReducer,
   inquiry: inquiryReducer,
+  reviews: reviewsReducer,
   // update with likeReducer
 });
 
