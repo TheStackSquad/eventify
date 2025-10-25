@@ -6,7 +6,7 @@ import { Mail, Loader2, X } from "lucide-react";
 // Import from ACTION file, not reducer
 import { createInquiry } from "@/redux/action/inquiryAction";
 // Import from REDUCER file (the slice actions)
-import { resetCreateInquiryStatusSlice } from "@/redux/reducer/inquiryReducer";
+import { resetCreateInquiryStatus } from "@/redux/action/inquiryAction";
 import { STATUS } from "@/utils/constants/globalConstants";
 
 // Helper component for the modal. All styling uses Tailwind CSS.
@@ -30,7 +30,7 @@ const InquiryModal = ({ vendorId, isOpen, onClose, dispatch }) => {
     // Clear success state and close modal after a short delay
     if (isSuccess) {
       const timer = setTimeout(() => {
-        dispatch(resetCreateInquiryStatusSlice()); // Use the slice action
+        dispatch(resetCreateInquiryStatus()); // Use the slice action
         onClose();
       }, 2000); // Close after 2 seconds
       return () => clearTimeout(timer);
