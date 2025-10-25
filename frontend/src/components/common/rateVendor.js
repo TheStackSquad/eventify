@@ -2,19 +2,47 @@
 
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useDispatch, useSelector } from "react-redux";
+import { createReview } from "@/redux/action/reviewAction";
+import { resetCreateReviewStatus } from "@/redux/reducer/reviewReducer";
+import { STATUS } from "@/utils/constants/globalConstants";
 
-const RateVendor = ({ vendorId, vendorName, onSubmit }) => {
+const RateVendor = ({ vendorId, vendorName, onClose }) => {
   const dispatch = useDispatch();
   const [rating, setRating] = useState(0);
   const [hoverRating, setHoverRating] = useState(0);
   const [reviewText, setReviewText] = useState("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isSubmitted, setIsSubmitted] = useState(false);
 
-  // Selector for rating state from Redux (if needed)
-  // const { loading, error, success } = useSelector(state => state.inquiry.rating);
+  // ✅ Get Redux state
+  const { status, error } = useSelector((state) => state.reviews.createReview);
+
+  const isSubmitting = status === STATUS.LOADING;
+  const isSubmitted = status === STATUS.SUCCESS;
+  const hasError = status === STATUS.ERROR;
+
+  // ✅ Reset form after successful submission
+  useEffect(() => {
+    if (isSubmitted) {
+      const timer = setTimeout(() => {
+        dispatch(resetCreateReviewStatus());
+        setReviewText("");
+        setRating(0);
+        if (onClose) {
+          onClose(); // Close modal/form after success
+        }
+      }, 3000);
+
+      return () => clearTimeout(timer);
+    }
+  }, [isSubmitted, dispatch, onClose]);
+
+  // ✅ Reset error on unmount
+  useEffect(() => {
+    return () => {
+      dispatch(resetCreateReviewStatus());
+    };
+  }, [dispatch]);
 
   const handleStarClick = (selectedRating) => {
     setRating(selectedRating);
@@ -36,38 +64,26 @@ const RateVendor = ({ vendorId, vendorName, onSubmit }) => {
       return;
     }
 
-    setIsSubmitting(true);
-
-    try {
-      // If using Redux directly
-      // await dispatch(submitRating({ vendorId, rating, review: reviewText }));
-
-      // Using the passed onSubmit prop
-      if (onSubmit) {
-        await onSubmit(rating, reviewText);
-      }
-
-      setIsSubmitted(true);
-      setReviewText("");
-      setRating(0);
-
-      // Reset success state after 3 seconds
-      setTimeout(() => {
-        setIsSubmitted(false);
-      }, 3000);
-    } catch (error) {
-      console.error("Error submitting rating:", error);
-    } finally {
-      setIsSubmitting(false);
-    }
+    // ✅ Dispatch Redux action
+    dispatch(
+      createReview({
+        vendorId,
+        rating,
+        content: reviewText,
+      })
+    );
   };
 
   const StarIcon = ({ filled, hovered, onClick, onHover, onLeave }) => (
     <svg
       xmlns="http://www.w3.org/2000/svg"
-      className={`h-8 w-8 cursor-pointer transition-all duration-200 transform ${
-        hovered ? "scale-110" : "scale-100"
-      } ${filled ? "text-yellow-400 fill-current" : "text-gray-300"}`}
+      className={`h-10 w-10 cursor-pointer transition-all duration-200 transform ${
+        hovered ? "scale-125 rotate-12" : "scale-100"
+      } ${
+        filled
+          ? "text-yellow-400 fill-current drop-shadow-lg"
+          : "text-gray-300 hover:text-gray-400"
+      }`}
       viewBox="0 0 20 20"
       fill="currentColor"
       onClick={onClick}
@@ -98,28 +114,32 @@ const RateVendor = ({ vendorId, vendorName, onSubmit }) => {
 
   const getRatingText = () => {
     const currentRating = hoverRating || rating;
-    switch (currentRating) {
-      case 1:
-        return "Poor";
-      case 2:
-        return "Fair";
-      case 3:
-        return "Good";
-      case 4:
-        return "Very Good";
-      case 5:
-        return "Excellent";
-      default:
-        return "Select a rating";
+    const ratingTexts = {
+      1: { text: "Poor", emoji: "😞", color: "text-red-600" },
+      2: { text: "Fair", emoji: "😕", color: "text-orange-600" },
+      3: { text: "Good", emoji: "😊", color: "text-yellow-600" },
+      4: { text: "Very Good", emoji: "😄", color: "text-lime-600" },
+      5: { text: "Excellent", emoji: "🤩", color: "text-green-600" },
+    };
+
+    if (currentRating === 0) {
+      return {
+        text: "Select a rating",
+        emoji: "⭐",
+        color: "text-gray-600",
+      };
     }
+
+    return ratingTexts[currentRating];
   };
 
+  // ✅ Success State
   if (isSubmitted) {
     return (
-      <div className="bg-green-50 border border-green-200 rounded-xl p-6 text-center">
-        <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+      <div className="bg-gradient-to-br from-green-50 to-emerald-50 border-2 border-green-200 rounded-2xl p-8 text-center shadow-xl animate-fade-in">
+        <div className="relative w-20 h-20 bg-gradient-to-br from-green-400 to-emerald-500 rounded-full flex items-center justify-center mx-auto mb-4 shadow-lg animate-bounce-in">
           <svg
-            className="w-8 h-8 text-green-600"
+            className="w-10 h-10 text-white"
             fill="none"
             stroke="currentColor"
             viewBox="0 0 24 24"
@@ -127,33 +147,54 @@ const RateVendor = ({ vendorId, vendorName, onSubmit }) => {
             <path
               strokeLinecap="round"
               strokeLinejoin="round"
-              strokeWidth={2}
+              strokeWidth={3}
               d="M5 13l4 4L19 7"
             />
           </svg>
+          <div className="absolute -top-1 -right-1">
+            <span className="text-2xl animate-ping-slow">🎉</span>
+          </div>
         </div>
-        <h3 className="text-lg font-semibold text-green-800 mb-2">
-          Thank You!
-        </h3>
-        <p className="text-green-600">
-          Your rating has been submitted successfully.
+        <h3 className="text-2xl font-bold text-green-800 mb-2">Thank You!</h3>
+        <p className="text-green-700 font-medium mb-1">
+          Your review has been submitted successfully.
+        </p>
+        <p className="text-sm text-green-600">
+          It will be visible after moderation approval.
         </p>
       </div>
     );
   }
 
+  const ratingInfo = getRatingText();
+
   return (
-    <div className="rate-vendor-component">
-      <form onSubmit={handleSubmit} className="space-y-4">
+    <div className="rate-vendor-component bg-gradient-to-br from-white to-gray-50 rounded-2xl shadow-2xl border border-gray-200 p-8">
+      {/* Header */}
+      <div className="text-center mb-6">
+        <h2 className="text-2xl font-bold text-gray-800 mb-2">
+          Rate {vendorName || "this vendor"}
+        </h2>
+        <p className="text-sm text-gray-600">
+          Share your experience to help others make better decisions
+        </p>
+      </div>
+
+      <form onSubmit={handleSubmit} className="space-y-6">
         {/* Star Rating */}
-        <div className="text-center">
-          <div className="flex justify-center space-x-1 mb-2">
+        <div className="text-center bg-white rounded-xl p-6 shadow-md border border-gray-100">
+          <div className="flex justify-center space-x-2 mb-4">
             {renderStars()}
           </div>
-          <p className="text-sm font-medium text-gray-700">{getRatingText()}</p>
+          <div className="flex items-center justify-center space-x-2">
+            <span className="text-3xl">{ratingInfo.emoji}</span>
+            <p className={`text-xl font-bold ${ratingInfo.color}`}>
+              {ratingInfo.text}
+            </p>
+          </div>
           {rating > 0 && (
-            <p className="text-xs text-gray-500 mt-1">
-              Selected: {rating} star{rating !== 1 ? "s" : ""}
+            <p className="text-sm text-gray-500 mt-2">
+              {rating} out of 5 stars
             </p>
           )}
         </div>
@@ -162,36 +203,66 @@ const RateVendor = ({ vendorId, vendorName, onSubmit }) => {
         <div>
           <label
             htmlFor="review"
-            className="block text-sm font-medium text-gray-700 mb-2"
+            className="block text-sm font-semibold text-gray-700 mb-2"
           >
-            Your Review (Optional)
+            Your Review
+            <span className="text-gray-400 font-normal ml-2">(Optional)</span>
           </label>
-          <textarea
-            id="review"
-            value={reviewText}
-            onChange={(e) => setReviewText(e.target.value)}
-            placeholder="Share your experience with this vendor..."
-            rows={4}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 resize-none"
-            maxLength={500}
-          />
-          <div className="flex justify-between text-xs text-gray-500 mt-1">
-            <span>Optional</span>
-            <span>{reviewText.length}/500</span>
+          <div className="relative">
+            <textarea
+              id="review"
+              value={reviewText}
+              onChange={(e) => setReviewText(e.target.value)}
+              placeholder="Tell us about your experience with this vendor... What did you like? What could be improved?"
+              rows={5}
+              className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 resize-none shadow-sm hover:border-gray-300"
+              maxLength={500}
+              disabled={isSubmitting}
+            />
+            <div className="absolute bottom-3 right-3 text-xs text-gray-400 bg-white px-2 py-1 rounded">
+              {reviewText.length}/500
+            </div>
           </div>
         </div>
+
+        {/* ✅ Error Message */}
+        {hasError && (
+          <div className="bg-red-50 border-l-4 border-red-500 rounded-lg p-4 animate-shake">
+            <div className="flex items-start">
+              <svg
+                className="w-5 h-5 text-red-500 mt-0.5 mr-3 flex-shrink-0"
+                fill="currentColor"
+                viewBox="0 0 20 20"
+              >
+                <path
+                  fillRule="evenodd"
+                  d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
+                  clipRule="evenodd"
+                />
+              </svg>
+              <div>
+                <p className="text-sm font-medium text-red-800">
+                  {error || "Failed to submit review"}
+                </p>
+                <p className="text-xs text-red-600 mt-1">
+                  Please try again or contact support if the issue persists.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Submit Button */}
         <button
           type="submit"
           disabled={isSubmitting || rating === 0}
           className={`
-            w-full py-3 px-4 rounded-xl font-semibold text-white transition-all duration-200
+            w-full py-4 px-6 rounded-xl font-bold text-white transition-all duration-300
             focus:outline-none focus:ring-4 focus:ring-blue-300
             ${
               isSubmitting || rating === 0
-                ? "bg-gray-400 cursor-not-allowed"
-                : "bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 shadow-lg hover:shadow-xl transform hover:scale-[1.02]"
+                ? "bg-gray-400 cursor-not-allowed opacity-60"
+                : "bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-700 hover:via-indigo-700 hover:to-purple-700 shadow-lg hover:shadow-2xl transform hover:scale-[1.02] active:scale-[0.98]"
             }
           `}
         >
@@ -217,25 +288,49 @@ const RateVendor = ({ vendorId, vendorName, onSubmit }) => {
                   d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
                 ></path>
               </svg>
-              Submitting...
+              Submitting Your Review...
             </div>
           ) : (
-            "Submit Rating"
+            <div className="flex items-center justify-center space-x-2">
+              <span>Submit Review</span>
+              <svg
+                className="w-5 h-5"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M14 5l7 7m0 0l-7 7m7-7H3"
+                />
+              </svg>
+            </div>
           )}
         </button>
 
-        {/* Error Message (if using Redux) */}
-        {/* {error && (
-          <div className="bg-red-50 border border-red-200 rounded-lg p-3">
-            <p className="text-red-700 text-sm">{error}</p>
-          </div>
-        )} */}
-
         {/* Privacy Note */}
-        <p className="text-xs text-gray-500 text-center">
-          Your rating and review will be visible to other users and help improve
-          our community.
-        </p>
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+          <div className="flex items-start">
+            <svg
+              className="w-5 h-5 text-blue-600 mt-0.5 mr-2 flex-shrink-0"
+              fill="currentColor"
+              viewBox="0 0 20 20"
+            >
+              <path
+                fillRule="evenodd"
+                d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z"
+                clipRule="evenodd"
+              />
+            </svg>
+            <p className="text-xs text-blue-700 leading-relaxed">
+              Your review will be moderated before being published. We verify
+              all reviews to maintain quality and authenticity. Reviews help
+              other users make informed decisions.
+            </p>
+          </div>
+        </div>
       </form>
     </div>
   );

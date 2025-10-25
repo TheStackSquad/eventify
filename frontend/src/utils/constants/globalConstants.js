@@ -1,4 +1,4 @@
-//frontend/src/utils/constants/globalConstants.js
+// frontend/src/utils/constants/globalConstants.js
 
 // ========== REDUX ACTION TYPES ==========
 export const REDUX_ACTION_TYPES = {
@@ -10,24 +10,30 @@ export const REDUX_ACTION_TYPES = {
   UPDATE_EVENT: "events/updateEvent",
   DELETE_EVENT: "events/deleteEvent",
   PUBLISH_EVENT: "events/publishEvent",
-  // VENDOR ACTIONS (New)
+
+  // VENDOR ACTIONS
   FETCH_VENDORS: "vendors/fetchVendors",
   GET_VENDOR_PROFILE: "vendors/getVendorProfile",
   REGISTER_VENDOR: "vendors/registerVendor",
 
-  // INQUIRY ACTIONS (NEW)
-  CREATE_INQUIRY: "inquiry/createInquiry", // <-- NEW
-  GET_VENDOR_INQUIRIES: "inquiry/getVendorInquiries", // <-- NEW
-  UPDATE_INQUIRY_STATUS: "inquiry/updateInquiryStatus", // <-- NEW
+  // INQUIRY ACTIONS
+  CREATE_INQUIRY: "inquiry/createInquiry",
+  GET_VENDOR_INQUIRIES: "inquiry/getVendorInquiries",
+  UPDATE_INQUIRY_STATUS: "inquiry/updateInquiryStatus",
   RESET_CREATE_INQUIRY_STATUS: "inquiry/resetCreateInquiryStatus",
-  SUBMIT_RATING: "inquiry/submitRating",
-  RESET_RATING_STATUS: "inquiry/resetRatingStatus",
 
-  // ADMIN VENDOR ACTIONS (New)
+  // ✅ REVIEW ACTIONS (NEW)
+  CREATE_REVIEW: "reviews/createReview",
+  GET_VENDOR_REVIEWS: "reviews/getVendorReviews",
+  UPDATE_REVIEW_STATUS: "reviews/updateReviewStatus",
+  RESET_CREATE_REVIEW_STATUS: "reviews/resetCreateReviewStatus",
+
+  // ADMIN VENDOR ACTIONS
   TOGGLE_IDENTITY_VERIFICATION: "admin/toggleIdentityVerification",
   TOGGLE_BUSINESS_VERIFICATION: "admin/toggleBusinessVerification",
   DELETE_VENDOR: "admin/deleteVendor",
 };
+
 
 // ========== API ENDPOINTS ==========
 export const API_ENDPOINTS = {
@@ -50,15 +56,24 @@ export const API_ENDPOINTS = {
     UPDATE: "/api/v1/vendors/:id",
   },
   INQUIRIES: {
-    // <-- NEW
     BASE: "/api/v1/vendors/:vendor_id/inquiries",
-    CREATE: "/api/v1/vendors/:vendor_id/inquiries",
-    GET_VENDOR: "/api/v1/vendors/:vendor_id/inquiries",
+    CREATE: "/api/v1/inquiries/vendor/:vendor_id",
+    GET_VENDOR: "/api/v1/inquiries/vendor/:vendor_id",
+  },
+  // ✅ REVIEWS ENDPOINTS (NEW)
+  REVIEWS: {
+    BASE: "/api/vendors/:vendor_id/reviews",
+    CREATE: "/api/vendors/:vendor_id/reviews",
+    GET_VENDOR: "/api/vendors/:vendor_id/reviews",
   },
   ADMIN_INQUIRIES: {
-    // <-- NEW ADMIN ENDPOINT
     BASE: "/api/v1/admin/inquiries",
     UPDATE_STATUS: "/api/v1/admin/inquiries/:id",
+  },
+  // ✅ ADMIN REVIEWS ENDPOINTS (NEW)
+  ADMIN_REVIEWS: {
+    BASE: "/api/v1/admin/reviews",
+    UPDATE_STATUS: "/api/v1/admin/reviews/:id/status",
   },
   ADMIN_VENDORS: {
     BASE: "/api/v1/admin/vendors",

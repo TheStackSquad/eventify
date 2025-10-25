@@ -12,29 +12,54 @@ const inquirySlice = createSlice({
       data: null,
       error: null,
     },
-    // Add rating state if you want to handle ratings here too
-    rating: {
+    vendorInquiries: {
+      status: STATUS.IDLE,
+      data: [],
+      error: null,
+    },
+    updateInquiry: {
+      status: STATUS.IDLE,
+      data: null,
+      error: null,
+    },
+    deleteInquiry: {
       status: STATUS.IDLE,
       data: null,
       error: null,
     },
   },
   reducers: {
-    // You can also define the reset action here as a reducer
     resetCreateInquiryStatus: (state) => {
       state.createInquiry.status = STATUS.IDLE;
       state.createInquiry.data = null;
       state.createInquiry.error = null;
     },
-    resetRatingStatus: (state) => {
-      state.rating.status = STATUS.IDLE;
-      state.rating.data = null;
-      state.rating.error = null;
+    resetVendorInquiriesStatus: (state) => {
+      state.vendorInquiries.status = STATUS.IDLE;
+      state.vendorInquiries.data = [];
+      state.vendorInquiries.error = null;
+    },
+    resetUpdateInquiryStatus: (state) => {
+      state.updateInquiry.status = STATUS.IDLE;
+      state.updateInquiry.data = null;
+      state.updateInquiry.error = null;
+    },
+    resetDeleteInquiryStatus: (state) => {
+      state.deleteInquiry.status = STATUS.IDLE;
+      state.deleteInquiry.data = null;
+      state.deleteInquiry.error = null;
+    },
+    // For pre-filling forms when updating
+    setInquiryFormData: (state, action) => {
+      state.formData = action.payload;
+    },
+    clearInquiryFormData: (state) => {
+      state.formData = null;
     },
   },
   extraReducers: (builder) => {
     builder
-      // Create Inquiry cases
+      // Create Inquiry
       .addCase(createInquiry.pending, (state) => {
         state.createInquiry.status = STATUS.LOADING;
         state.createInquiry.error = null;
@@ -52,8 +77,13 @@ const inquirySlice = createSlice({
   },
 });
 
-// Export the actions from the slice
-export const { resetCreateInquiryStatus, resetRatingStatus } =
-  inquirySlice.actions;
+export const {
+  resetCreateInquiryStatus,
+  resetVendorInquiriesStatus,
+  resetUpdateInquiryStatus,
+  resetDeleteInquiryStatus,
+  setInquiryFormData,
+  clearInquiryFormData,
+} = inquirySlice.actions;
 
 export default inquirySlice.reducer;
