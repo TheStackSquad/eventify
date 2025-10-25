@@ -1,16 +1,19 @@
 // frontend/src/redux/selectors/vendorSelectors.js
+
+// Import createSelector only for actual derived calculations
 import { createSelector } from "@reduxjs/toolkit";
 
 // ============================================
-// BASIC SELECTORS - Direct state access
+// BASIC SELECTORS - Direct state access (NO createSelector needed)
 // ============================================
 
 export const selectVendorsState = (state) => state.vendors;
 
-// ✅ SIMPLIFIED: Direct array access
+// 🟢 FIX 1: SIMPLIFIED - Use simple function instead of createSelector wrapper
+// Note: This matches the array selected by the component (selectPaginatedVendors)
 export const selectAllVendors = (state) => selectVendorsState(state).vendors;
 
-// ✅ NEW: Separate status selectors for each operation
+// Status Selectors
 export const selectFetchStatus = (state) =>
   selectVendorsState(state).fetchStatus;
 export const selectProfileStatus = (state) =>
@@ -18,32 +21,36 @@ export const selectProfileStatus = (state) =>
 export const selectRegisterStatus = (state) =>
   selectVendorsState(state).registerStatus;
 
-// ✅ NEW: Separate error selectors
+// Error Selectors
 export const selectFetchError = (state) => selectVendorsState(state).fetchError;
 export const selectProfileError = (state) =>
   selectVendorsState(state).profileError;
 export const selectRegisterError = (state) =>
   selectVendorsState(state).registerError;
 
-// ✅ KEEP: Common selectors
+// Common Selectors
 export const selectVendorFilters = (state) => selectVendorsState(state).filters;
 export const selectPagination = (state) => selectVendorsState(state).pagination;
 export const selectSelectedVendor = (state) =>
   selectVendorsState(state).selectedVendor;
 
+// 🟢 FIX 2: SIMPLIFIED - Count from pagination metadata (Direct access is fine)
+// Replaced createSelector( [selectPagination], (p) => p.totalCount || 0 )
+export const selectTotalVendorsCount = (state) =>
+  selectPagination(state).totalCount || 0;
+
 // ============================================
 // BACKWARD COMPATIBILITY (for existing code)
 // ============================================
 
-// ✅ Map old selector names to new ones
-export const selectVendorsStatus = selectFetchStatus; // Most code uses this for fetch status
+export const selectVendorsStatus = selectFetchStatus;
 export const selectVendorsError = selectFetchError;
 
 // ============================================
-// MEMOIZED SELECTORS - Computed values
+// MEMOIZED SELECTORS - Computed values (createSelector is correct here)
 // ============================================
 
-// ✅ SIMPLIFIED: Find vendor by ID from flat array
+// ✅ CORRECT: Transformation logic (find) requires memoization
 export const selectVendorById = createSelector(
   [selectAllVendors, (state, vendorId) => vendorId],
   (vendors, vendorId) => {
@@ -52,36 +59,27 @@ export const selectVendorById = createSelector(
   }
 );
 
-// ✅ SIMPLIFIED: Just return the array (pagination done by backend)
-export const selectPaginatedVendors = createSelector(
-  [selectAllVendors],
-  (vendors) => vendors
-);
+// 🟢 FIX 3: REMOVED redundant createSelector. Map to the simple extractor.
+// The component was likely calling useSelector(selectPaginatedVendors)
+export const selectPaginatedVendors = selectAllVendors;
 
-// ✅ SIMPLIFIED: Count from pagination metadata
-export const selectTotalVendorsCount = createSelector(
-  [selectPagination],
-  (pagination) => pagination.totalCount || 0
-);
-
-// ✅ SIMPLIFIED: Check if more pages available
+// ✅ CORRECT: Calculation requires memoization
 export const selectHasMoreVendors = createSelector(
   [selectPagination, selectAllVendors],
   (pagination, vendors) => {
     const { currentPage, pageSize, totalCount } = pagination;
 
-    // If backend provides totalCount, use it
+    // Use totalCount if available
     if (totalCount > 0) {
       return currentPage * pageSize < totalCount;
     }
 
-    // Fallback: assume more if we got a full page
+    // Fallback: Check if we received a full page (assuming pagination limit applies)
     return vendors.length === pageSize;
   }
 );
 
-// ✅ OPTIONAL: Client-side filtering (if needed)
-// Note: Ideally filtering should be done by backend
+// ✅ CORRECT: Transformation logic (filtering) requires memoization
 export const selectFilteredVendors = createSelector(
   [selectAllVendors, selectVendorFilters],
   (vendors, filters) => {
@@ -99,7 +97,7 @@ export const selectFilteredVendors = createSelector(
       );
     }
 
-    // Apply category filter (if not already filtered by backend)
+    // Apply category filter
     if (filters.category) {
       filtered = filtered.filter(
         (vendor) => vendor.category === filters.category
@@ -123,22 +121,22 @@ export const selectFilteredVendors = createSelector(
 );
 
 // ============================================
-// LOADING STATE HELPERS
+// LOADING STATE HELPERS (createSelector is correct here as they derive a boolean)
 // ============================================
 
-// ✅ NEW: Check if any fetch operation is loading
+// ✅ CORRECT: Calculation requires memoization
 export const selectIsFetchLoading = createSelector(
   [selectFetchStatus],
   (status) => status === "loading"
 );
 
-// ✅ NEW: Check if profile is loading
+// ✅ CORRECT: Calculation requires memoization
 export const selectIsProfileLoading = createSelector(
   [selectProfileStatus],
   (status) => status === "loading"
 );
 
-// ✅ NEW: Check if any operation failed
+// ✅ CORRECT: Calculation requires memoization
 export const selectHasFetchError = createSelector(
   [selectFetchError],
   (error) => error !== null

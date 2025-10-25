@@ -1,68 +1,105 @@
 // frontend/src/app/vendor/[id]/page.js
 
-
 "use client";
 
 import React, { useEffect } from "react";
 import { useDispatch, useSelector } from "react-redux";
-import { clearSelectedVendor } from "@/redux/reducer/vendorReducer";
+import {
+  clearSelectedVendor,
+  clearProfileError,
+} from "@/redux/reducer/vendorReducer";
+import { getVendorProfile } from "@/redux/action/vendorAction";
 import { parseSlugToId } from "@/utils/helper/vendorSlugHelper";
-
+import { STATUS } from "@/utils/constants/globalConstants";
 import {
   selectVendorById,
   selectSelectedVendor,
+  selectProfileStatus,
+  selectProfileError,
 } from "@/redux/selectors/vendorSelectors";
-
-// Import the components
 import ContactVendorButton from "@/components/common/contactVendorButton";
 import RateVendor from "@/components/common/rateVendor";
 import VendorProfileDetail from "@/components/vendorUI/vendorProfileDetail";
-
-// Import inquiry actions (assuming you'll handle both contact and rating here)
-// import { submitInquiry, submitRating } from "@/redux/action/inquiryAction";
+import LoadingSpinner from "@/components/common/loading/loadingSpinner";
 
 const VendorProfilePage = ({ params }) => {
   const dispatch = useDispatch();
 
-  // Keep selectedVendorFromStore for potential direct navigation/selection
-  const selectedVendorFromStore = useSelector(selectSelectedVendor);
-
-  // FIX: Unwrap params using React.use()
+  // --- URL PARAMETER & ID ---
   const unwrappedParams = React.use(params);
   const slug = unwrappedParams?.id;
   const vendorId = parseSlugToId(slug);
 
-  // Get vendor data from store (cache-first approach) - This is the primary source now
+  // --- REDUX STATE SELECTION ---
+  const selectedVendorFromStore = useSelector(selectSelectedVendor);
   const cachedVendor = useSelector((state) =>
     selectVendorById(state, vendorId)
   );
-
-  console.log("🔍 Page State:", {
-    vendorId,
-    slug,
-    hasCachedData: !!cachedVendor,
-    hasSelectedVendor: !!selectedVendorFromStore,
-    cachedVendorName: cachedVendor?.name,
-    selectedVendorName: selectedVendorFromStore?.name,
-  });
+  const profileStatus = useSelector(selectProfileStatus);
+  const profileError = useSelector(selectProfileError);
 
   const vendorToDisplay = selectedVendorFromStore || cachedVendor;
 
+  // --- SIDE EFFECTS ---
+  // 1. Initial Data Fetch Logic
   useEffect(() => {
+    // Only proceed if we have a valid ID
+    if (!vendorId) return;
+
+    // Check if we should initiate a fetch:
+    // A) If we have NO data yet AND we're not currently loading/succeeded
+    // B) If we have an error and need a new attempt
+    const shouldFetch =
+      !vendorToDisplay &&
+      (profileStatus === STATUS.IDLE || profileStatus === STATUS.FAILED);
+
+    if (shouldFetch) {
+      console.log("🚀 TRIGGER FETCH: Initial load or failed retry.");
+      dispatch(getVendorProfile(vendorId));
+    } else if (vendorToDisplay && profileStatus === STATUS.IDLE) {
+      // If we have data from cache/list but never explicitly fetched the profile, fetch it for freshness
+      console.log("🚀 TRIGGER FETCH: Background refresh for cache.");
+      dispatch(getVendorProfile(vendorId));
+    }
+
+    // Cleanup: clear selected vendor and error when unmounting
     return () => {
       console.log("🧹 Cleaning up vendor profile page");
       dispatch(clearSelectedVendor());
+      dispatch(clearProfileError());
     };
-  }, [dispatch]);
+  }, [dispatch, vendorId, profileStatus, vendorToDisplay]);
 
-  // Handle rating submission
+  // --- HANDLERS ---
+  // 🟢 THE FIX: Targeted Redux Retry Handler
+  const handleRetryFetch = () => {
+    console.log("🔄 Targeted Retry Fetch initiated.");
+    // 1. Clear the previous error state immediately
+    dispatch(clearProfileError());
+    // 2. Dispatch the fetch action again
+    dispatch(getVendorProfile(vendorId));
+  };
+
+  // Handle rating submission (existing logic)
   const handleRatingSubmit = (rating, reviewText) => {
     console.log("Submitting rating for vendor:", vendorId, rating, reviewText);
-    // Dispatch your rating action here
     // dispatch(submitRating({ vendorId, rating, review: reviewText }));
   };
 
-  // === RENDER LOGIC ===
+  // --- RENDER LOGIC ---
+  const isLoading = profileStatus === STATUS.LOADING && !vendorToDisplay;
+  const hasError = profileStatus === STATUS.FAILED && !vendorToDisplay;
+
+  // 0. Loading State (Must come before Not Found/Error state)
+  if (isLoading) {
+    return (
+      <LoadingSpinner
+        fullScreen={true}
+        message="Loading vendor profile..."
+        subMessage="Retrieving latest details."
+      />
+    );
+  }
 
   // 1. Invalid URL State
   if (!vendorId) {
@@ -110,8 +147,9 @@ const VendorProfilePage = ({ params }) => {
     );
   }
 
-  // 2. Not Found State (No data in Redux store)
-  if (!vendorToDisplay) {
+  // 2. Not Found/Error State
+  if (!vendorToDisplay || hasError) {
+    const isNotFoundError = profileError?.status === "NOT_FOUND";
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 via-red-50 to-pink-50 flex items-center justify-center p-6">
         <div className="bg-white rounded-2xl shadow-2xl p-10 max-w-lg w-full">
@@ -132,14 +170,15 @@ const VendorProfilePage = ({ params }) => {
               </svg>
             </div>
             <h1 className="text-4xl font-bold bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent mb-4">
-              Vendor Not Found
+              {isNotFoundError
+                ? "Vendor Not Found (404)"
+                : "Vendor Profile Unavailable"}
             </h1>
             <p className="text-gray-600 text-lg leading-relaxed">
-              The profile you are looking for is not loaded in the application.
-              It might not exist or the page was navigated to directly.
+              {profileError?.message ||
+                "We could not load the vendor profile. Please try refreshing the data."}
             </p>
           </div>
-
           <div className="bg-gradient-to-br from-gray-50 to-gray-100 rounded-xl p-6 mb-8 space-y-3 border border-gray-200">
             <div className="flex justify-between items-center py-2 border-b border-gray-200">
               <span className="font-semibold text-gray-700">Vendor ID:</span>
@@ -152,7 +191,6 @@ const VendorProfilePage = ({ params }) => {
               </span>
             </div>
           </div>
-
           <div className="flex gap-4">
             <button
               onClick={() => window.history.back()}
@@ -160,11 +198,12 @@ const VendorProfilePage = ({ params }) => {
             >
               Go Back
             </button>
+            {/* 🎯 THE NEW LOGIC 🎯 */}
             <button
-              onClick={() => window.location.reload()}
+              onClick={handleRetryFetch}
               className="flex-1 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold py-3 px-6 rounded-xl transition-all duration-200 transform hover:scale-105 shadow-lg"
             >
-              Try Reloading
+              Try Refreshing Data
             </button>
           </div>
         </div>
