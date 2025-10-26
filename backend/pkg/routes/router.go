@@ -51,6 +51,11 @@ func ConfigureRouter(
 		auth.POST("/login", authHandler.Login)
 		auth.POST("/refresh", authHandler.RefreshToken)
 		auth.POST("/logout", authHandler.Logout)
+
+	// 🆕 PASSWORD RESET ROUTES
+		auth.POST("/forgot-password", authHandler.ForgotPassword)
+		auth.GET("/verify-reset-token", authHandler.VerifyResetToken)
+		auth.POST("/reset-password", authHandler.ResetPassword)
 	}
 
 	log.Info().Msg("🚀 Registering vendor routes...")
