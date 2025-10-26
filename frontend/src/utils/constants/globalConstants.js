@@ -2,6 +2,11 @@
 
 // ========== REDUX ACTION TYPES ==========
 export const REDUX_ACTION_TYPES = {
+  SIGNUP: "auth/signupUser",
+  SIGNIN: "auth/signinUser",
+  RESTORE_SESSION: "auth/restoreSession",
+  LOGOUT: "auth/logoutUser",
+
   CREATE_EVENT: "events/createEvent",
   GET_EVENT_BY_ID: "events/getEventById",
   FETCH_USER_EVENTS: "events/fetchUserEvents",
@@ -37,6 +42,14 @@ export const REDUX_ACTION_TYPES = {
 
 // ========== API ENDPOINTS ==========
 export const API_ENDPOINTS = {
+  AUTH: {
+    BASE: "/auth",
+    SIGNUP: "/auth/signup", // Used by signupUser thunk
+    SIGNIN: "/auth/login", // Used by signinUser thunk
+    ME: "/auth/me", // Used by restoreSession thunk
+    LOGOUT: "/auth/logout", // Used by logoutUser thunk
+  },
+  
   EVENTS: {
     BASE: "/events",
     CREATE: "/create-events",

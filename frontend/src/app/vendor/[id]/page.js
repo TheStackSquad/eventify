@@ -2,7 +2,7 @@
 
 "use client";
 
-import React, { useEffect } from "react";
+import React, { useEffect, useRef, useCallback } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import {
   clearSelectedVendor,
@@ -24,6 +24,8 @@ import LoadingSpinner from "@/components/common/loading/loadingSpinner";
 
 const VendorProfilePage = ({ params }) => {
   const dispatch = useDispatch();
+  const hasFetchedRef = useRef(false);
+  const vendorIdRef = useRef(null);
 
   // --- URL PARAMETER & ID ---
   const unwrappedParams = React.use(params);
@@ -38,60 +40,88 @@ const VendorProfilePage = ({ params }) => {
   const profileStatus = useSelector(selectProfileStatus);
   const profileError = useSelector(selectProfileError);
 
+  // Priority: selectedVendor > cachedVendor
   const vendorToDisplay = selectedVendorFromStore || cachedVendor;
 
-  // --- SIDE EFFECTS ---
-  // 1. Initial Data Fetch Logic
-  useEffect(() => {
-    // Only proceed if we have a valid ID
-    if (!vendorId) return;
-
-    // Check if we should initiate a fetch:
-    // A) If we have NO data yet AND we're not currently loading/succeeded
-    // B) If we have an error and need a new attempt
-    const shouldFetch =
-      !vendorToDisplay &&
-      (profileStatus === STATUS.IDLE || profileStatus === STATUS.FAILED);
-
-    if (shouldFetch) {
-      console.log("🚀 TRIGGER FETCH: Initial load or failed retry.");
-      dispatch(getVendorProfile(vendorId));
-    } else if (vendorToDisplay && profileStatus === STATUS.IDLE) {
-      // If we have data from cache/list but never explicitly fetched the profile, fetch it for freshness
-      console.log("🚀 TRIGGER FETCH: Background refresh for cache.");
-      dispatch(getVendorProfile(vendorId));
+  // --- MEMOIZED FETCH FUNCTION ---
+  const fetchVendorProfile = useCallback(() => {
+    if (!vendorId) {
+      console.warn("⚠️ No valid vendor ID from slug");
+      return;
     }
 
-    // Cleanup: clear selected vendor and error when unmounting
+    // Prevent duplicate fetches for the same vendor
+    if (hasFetchedRef.current && vendorIdRef.current === vendorId) {
+      console.log("✋ Fetch already initiated for this vendor");
+      return;
+    }
+
+    // SINGLE CONDITION: Fetch if we don't have data OR if we have a failed status
+    const needsFetch =
+      !vendorToDisplay ||
+      profileStatus === STATUS.IDLE ||
+      profileStatus === STATUS.FAILED;
+
+    if (needsFetch) {
+      console.log("🚀 Initiating vendor profile fetch:", vendorId);
+      hasFetchedRef.current = true;
+      vendorIdRef.current = vendorId;
+      dispatch(getVendorProfile(vendorId));
+    } else {
+      console.log("✅ Vendor data already available, skipping fetch");
+    }
+  }, [vendorId, vendorToDisplay, profileStatus, dispatch]);
+
+  // --- CORE FETCH LOGIC ---
+  useEffect(() => {
+    // Reset fetch flag if vendorId changes
+    if (vendorIdRef.current !== vendorId) {
+      hasFetchedRef.current = false;
+      vendorIdRef.current = vendorId;
+    }
+
+    fetchVendorProfile();
+
+    // Cleanup
     return () => {
-      console.log("🧹 Cleaning up vendor profile page");
+      console.log("🧹 Unmounting vendor profile page");
+      hasFetchedRef.current = false;
+      vendorIdRef.current = null;
       dispatch(clearSelectedVendor());
       dispatch(clearProfileError());
     };
-  }, [dispatch, vendorId, profileStatus, vendorToDisplay]);
+  }, [vendorId, fetchVendorProfile, dispatch]);
 
-  // --- HANDLERS ---
-  // 🟢 THE FIX: Targeted Redux Retry Handler
-  const handleRetryFetch = () => {
-    console.log("🔄 Targeted Retry Fetch initiated.");
-    // 1. Clear the previous error state immediately
+  // --- MANUAL RETRY HANDLER ---
+  const handleRetryFetch = useCallback(() => {
+    console.log("🔄 Manual retry initiated");
+    // Reset the fetch guard
+    hasFetchedRef.current = false;
+    vendorIdRef.current = null;
+    // Clear error state
     dispatch(clearProfileError());
-    // 2. Dispatch the fetch action again
+    // Trigger new fetch
     dispatch(getVendorProfile(vendorId));
-  };
+    // Set guard again
+    hasFetchedRef.current = true;
+    vendorIdRef.current = vendorId;
+  }, [dispatch, vendorId]);
 
-  // Handle rating submission (existing logic)
-  const handleRatingSubmit = (rating, reviewText) => {
-    console.log("Submitting rating for vendor:", vendorId, rating, reviewText);
-    // dispatch(submitRating({ vendorId, rating, review: reviewText }));
-  };
+  // --- RATING HANDLER ---
+  const handleRatingSubmit = useCallback(
+    (rating, reviewText) => {
+      console.log("⭐ Submitting rating:", { vendorId, rating, reviewText });
+      // dispatch(submitRating({ vendorId, rating, review: reviewText }));
+    },
+    [vendorId]
+  );
 
   // --- RENDER LOGIC ---
-  const isLoading = profileStatus === STATUS.LOADING && !vendorToDisplay;
-  const hasError = profileStatus === STATUS.FAILED && !vendorToDisplay;
+  const isLoading = profileStatus === STATUS.LOADING;
+  const hasError = profileStatus === STATUS.FAILED;
 
-  // 0. Loading State (Must come before Not Found/Error state)
-  if (isLoading) {
+  // 1. LOADING STATE
+  if (isLoading && !vendorToDisplay) {
     return (
       <LoadingSpinner
         fullScreen={true}
@@ -101,11 +131,11 @@ const VendorProfilePage = ({ params }) => {
     );
   }
 
-  // 1. Invalid URL State
+  // 2. INVALID URL STATE
   if (!vendorId) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 flex items-center justify-center p-6">
-        <div className="bg-white rounded-2xl shadow-2xl p-10 max-w-md w-full text-center transform hover:scale-105 transition-transform duration-300">
+        <div className="bg-white rounded-2xl shadow-2xl p-10 max-w-md w-full text-center">
           <div className="mb-6">
             <div className="w-20 h-20 bg-gradient-to-br from-red-500 to-pink-500 rounded-full flex items-center justify-center mx-auto shadow-lg">
               <svg
@@ -126,11 +156,10 @@ const VendorProfilePage = ({ params }) => {
           <h1 className="text-3xl font-bold bg-gradient-to-r from-gray-800 to-gray-600 bg-clip-text text-transparent mb-3">
             Invalid Vendor URL
           </h1>
-          <p className="text-gray-600 mb-6 leading-relaxed">
-            The vendor link appears to be broken or invalid. Please check the
-            URL and try again.
+          <p className="text-gray-600 mb-6">
+            The vendor link appears to be broken. Please check the URL.
           </p>
-          <div className="bg-gradient-to-r from-gray-50 to-gray-100 rounded-xl p-4 mb-6 text-left border border-gray-200">
+          <div className="bg-gray-50 rounded-xl p-4 mb-6 text-left border border-gray-200">
             <p className="text-sm text-gray-600 font-mono break-all">
               <span className="font-semibold text-gray-800">Slug:</span> &quot;
               {slug || "none"}&quot;
@@ -138,7 +167,7 @@ const VendorProfilePage = ({ params }) => {
           </div>
           <button
             onClick={() => window.history.back()}
-            className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold py-3 px-6 rounded-xl transition-all duration-200 transform hover:scale-105 shadow-lg hover:shadow-xl"
+            className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold py-3 px-6 rounded-xl transition-all duration-200 shadow-lg"
           >
             Go Back
           </button>
@@ -147,8 +176,8 @@ const VendorProfilePage = ({ params }) => {
     );
   }
 
-  // 2. Not Found/Error State
-  if (!vendorToDisplay || hasError) {
+  // 3. ERROR STATE (NO DATA AVAILABLE)
+  if (hasError && !vendorToDisplay) {
     const isNotFoundError = profileError?.status === "NOT_FOUND";
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 via-red-50 to-pink-50 flex items-center justify-center p-6">
@@ -170,23 +199,23 @@ const VendorProfilePage = ({ params }) => {
               </svg>
             </div>
             <h1 className="text-4xl font-bold bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent mb-4">
-              {isNotFoundError
-                ? "Vendor Not Found (404)"
-                : "Vendor Profile Unavailable"}
+              {isNotFoundError ? "Vendor Not Found" : "Profile Unavailable"}
             </h1>
-            <p className="text-gray-600 text-lg leading-relaxed">
+            <p className="text-gray-600 text-lg">
               {profileError?.message ||
-                "We could not load the vendor profile. Please try refreshing the data."}
+                "We couldn't load this vendor profile. Please try again."}
             </p>
           </div>
-          <div className="bg-gradient-to-br from-gray-50 to-gray-100 rounded-xl p-6 mb-8 space-y-3 border border-gray-200">
+          <div className="bg-gray-50 rounded-xl p-6 mb-8 space-y-3 border border-gray-200">
             <div className="flex justify-between items-center py-2 border-b border-gray-200">
               <span className="font-semibold text-gray-700">Vendor ID:</span>
-              <span className="text-gray-900 font-mono">{vendorId}</span>
+              <span className="text-gray-900 font-mono text-sm">
+                {vendorId}
+              </span>
             </div>
             <div className="flex justify-between items-center py-2">
               <span className="font-semibold text-gray-700">Slug:</span>
-              <span className="text-gray-900 font-mono text-sm break-all">
+              <span className="text-gray-900 font-mono text-xs break-all">
                 {slug}
               </span>
             </div>
@@ -194,16 +223,16 @@ const VendorProfilePage = ({ params }) => {
           <div className="flex gap-4">
             <button
               onClick={() => window.history.back()}
-              className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold py-3 px-6 rounded-xl transition-all duration-200 transform hover:scale-105"
+              className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold py-3 px-6 rounded-xl transition-all duration-200"
             >
               Go Back
             </button>
-            {/* 🎯 THE NEW LOGIC 🎯 */}
             <button
               onClick={handleRetryFetch}
-              className="flex-1 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold py-3 px-6 rounded-xl transition-all duration-200 transform hover:scale-105 shadow-lg"
+              disabled={isLoading}
+              className="flex-1 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 disabled:from-gray-400 disabled:to-gray-500 text-white font-semibold py-3 px-6 rounded-xl transition-all duration-200 shadow-lg disabled:cursor-not-allowed"
             >
-              Try Refreshing Data
+              {isLoading ? "Retrying..." : "Retry"}
             </button>
           </div>
         </div>
@@ -211,27 +240,26 @@ const VendorProfilePage = ({ params }) => {
     );
   }
 
-  // 3. Success State: Display vendor profile
+  // 4. SUCCESS STATE - Display vendor
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
       <main className="max-w-7xl mx-auto py-8 px-4 md:py-12 md:px-8 lg:px-12">
-        {/* Desktop Layout Enhancement */}
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
-          {/* Main Content (Vendor Detail) - Takes 3/4 on large screens */}
+          {/* Main Content */}
           <div className="lg:col-span-3">
             <VendorProfileDetail vendor={vendorToDisplay} />
           </div>
 
-          {/* Sidebar (Contact Button & Rating) - Takes 1/4 on large screens */}
+          {/* Sidebar */}
           <aside className="lg:col-span-1 space-y-6">
-            {/* Contact Card */}
             <div className="sticky top-20 space-y-6">
+              {/* Contact Card */}
               <div className="bg-white p-6 rounded-2xl shadow-xl border border-gray-100">
                 <h3 className="text-xl font-bold text-gray-800 mb-4">
                   Ready to Book?
                 </h3>
                 <p className="text-gray-600 mb-6">
-                  Connect with <strong>{vendorToDisplay.name}</strong> now to
+                  Connect with <strong>{vendorToDisplay.name}</strong> to
                   discuss your event.
                 </p>
                 <ContactVendorButton
@@ -257,7 +285,6 @@ const VendorProfilePage = ({ params }) => {
             </div>
           </aside>
         </div>
-        {/* End Desktop Layout Enhancement */}
       </main>
     </div>
   );

@@ -137,7 +137,7 @@ const handleSubmit = (e) => {
               <div className="flex-1 flex items-center justify-center mb-6">
                 <div className="relative w-full max-w-sm">
                   <div className="absolute inset-0 bg-white bg-opacity-10 rounded-3xl blur-2xl"></div>
-                  <image
+                  <Image
                     src={vendorData?.image || "/img/vendor/vendorUI.webp"}
                     alt={vendorData?.name || "Vendor"}
                     className="relative w-full h-64 lg:h-80 object-cover rounded-2xl shadow-2xl border-4 border-white border-opacity-20"

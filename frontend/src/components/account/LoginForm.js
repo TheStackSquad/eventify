@@ -108,12 +108,12 @@ export default function LoginForm() {
             />
             <span>Remember me</span>
           </label>
-          <a
-            href="#"
+          <Link
+            href="/forgot-password"
             className="text-green-600 hover:text-green-700 font-medium font-body transition duration-150"
           >
-            Forgot Password
-          </a>
+            Forgot Password?
+          </Link>
         </div>
 
         {/* Login Button */}

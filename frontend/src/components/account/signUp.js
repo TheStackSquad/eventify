@@ -224,7 +224,7 @@ export default function SignUpForm() {
           <div className="text-center mt-6 font-body">
             Already have an account?
             <a
-              href="/account/login"
+              href="/account/auth/login"
               className="ml-1 text-green-600 hover:text-green-700 font-semibold transition"
             >
               Sign in here
