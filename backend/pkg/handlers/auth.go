@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"os"
 	"time"
+	"crypto/rand"
+	"encoding/hex"
 
 	"eventify/backend/pkg/models"
 	"eventify/backend/pkg/utils"
@@ -307,6 +309,187 @@ func (h *AuthHandler) GetCurrentUser(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"user": userProfile,
+	})
+}
+
+const ResetTokenExpiry = 15 * time.Minute // 15 minutes validity
+
+// generateResetToken creates a secure random token
+func generateResetToken() (string, error) {
+	bytes := make([]byte, 32)
+	if _, err := rand.Read(bytes); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(bytes), nil
+}
+
+// ForgotPassword handles password reset requests
+func (h *AuthHandler) ForgotPassword(c *gin.Context) {
+	var req models.ForgotPasswordRequest
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	
+	if err := c.ShouldBindJSON(&req); err != nil {
+		log.Error().Err(err).Msg("Invalid forgot password request body")
+		c.JSON(http.StatusBadRequest, gin.H{
+			"message": "Invalid email address.",
+		})
+		return
+	}
+	
+	// Check if user exists
+	user, err := h.AuthRepo.GetUserByEmail(ctx, req.Email)
+	if err != nil {
+		// SECURITY: Don't reveal if email exists or not
+		log.Warn().Str("email", req.Email).Msg("Password reset requested for non-existent email")
+		c.JSON(http.StatusOK, models.PasswordResetResponse{
+			Message: "If that email exists, a reset link has been sent.",
+		})
+		return
+	}
+	
+	// Generate reset token
+	token, err := generateResetToken()
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to generate reset token")
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"message": "Failed to process password reset request.",
+		})
+		return
+	}
+	
+	// Save token with expiry
+	expiry := time.Now().Add(ResetTokenExpiry)
+	err = h.AuthRepo.SavePasswordResetToken(ctx, req.Email, token, expiry)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to save reset token")
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"message": "Failed to process password reset request.",
+		})
+		return
+	}
+	
+	// TODO: Send email with reset link
+	// For now, we'll log it (REMOVE IN PRODUCTION!)
+	frontendURL := os.Getenv("FRONTEND_URL")
+	if frontendURL == "" {
+		frontendURL = "http://localhost:3000"
+	}
+	resetLink := frontendURL + "/reset-password/" + token
+	
+	log.Info().
+		Str("email", user.Email).
+		Str("reset_link", resetLink).
+		Msg("🔗 PASSWORD RESET LINK (Send via email in production)")
+	
+	// TODO: Implement email sending
+	// err = sendPasswordResetEmail(user.Email, user.Name, resetLink)
+	// if err != nil {
+	//     log.Error().Err(err).Msg("Failed to send reset email")
+	//     c.JSON(http.StatusInternalServerError, gin.H{
+	//         "message": "Failed to send reset email.",
+	//     })
+	//     return
+	// }
+	
+	c.JSON(http.StatusOK, models.PasswordResetResponse{
+		Message: "If that email exists, a reset link has been sent. Please check your inbox.",
+	})
+}
+
+// VerifyResetToken validates a reset token
+func (h *AuthHandler) VerifyResetToken(c *gin.Context) {
+	token := c.Query("token")
+	
+	if token == "" {
+		c.JSON(http.StatusBadRequest, models.PasswordResetResponse{
+			Message: "Reset token is required.",
+			Valid:   false,
+		})
+		return
+	}
+	
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	
+	// Check if token exists and is valid
+	_, err := h.AuthRepo.GetUserByResetToken(ctx, token)
+	if err != nil {
+		log.Warn().Str("token", token).Msg("Invalid or expired reset token")
+		c.JSON(http.StatusUnauthorized, models.PasswordResetResponse{
+			Message: "Invalid or expired reset token.",
+			Valid:   false,
+		})
+		return
+	}
+	
+	c.JSON(http.StatusOK, models.PasswordResetResponse{
+		Message: "Reset token is valid.",
+		Valid:   true,
+	})
+}
+
+// ResetPassword handles password reset with token
+func (h *AuthHandler) ResetPassword(c *gin.Context) {
+	var req models.ResetPasswordRequest
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	
+	if err := c.ShouldBindJSON(&req); err != nil {
+		log.Error().Err(err).Msg("Invalid reset password request body")
+		c.JSON(http.StatusBadRequest, gin.H{
+			"message": "Invalid request. Token and new password are required.",
+		})
+		return
+	}
+	
+	// Verify token and get user
+	user, err := h.AuthRepo.GetUserByResetToken(ctx, req.Token)
+	if err != nil {
+		log.Warn().Str("token", req.Token).Msg("Invalid or expired reset token")
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"message": "Invalid or expired reset token.",
+		})
+		return
+	}
+	
+	// Hash new password
+	hashedPassword, err := bcrypt.GenerateFromPassword(
+		[]byte(req.NewPassword), 
+		bcrypt.DefaultCost,
+	)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to hash new password")
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"message": "Failed to reset password.",
+		})
+		return
+	}
+	
+	// Update password
+	err = h.AuthRepo.UpdatePassword(ctx, user.ID, string(hashedPassword))
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to update password")
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"message": "Failed to reset password.",
+		})
+		return
+	}
+	
+	// Clear reset token
+	err = h.AuthRepo.ClearPasswordResetToken(ctx, user.ID)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to clear reset token")
+		// Don't fail the request, password was already changed
+	}
+	
+	log.Info().
+		Str("user_id", user.ID.Hex()).
+		Str("email", user.Email).
+		Msg("✅ Password reset successful")
+	
+	c.JSON(http.StatusOK, models.PasswordResetResponse{
+		Message: "Password reset successful! You can now log in with your new password.",
 	})
 }
 

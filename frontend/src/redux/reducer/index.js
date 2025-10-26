@@ -19,6 +19,7 @@ import ticketReducer from "./ticketReducer";
 import vendorReducer from "./vendorReducer";
 import inquiryReducer from "./inquiryReducer"; 
 import reviewsReducer from "./reviewReducer"; 
+import passwordResetReducer from "./passwordResetReducer";
 // update with likeReducer
 
 const persistConfig = {
@@ -34,6 +35,7 @@ const combinedReducer = combineReducers({
   vendors: vendorReducer,
   inquiry: inquiryReducer,
   reviews: reviewsReducer,
+  passwordReset: passwordResetReducer,
   // update with likeReducer
 });
 

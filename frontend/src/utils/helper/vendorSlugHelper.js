@@ -33,10 +33,6 @@ export const generateVendorSlug = (vendor) => {
   return slug;
 };
 
-/**
- * Parses slug back to vendor ID
- * Extracts the ID from the end of the slug
- */
 export const parseSlugToId = (slug) => {
   if (process.env.NODE_ENV === "development") {
     console.log("🔍 Parsing slug:", slug);
@@ -102,9 +98,7 @@ export const parseSlugToId = (slug) => {
   }
 };
 
-/**
- * Validates if a slug format is correct
- */
+
 export const isValidVendorSlug = (slug) => {
   const result = !!parseSlugToId(slug);
 

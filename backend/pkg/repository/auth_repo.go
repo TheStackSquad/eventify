@@ -22,14 +22,15 @@ type AuthRepository interface {
 	CreateUser(ctx context.Context, user *models.User) (primitive.ObjectID, error)
 	GetUserByEmail(ctx context.Context, email string) (*models.User, error)
 	GetUserByID(ctx context.Context, id string) (*models.User, error)
+	SavePasswordResetToken(ctx context.Context, email, token string, expiry time.Time) error
+	GetUserByResetToken(ctx context.Context, token string) (*models.User, error)
+	UpdatePassword(ctx context.Context, userID primitive.ObjectID, hashedPassword string) error
+	ClearPasswordResetToken(ctx context.Context, userID primitive.ObjectID) error
 
 	// Authorization check for the middleware
 	IsUserAdmin(ctx context.Context, id string) (bool, error)
-}
 
-// --------------------------------------------------------------------------------------
-// CONCRETE IMPLEMENTATION: MongoAuthRepository
-// --------------------------------------------------------------------------------------
+}
 
 // MongoAuthRepository implements the AuthRepository interface using a MongoDB collection.
 type MongoAuthRepository struct {
@@ -37,7 +38,6 @@ type MongoAuthRepository struct {
 }
 
 // NewMongoAuthRepository creates a new MongoAuthRepository instance,
-// injecting the required MongoDB collection handle.
 func NewMongoAuthRepository(collection *mongo.Collection) *MongoAuthRepository {
 	return &MongoAuthRepository{
 		Collection: collection,
@@ -103,8 +103,104 @@ func (r *MongoAuthRepository) GetUserByID(ctx context.Context, id string) (*mode
 	return &user, nil
 }
 
+// SavePasswordResetToken stores the reset token and expiry for a user
+func (r *MongoAuthRepository) SavePasswordResetToken(
+	ctx context.Context, 
+	email, token string, 
+	expiry time.Time,
+) error {
+	filter := bson.M{"email": email}
+	update := bson.M{
+		"$set": bson.M{
+			"reset_token":        token,
+			"reset_token_expiry": expiry,
+			"updated_at":         time.Now(),
+		},
+	}
+	
+	result, err := r.Collection.UpdateOne(ctx, filter, update)
+	if err != nil {
+		return err
+	}
+	
+	if result.MatchedCount == 0 {
+		return errors.New("user not found")
+	}
+	
+	return nil
+}
+
+// GetUserByResetToken retrieves a user by their reset token
+func (r *MongoAuthRepository) GetUserByResetToken(
+	ctx context.Context, 
+	token string,
+) (*models.User, error) {
+	var user models.User
+	
+	// Token must exist, match, and not be expired
+	filter := bson.M{
+		"reset_token": token,
+		"reset_token_expiry": bson.M{"$gt": time.Now()},
+	}
+	
+	err := r.Collection.FindOne(ctx, filter).Decode(&user)
+	if err != nil {
+		if errors.Is(err, mongo.ErrNoDocuments) {
+			return nil, errors.New("invalid or expired reset token")
+		}
+		return nil, err
+	}
+	
+	return &user, nil
+}
+
+// UpdatePassword updates a user's password
+func (r *MongoAuthRepository) UpdatePassword(
+	ctx context.Context, 
+	userID primitive.ObjectID, 
+	hashedPassword string,
+) error {
+	filter := bson.M{"_id": userID}
+	update := bson.M{
+		"$set": bson.M{
+			"password":   hashedPassword,
+			"updated_at": time.Now(),
+		},
+	}
+	
+	result, err := r.Collection.UpdateOne(ctx, filter, update)
+	if err != nil {
+		return err
+	}
+	
+	if result.MatchedCount == 0 {
+		return errors.New("user not found")
+	}
+	
+	return nil
+}
+
+// ClearPasswordResetToken removes reset token fields after successful reset
+func (r *MongoAuthRepository) ClearPasswordResetToken(
+	ctx context.Context, 
+	userID primitive.ObjectID,
+) error {
+	filter := bson.M{"_id": userID}
+	update := bson.M{
+		"$unset": bson.M{
+			"reset_token":        "",
+			"reset_token_expiry": "",
+		},
+		"$set": bson.M{
+			"updated_at": time.Now(),
+		},
+	}
+	
+	_, err := r.Collection.UpdateOne(ctx, filter, update)
+	return err
+}
+
 // IsUserAdmin checks the database to see if the user has the IsAdmin flag set.
-// This is used by the AdminAuthMiddleware.
 func (r *MongoAuthRepository) IsUserAdmin(ctx context.Context, id string) (bool, error) {
 	// We only retrieve the IsAdmin field for efficiency
 	var result struct {

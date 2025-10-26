@@ -100,10 +100,10 @@ export default function Hero() {
 
               {/* Button 2: Browse Categories */}
               <Link
-                href="/categories"
-                className="group inline-flex items-center justify-center gap-2 px-8 py-4 border-2 border-gray-300 text-gray-800 font-bold text-base md:text-lg rounded-xl shadow-md bg-white hover:bg-gray-50 hover:border-gray-400 transition-all duration-300 hover:scale-[1.02] active:scale-[0.98]"
+                href="/onboarding"
+                className="group inline-flex items-center justify-center gap-3 px-8 py-4 border-2 border-gray-300 text-gray-800 font-bold text-base md:text-lg rounded-xl shadow-md bg-white hover:bg-gray-50 hover:border-gray-400 transition-all duration-300 hover:scale-[1.02] active:scale-[0.98]"
               >
-                <span>Browse Categories</span>
+                <span>Onboarding</span>
                 <svg
                   className="w-5 h-5 transition-transform duration-300 group-hover:rotate-90"
                   fill="none"

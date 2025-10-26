@@ -13,8 +13,12 @@ type User struct {
 	ID        primitive.ObjectID `bson:"_id,omitempty" json:"id,omitempty"`
 	Name      string             `bson:"name" json:"name" binding:"required"`
 	Email     string             `bson:"email" json:"email" binding:"required,email"`
-	Password string 			 `json:"password" bson:"password" binding:"required,min=6"`// Omit password hash from JSON output
-	IsAdmin   bool               `bson:"is_admin" json:"is_admin"`                 // CRITICAL: Used by AdminMiddleware
+	Password string 			 `json:"password" bson:"password" binding:"required,min=6"`
+
+	ResetToken       string    `bson:"reset_token,omitempty" json:"-"`
+	ResetTokenExpiry time.Time `bson:"reset_token_expiry,omitempty" json:"-"`
+	
+	IsAdmin   bool               `bson:"is_admin" json:"is_admin"`
 	CreatedAt time.Time          `bson:"created_at" json:"created_at"`
 	UpdatedAt time.Time          `bson:"updated_at" json:"updated_at"`
 }
@@ -51,4 +55,19 @@ type AuthResponse struct {
 	Message string       `json:"message"`
 	User    *UserProfile `json:"user,omitempty"` // Use the profile struct here
 	Token   string       `json:"token,omitempty"`
+}
+
+// 🆕 PASSWORD RESET REQUEST MODELS
+type ForgotPasswordRequest struct {
+	Email string `json:"email" binding:"required,email"`
+}
+
+type ResetPasswordRequest struct {
+	Token       string `json:"token" binding:"required"`
+	NewPassword string `json:"newPassword" binding:"required,min=6"`
+}
+
+type PasswordResetResponse struct {
+	Message string `json:"message"`
+	Valid   bool   `json:"valid,omitempty"` // For token verification
 }
