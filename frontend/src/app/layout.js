@@ -26,10 +26,37 @@ export const metadata = {
     "Eventify is the premier platform for event discovery, secure ticket purchasing, and seamless show promotion. List your event, sell tickets, and reach a global audience.",
 };
 
+
+const structuredData = {
+  "@context": "https://schema.org",
+  "@type": "WebApplication",
+  name: "Eventify",
+  applicationCategory: "Event Management",
+  offers: {
+    "@type": "Offer",
+    price: "0",
+    priceCurrency: "USD",
+  },
+  description:
+    "Comprehensive event management platform for creating events, selling tickets, and connecting with vendors",
+  featureList: [
+    "Event creation and management",
+    "Ticket sales and analytics",
+    "Vendor marketplace",
+    "Secure payment processing",
+  ],
+  operatingSystem: "Web, iOS, Android",
+};
+
 export default function RootLayout({ children }) {
   return (
     <html lang="en" className={`${headerFont.variable} ${bodyFont.variable}`}>
       <body>
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
+        />
+
         <ReduxProvider>
           <SessionProvider>
             <CartProvider>
@@ -40,7 +67,7 @@ export default function RootLayout({ children }) {
               <ToastProvider />
             </CartProvider>
           </SessionProvider>
-        </ReduxProvider>{" "}
+        </ReduxProvider>
       </body>
     </html>
   );
