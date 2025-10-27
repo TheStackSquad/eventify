@@ -27,7 +27,7 @@ func main() {
 	// ------------------------------------------------------------
 	zerolog.SetGlobalLevel(zerolog.InfoLevel)
 	log.Logger = log.Output(zerolog.ConsoleWriter{
-		Out: 		os.Stderr,
+		Out:        os.Stderr,
 		TimeFormat: time.RFC3339,
 	}).With().Timestamp().Logger()
 
@@ -49,10 +49,9 @@ func main() {
 	vendorsCollection := dbClient.Collection("vendors")
 	usersCollection := dbClient.Collection("users")
 	likesCollection := dbClient.Collection("likes")
-
-	// 🧩 NEW: Reviews + Inquiries collections
 	reviewsCollection := dbClient.Collection("reviews")
 	inquiriesCollection := dbClient.Collection("inquiries")
+	feedbackCollection := dbClient.Collection("feedback") // 🆕 ADD THIS
 
 	// ------------------------------------------------------------
 	// 3️⃣ Repositories
@@ -60,12 +59,9 @@ func main() {
 	vendorRepo := repository.NewMongoVendorRepository(vendorsCollection)
 	authRepo := repository.NewMongoAuthRepository(usersCollection)
 	likeRepo := repository.NewLikeRepository(likesCollection)
-
-	// 🧩 NEW:
-	// FIX 1: Using the correct constructor name NewMongoReviewRepository
-	reviewRepo := repository.NewMongoReviewRepository(reviewsCollection) 
-	// FIX 2: Using the correct constructor name NewMongoInquiryRepository
-	inquiryRepo := repository.NewMongoInquiryRepository(inquiriesCollection) 
+	reviewRepo := repository.NewMongoReviewRepository(reviewsCollection)
+	inquiryRepo := repository.NewMongoInquiryRepository(inquiriesCollection)
+	feedbackRepo := repository.NewFeedbackRepository(feedbackCollection) // 🆕 ADD THIS
 
 	// ------------------------------------------------------------
 	// 4️⃣ Services
@@ -74,32 +70,31 @@ func main() {
 	likeService := services.NewLikeService(likeRepo)
 	vendorService := services.NewVendorService(vendorRepo)
 	reviewService := services.NewReviewService(reviewRepo, vendorRepo)
+	inquiryService := services.NewInquiryService(inquiryRepo, vendorRepo)
+	feedbackService := services.NewFeedbackService(feedbackRepo) // 🆕 ADD THIS
 
 	// ------------------------------------------------------------
 	// 5️⃣ Handlers
 	// ------------------------------------------------------------
 	authHandler := handlers.NewAuthHandler(authRepo, dbClient)
-eventHandler := handlers.NewEventHandler(*eventService, likeService)
-vendorHandler := handlers.NewVendorHandler(vendorService)
-reviewHandler := handlers.NewReviewHandler(reviewService)
-
-// Create inquiry service and handler
-inquiryService := services.NewInquiryService(inquiryRepo, vendorRepo)
-inquiryHandler := handlers.NewInquiryHandler(inquiryService)
-
+	eventHandler := handlers.NewEventHandler(*eventService, likeService)
+	vendorHandler := handlers.NewVendorHandler(vendorService)
+	reviewHandler := handlers.NewReviewHandler(reviewService)
+	inquiryHandler := handlers.NewInquiryHandler(inquiryService)
+	feedbackHandler := handlers.NewFeedbackHandler(feedbackService) // 🆕 ADD THIS
 
 	// ------------------------------------------------------------
 	// 6️⃣ Router Setup
 	// ------------------------------------------------------------
-	// FIX 3: Added reviewHandler as the 4th argument to ConfigureRouter
-router := routes.ConfigureRouter(
-    authHandler, 
-    eventHandler, 
-    vendorHandler, 
-    reviewHandler,
-    inquiryHandler,
-    authRepo,
-)
+	router := routes.ConfigureRouter(
+		authHandler,
+		eventHandler,
+		vendorHandler,
+		reviewHandler,
+		inquiryHandler,
+		feedbackHandler, // 🆕 ADD THIS
+		authRepo,
+	)
 
 	// ------------------------------------------------------------
 	// 7️⃣ Server Setup
@@ -111,11 +106,11 @@ router := routes.ConfigureRouter(
 	serverAddr := fmt.Sprintf(":%s", port)
 
 	srv := &http.Server{
-		Addr: 		serverAddr,
-		Handler: 	router,
-		ReadTimeout: 	10 * time.Second,
+		Addr:         serverAddr,
+		Handler:      router,
+		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 10 * time.Second,
-		IdleTimeout: 	60 * time.Second,
+		IdleTimeout:  60 * time.Second,
 	}
 
 	// ------------------------------------------------------------
