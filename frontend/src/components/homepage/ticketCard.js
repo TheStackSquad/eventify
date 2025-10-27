@@ -1,22 +1,34 @@
 //frontend src/components/homepage/ticketCard.js
 "use client";
 
-import React, { useMemo } from "react"; // 🎯 Import useMemo for optimization
+import React, { useMemo, useEffect } from "react"; // 🎯 Import useMemo for optimization
 import Image from "next/image";
 import Link from "next/link";
 import { useSelector } from "react-redux";
 import { TicketSelector, formatPrice } from "./ticketElements";
 
 // Utility function to format date/time and location from the raw API data
+// Utility function to format date/time and location from the raw API data
 const mapEventData = (rawEvent) => {
-  const startDate = new Date(rawEvent.startDate);
-  // NOTE: The Z in the date string means UTC. Setting timeZone: "UTC" ensures
-  // the time displayed is the *exact* UTC time stored. If the events are meant
-  // to be displayed in the user's local time, the 'timeZone' parameter should be removed.
+  // Add null checks for the rawEvent object itself
+  if (!rawEvent) {
+    return {
+      id: 'fallback-id',
+      title: 'Event not available',
+      image: '/fallback-image.jpg',
+      category: 'General',
+      tag: null,
+      date: 'TBD',
+      time: 'TBD',
+      location: 'Location TBD',
+      tickets: [],
+    };
+  }
+
+  const startDate = rawEvent.startDate ? new Date(rawEvent.startDate) : new Date();
   const startTime = startDate.toLocaleTimeString("en-US", {
     hour: "2-digit",
     minute: "2-digit",
-    // timeZone: "UTC", // 💡 Commented out to potentially display in local time zone
     hour12: true,
   });
   const formattedDate = startDate.toLocaleDateString("en-US", {
@@ -26,28 +38,29 @@ const mapEventData = (rawEvent) => {
     year: "numeric",
   });
 
+  // More defensive ticket handling
   const safeTickets = Array.isArray(rawEvent.tickets) ? rawEvent.tickets : [];
-  // Determine starting price and tag (Logic added based on event structure)
- const startingPrice = safeTickets?.[0]?.price ?? 0;
+  
+  const startingPrice = safeTickets[0]?.price ?? 0;
   let tag = null;
   if (startingPrice === 0) {
     tag = "Free Entry";
   } else if (startingPrice > 10000) {
-    tag = "High Demand"; // Placeholder logic
+    tag = "High Demand";
   }
 
   return {
-    id: rawEvent.id,
-    title: rawEvent.eventTitle,
-    image: rawEvent.eventImage,
-    category: rawEvent.category,
-    tag: tag, // 🎯 Included dynamic tag logic
+    id: rawEvent.id || 'unknown-id',
+    title: rawEvent.eventTitle || 'Untitled Event',
+    image: rawEvent.eventImage || '/fallback-image.jpg',
+    category: rawEvent.category || 'General',
+    tag: tag,
     date: formattedDate,
     time: startTime,
-    location: `${rawEvent.venueName}, ${rawEvent.city}`,
+    location: `${rawEvent.venueName || 'Venue TBD'}, ${rawEvent.city || 'City TBD'}`,
     tickets: safeTickets.map((ticket) => ({
       ...ticket,
-      available: ticket.quantity > 0,
+      available: (ticket.quantity || 0) > 0,
     })),
   };
 };
@@ -177,10 +190,27 @@ export default function UpcomingEvents() {
     (state) => state.events || {}
   );
 
+  
+   useEffect(() => {
+     console.log("All Events Data:", allEvents);
+     console.log("All Events Type:", typeof allEvents);
+     console.log("Is Array:", Array.isArray(allEvents));
+     if (allEvents && !Array.isArray(allEvents)) {
+       console.log("Unexpected data structure:", allEvents);
+     }
+   }, [allEvents]);
+
   // 🎯 FIX 2: Use useMemo to map and normalize data only when raw data changes.
-  const eventsToDisplay = useMemo(() => {
-    return (allEvents || []).map(mapEventData);
-  }, [allEvents]);
+   const eventsToDisplay = useMemo(() => {
+     try {
+       // Ensure allEvents is an array before mapping
+       const eventsArray = Array.isArray(allEvents) ? allEvents : [];
+       return eventsArray.map(mapEventData);
+     } catch (error) {
+       console.error("Error processing events data:", error);
+       return []; // Return empty array as fallback
+     }
+   }, [allEvents]);
 
   // Handle Loading State
   if (allEventsStatus === "loading") {

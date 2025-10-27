@@ -3,19 +3,33 @@
 import React, { useState, useMemo } from "react";
 
 export const formatPrice = (price) => {
-  if (price === 0) return "FREE";
-  // Assuming the price is a number, format it as Naira
+  if (price === 0 || price === null) return "FREE";
+  // Add null check for price
+  if (typeof price !== "number") return "Price TBD";
+
   return `₦${price.toLocaleString("en-NG", {
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
   })}`;
 };
 
+// Safe version of getStartingPrice
 const getStartingPrice = (tickets) => {
-  const availableTickets = tickets.filter((t) => t.available);
+  // Ensure tickets is an array
+  const safeTickets = Array.isArray(tickets) ? tickets : [];
+
+  // Filter available tickets safely
+  const availableTickets = safeTickets.filter((t) => t && t.available);
+
   if (availableTickets.length === 0) return null;
 
-  const prices = availableTickets.map((t) => t.price);
+  // Safely extract prices
+  const prices = availableTickets
+    .map((t) => t.price)
+    .filter((price) => typeof price === "number");
+
+  if (prices.length === 0) return null;
+
   const minPrice = Math.min(...prices);
   return minPrice;
 };
@@ -24,14 +38,20 @@ export const TicketSelector = ({ event }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [selectedTicket, setSelectedTicket] = useState(null);
 
-  // Memoize calculations to prevent unnecessary re-runs
+  // Safely handle event data
+  const safeEvent = event || {};
+  const safeTickets = Array.isArray(safeEvent.tickets) ? safeEvent.tickets : [];
+
+  // Memoize calculations with safe data
   const startingPrice = useMemo(
-    () => getStartingPrice(event.tickets),
-    [event.tickets]
+    () => getStartingPrice(safeTickets),
+    [safeTickets]
   );
-  const hasMultipleTickets = event.tickets.length > 1;
+
+  const hasMultipleTickets = safeTickets.length > 1;
   const isFree = startingPrice === 0;
-  const allSoldOut = event.tickets.every((t) => !t.available);
+  const allSoldOut =
+    safeTickets.length === 0 || safeTickets.every((t) => !t || !t.available);
 
   return (
     <div className="bg-gray-50 rounded-xl p-4 space-y-3">
@@ -63,7 +83,6 @@ export const TicketSelector = ({ event }) => {
           <button
             className="flex items-center gap-1 text-sm text-blue-600 font-semibold hover:text-blue-700 transition-colors"
             onClick={(e) => {
-              // Stop propagation to prevent the outer div's onClick from firing twice
               e.stopPropagation();
               setIsExpanded(!isExpanded);
             }}
@@ -91,14 +110,14 @@ export const TicketSelector = ({ event }) => {
       {/* Expanded Ticket Options */}
       {isExpanded && hasMultipleTickets && (
         <div className="space-y-2 pt-2 border-t border-gray-200 animate-in slide-in-from-top duration-300">
-          {event.tickets.map((ticket, idx) => (
+          {safeTickets.map((ticket, idx) => (
             <button
               key={idx}
               onClick={() => setSelectedTicket(ticket)}
-              disabled={!ticket.available}
+              disabled={!ticket || !ticket.available}
               className={`w-full flex items-center justify-between p-3 rounded-lg border-2 transition-all duration-200
                 ${
-                  !ticket.available
+                  !ticket || !ticket.available
                     ? "bg-gray-100 border-gray-200 cursor-not-allowed opacity-60"
                     : selectedTicket === ticket
                     ? "bg-blue-50 border-blue-500 shadow-sm"
@@ -109,29 +128,31 @@ export const TicketSelector = ({ event }) => {
                 <div
                   className={`w-5 h-5 rounded-full border-2 flex items-center justify-center
                     ${
-                      !ticket.available
+                      !ticket || !ticket.available
                         ? "border-gray-300"
                         : selectedTicket === ticket
                         ? "border-blue-500 bg-blue-500"
                         : "border-gray-300"
                     }`}
                 >
-                  {selectedTicket === ticket && ticket.available && (
+                  {selectedTicket === ticket && ticket && ticket.available && (
                     <div className="w-2 h-2 bg-white rounded-full"></div>
                   )}
                 </div>
                 <div className="text-left">
                   <p
                     className={`text-sm font-semibold ${
-                      !ticket.available ? "text-gray-400" : "text-gray-900"
+                      !ticket || !ticket.available
+                        ? "text-gray-400"
+                        : "text-gray-900"
                     }`}
                   >
-                    {ticket.type}
+                    {ticket?.type || "General Admission"}
                   </p>
-                  {!ticket.available && (
+                  {(!ticket || !ticket.available) && (
                     <p className="text-xs text-red-500 font-medium">Sold Out</p>
                   )}
-                  {ticket.available && ticket.quantity < 20 && (
+                  {ticket && ticket.available && ticket.quantity < 20 && (
                     <p className="text-xs text-orange-500 font-medium">
                       Only {ticket.quantity} left
                     </p>
@@ -140,21 +161,17 @@ export const TicketSelector = ({ event }) => {
               </div>
               <p
                 className={`text-lg font-bold ${
-                  !ticket.available ? "text-gray-400" : "text-gray-900"
+                  !ticket || !ticket.available
+                    ? "text-gray-400"
+                    : "text-gray-900"
                 }`}
               >
-                {formatPrice(ticket.price)}
+                {formatPrice(ticket?.price)}
               </p>
             </button>
           ))}
         </div>
       )}
-
-      {/* NOTE: You will need to export selectedTicket and setSelectedTicket if 
-        the parent (EventCard) needs to know the selected ticket for the 'Add to Cart' button.
-        For simplicity, I kept the state here, meaning the parent EventCard 
-        doesn't have access to the selected ticket yet.
-      */}
     </div>
   );
 };
