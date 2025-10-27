@@ -26,6 +26,7 @@ const mapEventData = (rawEvent) => {
     year: "numeric",
   });
 
+  const safeTickets = Array.isArray(rawEvent.tickets) ? rawEvent.tickets : [];
   // Determine starting price and tag (Logic added based on event structure)
   const startingPrice = rawEvent.tickets?.[0]?.price ?? 0;
   let tag = null;
@@ -44,7 +45,7 @@ const mapEventData = (rawEvent) => {
     date: formattedDate,
     time: startTime,
     location: `${rawEvent.venueName}, ${rawEvent.city}`,
-    tickets: rawEvent.tickets.map((ticket) => ({
+    tickets: safeTickets.map((ticket) => ({
       ...ticket,
       available: ticket.quantity > 0,
     })),
