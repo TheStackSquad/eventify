@@ -163,11 +163,6 @@ export const fetchVendors = createAsyncThunk(
 export const getVendorProfile = createAsyncThunk(
   REDUX_ACTION_TYPES.GET_VENDOR_PROFILE,
   async (vendorId, { rejectWithValue, signal, getState }) => {
-    // debugLog("VENDOR_PROFILE_START", "Fetching vendor profile", {
-    //   vendorId,
-    //   action: "Cache-first approach",
-    // });
-
     // Check if we have fresh data in the store
     const state = getState();
     const existingVendor = state.vendors.byId[vendorId];
@@ -176,47 +171,23 @@ export const getVendorProfile = createAsyncThunk(
       Date.now() - state.vendors.lastFetched[vendorId] < 5 * 60 * 1000; // 5 minutes
 
     if (existingVendor && isFresh && !state.vendors.isStale[vendorId]) {
-      // debugLog("VENDOR_PROFILE_CACHE", "Using cached vendor data", {
-      //   vendorId,
-      //   vendorName: existingVendor.name,
-      //   cacheAge: Date.now() - state.vendors.lastFetched[vendorId],
-      // });
-
-      // Return cached data but don't trigger fulfilled - we'll handle this in the component
-      // This allows components to use cached data immediately while background refresh happens
       return existingVendor;
     }
 
     // If no cached data or data is stale, fetch from API
-    // if (!vendorId || vendorId === ":id") {
-    //   const errorMsg = "Invalid vendor ID provided";
-    //   debugLog("VENDOR_PROFILE_ERROR", errorMsg, { vendorId });
-    //   toastAlert.error("Invalid vendor selection");
-    //   return rejectWithValue({ message: errorMsg, status: "INVALID_ID" });
-    // }
+    if (!vendorId || vendorId === ":id") {
+      const errorMsg = "Invalid vendor ID provided";
+      toastAlert.error("Invalid vendor selection");
+      return rejectWithValue({ message: errorMsg, status: "INVALID_ID" });
+    }
 
     const endpoint = API_ENDPOINTS.VENDORS.GET_PROFILE.replace(":id", vendorId);
-
-    // debugLog("VENDOR_PROFILE_API", "Fetching from API", {
-    //   vendorId,
-    //   endpoint,
-    //   reason: existingVendor
-    //     ? "Data stale or forced refresh"
-    //     : "No cached data",
-    // });
 
     try {
       const response = await axios.get(endpoint, {
         signal,
         timeout: 8000,
       });
-
-      // debugLog("VENDOR_PROFILE_SUCCESS", "Vendor profile fetched from API", {
-      //   status: response.status,
-      //   vendorName: response.data?.name,
-      //   hasImage: !!response.data?.imageURL,
-      //   wasCached: !!existingVendor,
-      // });
 
       return response.data;
     } catch (error) {
@@ -234,25 +205,10 @@ export const getVendorProfile = createAsyncThunk(
         errorStatus = "SERVER_ERROR";
       }
 
-      // debugLog(
-      //   "VENDOR_PROFILE_ERROR",
-      //   "Failed to fetch vendor profile from API",
-      //   {
-      //     vendorId,
-      //     errorStatus,
-      //     errorMessage,
-      //     httpStatus: error.response?.status,
-      //   }
-      // );
-
       // If we have cached data but API failed, we can still use cached data
-      // if (existingVendor) {
-      //   debugLog("VENDOR_PROFILE_FALLBACK", "Using cached data as fallback", {
-      //     vendorId,
-      //     vendorName: existingVendor.name,
-      //   });
-      //   return existingVendor; // Return cached data instead of error
-      // }
+      if (existingVendor) {
+        return existingVendor; // Return cached data instead of error
+      }
 
       return rejectWithValue({
         message: errorMessage,

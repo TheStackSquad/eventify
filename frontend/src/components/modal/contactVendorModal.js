@@ -135,12 +135,15 @@ const handleSubmit = (e) => {
             <div className="relative bg-gradient-to-br from-indigo-600 to-purple-700 p-8 lg:p-10 flex flex-col justify-between min-h-[300px] lg:min-h-[600px]">
               {/* Vendor Image */}
               <div className="flex-1 flex items-center justify-center mb-6">
-                <div className="relative w-full max-w-sm">
+                <div className="relative w-full h-64 lg:h-80 rounded-2xl shadow-2xl border-4 border-white border-opacity-20 overflow-hidden">
                   <div className="absolute inset-0 bg-white bg-opacity-10 rounded-3xl blur-2xl"></div>
                   <Image
                     src={vendorData?.image || "/img/vendor/vendorUI.webp"}
                     alt={vendorData?.name || "Vendor"}
-                    className="relative w-full h-64 lg:h-80 object-cover rounded-2xl shadow-2xl border-4 border-white border-opacity-20"
+                    fill
+                    priority
+                    sizes="(max-width: 1024px) 100vw, 50vw"
+                    className="object-cover"
                     onError={(e) => {
                       e.target.src =
                         "https://via.placeholder.com/400x300?text=Vendor+Image";
