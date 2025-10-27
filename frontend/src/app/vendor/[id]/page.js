@@ -214,9 +214,10 @@ const InvalidVendorUrl = ({ slug }) => (
         The vendor link appears to be broken. Please check the URL.
       </p>
       <div className="bg-gray-50 rounded-xl p-4 mb-6 text-left border border-gray-200">
+        Click &quot;Load from Server&quot; to fetch the latest data.
         <p className="text-sm text-gray-600 font-mono break-all">
-          <span className="font-semibold text-gray-800">Slug:</span> "
-          {slug || "none"}"
+          <span className="font-semibold text-gray-800">Slug:</span> &quot;
+          {slug || "none"}&quot;
         </p>
       </div>
       <button
@@ -259,16 +260,20 @@ const ErrorState = ({ error, vendorId, slug, isLoading, onRetry }) => {
               "We couldn't load this vendor profile. Please try again."}
           </p>
           <p className="text-sm text-gray-500">
-            Click "Load from Server" to fetch the latest data.
+            Click &quot;Load
+            from Server&quot; to fetch the latest data.
           </p>
         </div>
         <div className="bg-gray-50 rounded-xl p-6 mb-8 space-y-3 border border-gray-200">
           <div className="flex justify-between items-center py-2 border-b border-gray-200">
+            &quot;{" "}
             <span className="font-semibold text-gray-700">Vendor ID:</span>
+            &quot;
             <span className="text-gray-900 font-mono text-sm">{vendorId}</span>
           </div>
           <div className="flex justify-between items-center py-2">
-            <span className="font-semibold text-gray-700">Slug:</span>
+            &quot; <span className="font-semibold text-gray-700">Slug:</span>
+            &quot;
             <span className="text-gray-900 font-mono text-xs break-all">
               {slug}
             </span>
