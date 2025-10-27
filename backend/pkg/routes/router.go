@@ -23,6 +23,7 @@ func ConfigureRouter(
 	vendorHandler *handlers.VendorHandler,
 	reviewHandler *handlers.ReviewHandler,
 	inquiryHandler *handlers.InquiryHandler,
+	feedbackHandler *handlers.FeedbackHandler, // 🆕 ADD THIS PARAMETER
 	authRepo repository.AuthRepository,
 ) *gin.Engine {
 	router := gin.New()
@@ -52,7 +53,7 @@ func ConfigureRouter(
 		auth.POST("/refresh", authHandler.RefreshToken)
 		auth.POST("/logout", authHandler.Logout)
 
-	// 🆕 PASSWORD RESET ROUTES
+		// 🆕 PASSWORD RESET ROUTES
 		auth.POST("/forgot-password", authHandler.ForgotPassword)
 		auth.GET("/verify-reset-token", authHandler.VerifyResetToken)
 		auth.POST("/reset-password", authHandler.ResetPassword)
@@ -72,6 +73,9 @@ func ConfigureRouter(
 
 	// ✅ Register inquiry routes
 	RegisterInquiryRoutes(router, inquiryHandler)
+
+	// 🆕 PUBLIC FEEDBACK ROUTE (no auth required)
+	router.POST("/api/v1/feedback", feedbackHandler.CreateFeedback)
 
 	// -------------------------------------------------------------------
 	// 2. PROTECTED ROUTES
@@ -119,6 +123,14 @@ func ConfigureRouter(
 	adminInquiries.Use(middleware.AuthMiddleware(), middleware.AdminMiddleware(authRepo))
 	{
 		adminInquiries.PATCH("/:id", inquiryHandler.UpdateInquiryStatus)
+	}
+
+	// 🆕 ADMIN FEEDBACK ROUTES
+	adminFeedback := router.Group("/api/v1/admin/feedback")
+	adminFeedback.Use(middleware.AuthMiddleware(), middleware.AdminMiddleware(authRepo))
+	{
+		adminFeedback.GET("", feedbackHandler.GetAllFeedback)
+		adminFeedback.DELETE("/:id", feedbackHandler.DeleteFeedback)
 	}
 
 	// Print all routes for debugging
