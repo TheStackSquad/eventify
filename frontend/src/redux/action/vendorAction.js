@@ -254,7 +254,6 @@ export const getVendorProfile = createAsyncThunk(
       //   return existingVendor; // Return cached data instead of error
       // }
 
-      toastAlert.error(errorMessage);
       return rejectWithValue({
         message: errorMessage,
         status: errorStatus,

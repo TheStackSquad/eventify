@@ -21,6 +21,7 @@ import ContactVendorButton from "@/components/common/contactVendorButton";
 import RateVendor from "@/components/common/rateVendor";
 import VendorProfileDetail from "@/components/vendorUI/vendorProfileDetail";
 import LoadingSpinner from "@/components/common/loading/loadingSpinner";
+import toastAlert from "@/components/common/toast/toastAlert";
 
 const VendorProfilePage = ({ params }) => {
   const dispatch = useDispatch();
@@ -46,13 +47,11 @@ const VendorProfilePage = ({ params }) => {
   // --- MEMOIZED FETCH FUNCTION ---
   const fetchVendorProfile = useCallback(() => {
     if (!vendorId) {
-      console.warn("⚠️ No valid vendor ID from slug");
       return;
     }
 
     // Prevent duplicate fetches for the same vendor
     if (hasFetchedRef.current && vendorIdRef.current === vendorId) {
-      console.log("✋ Fetch already initiated for this vendor");
       return;
     }
 
@@ -63,18 +62,14 @@ const VendorProfilePage = ({ params }) => {
       profileStatus === STATUS.FAILED;
 
     if (needsFetch) {
-      console.log("🚀 Initiating vendor profile fetch:", vendorId);
       hasFetchedRef.current = true;
       vendorIdRef.current = vendorId;
       dispatch(getVendorProfile(vendorId));
-    } else {
-      console.log("✅ Vendor data already available, skipping fetch");
     }
   }, [vendorId, vendorToDisplay, profileStatus, dispatch]);
 
   // --- CORE FETCH LOGIC ---
   useEffect(() => {
-    // Reset fetch flag if vendorId changes
     if (vendorIdRef.current !== vendorId) {
       hasFetchedRef.current = false;
       vendorIdRef.current = vendorId;
@@ -84,7 +79,6 @@ const VendorProfilePage = ({ params }) => {
 
     // Cleanup
     return () => {
-      console.log("🧹 Unmounting vendor profile page");
       hasFetchedRef.current = false;
       vendorIdRef.current = null;
       dispatch(clearSelectedVendor());
@@ -92,13 +86,31 @@ const VendorProfilePage = ({ params }) => {
     };
   }, [vendorId, fetchVendorProfile, dispatch]);
 
+  // --- TOAST ALERT STATUS LISTENER ---
+  useEffect(() => {
+    // Only trigger for the current, relevant vendor ID
+    if (vendorIdRef.current !== vendorId) {
+      return;
+    }
+
+    // Display error toast on fetch failure
+    if (profileStatus === STATUS.FAILED && profileError) {
+      toastAlert.error(
+        profileError.message ||
+          "An unknown error occurred while loading the profile."
+      );
+    }
+  }, [profileStatus, profileError, vendorId]);
+
   // --- MANUAL RETRY HANDLER ---
   const handleRetryFetch = useCallback(() => {
-    console.log("🔄 Manual retry initiated");
+    // Provide immediate feedback to the user
+    toastAlert.info("Attempting to reload profile...");
+
     // Reset the fetch guard
     hasFetchedRef.current = false;
     vendorIdRef.current = null;
-    // Clear error state
+    // Clear error state to allow the next fetch to happen cleanly
     dispatch(clearProfileError());
     // Trigger new fetch
     dispatch(getVendorProfile(vendorId));
@@ -110,7 +122,7 @@ const VendorProfilePage = ({ params }) => {
   // --- RATING HANDLER ---
   const handleRatingSubmit = useCallback(
     (rating, reviewText) => {
-      console.log("⭐ Submitting rating:", { vendorId, rating, reviewText });
+      // Logic for submitting rating
       // dispatch(submitRating({ vendorId, rating, review: reviewText }));
     },
     [vendorId]
