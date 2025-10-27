@@ -37,6 +37,12 @@ export const REDUX_ACTION_TYPES = {
   TOGGLE_IDENTITY_VERIFICATION: "admin/toggleIdentityVerification",
   TOGGLE_BUSINESS_VERIFICATION: "admin/toggleBusinessVerification",
   DELETE_VENDOR: "admin/deleteVendor",
+
+  // 🆕 FEEDBACK ACTIONS
+  CREATE_FEEDBACK: "feedback/createFeedback",
+  FETCH_ALL_FEEDBACK: "feedback/fetchAllFeedback",
+  DELETE_FEEDBACK: "feedback/deleteFeedback",
+  RESET_CREATE_FEEDBACK_STATUS: "feedback/resetCreateFeedbackStatus",
 };
 
 
@@ -49,7 +55,7 @@ export const API_ENDPOINTS = {
     ME: "/auth/me", // Used by restoreSession thunk
     LOGOUT: "/auth/logout", // Used by logoutUser thunk
   },
-  
+
   EVENTS: {
     BASE: "/events",
     CREATE: "/create-events",
@@ -79,6 +85,11 @@ export const API_ENDPOINTS = {
     CREATE: "/api/vendors/:vendor_id/reviews",
     GET_VENDOR: "/api/vendors/:vendor_id/reviews",
   },
+  // 🆕 FEEDBACK ENDPOINTS
+  FEEDBACK: {
+    BASE: "/api/v1/feedback",
+    CREATE: "/api/v1/feedback",
+  },
   ADMIN_INQUIRIES: {
     BASE: "/api/v1/admin/inquiries",
     UPDATE_STATUS: "/api/v1/admin/inquiries/:id",
@@ -94,8 +105,15 @@ export const API_ENDPOINTS = {
     VERIFY_BUSINESS: "/api/v1/admin/vendors/:id/verify/business",
     DELETE: "/api/v1/admin/vendors/:id",
   },
+  // 🆕 ADMIN FEEDBACK ENDPOINTS
+  ADMIN_FEEDBACK: {
+    BASE: "/api/v1/admin/feedback",
+    GET_ALL: "/api/v1/admin/feedback",
+    DELETE: "/api/v1/admin/feedback/:id",
+  },
   UPLOAD: {
     EVENT_IMAGE: "/api/event-image",
+    FEEDBACK_IMAGE: "/api/feedback-image",
   },
 };
 
@@ -159,6 +177,10 @@ export const ERROR_MESSAGES = {
   FETCH_PROFILE_FAILED: "Failed to load vendor profile.",
   REGISTER_VENDOR_FAILED: "Failed to complete vendor registration.",
 
+  FEEDBACK_SUBMIT_FAILED: "Failed to submit feedback. Please try again.",
+  FEEDBACK_DELETE_FAILED: "Failed to delete feedback. Please try again.",
+  FEEDBACK_FETCH_FAILED: "Failed to fetch feedback. Please try again.",
+
   // General
   AUTH_REQUIRED: "Authentication required. Please log in to continue.",
   NETWORK_ERROR: "Network error. Please check your connection.",
@@ -174,6 +196,9 @@ export const SUCCESS_MESSAGES = {
   EVENT_PUBLISHED: "Event published successfully!",
   // Vendor Operations (New)
   VENDOR_REGISTERED: "Vendor registration submitted successfully!",
+
+  FEEDBACK_SUBMITTED: "Thank you for your feedback! We'll review it shortly.",
+  FEEDBACK_DELETED: "Feedback deleted successfully.",
 
   // Admin Operations (New)
   IDENTITY_VERIFIED: "Vendor identity verification status updated.",
