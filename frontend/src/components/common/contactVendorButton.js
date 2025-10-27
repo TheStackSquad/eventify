@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import { Mail } from "lucide-react";
-import ContactVendorModal from "@/modals/contactVendorModal";
+import ContactVendorModal from "@/components/modal/contactVendorModal";
 
 const ContactVendorButton = ({
   vendorId,

@@ -45,13 +45,11 @@ const VendorListingPage = () => {
   const totalVendorsCount = useSelector(selectTotalVendorsCount);
   const hasMoreVendors = useSelector(selectHasMoreVendors);
 
-  // ============================================
-  // ✅ SINGLE useEffect - Handles ALL fetch logic
-  // ============================================
+
   useEffect(() => {
     // Don't fetch if already loading
     if (status === STATUS.LOADING) {
-      console.log("⏸️ SKIP - Already loading");
+   //   console.log("⏸️ SKIP - Already loading");
       return;
     }
 
@@ -115,10 +113,6 @@ const VendorListingPage = () => {
     vendors.length, // Only used for initial load check
   ]);
 
-  // ============================================
-  // EVENT HANDLERS
-  // ============================================
-
   const handleFilterChange = (newFilters) => {
     console.log("🔄 Filter change:", newFilters);
 
@@ -179,9 +173,7 @@ const VendorListingPage = () => {
     isLoading && !hasData && pagination.currentPage === 1;
   const hasError = error && !hasData;
 
-  // ============================================
   // RENDER: LOADING STATE
-  // ============================================
 
   if (isFirstPageLoading) {
     return (
@@ -193,9 +185,7 @@ const VendorListingPage = () => {
     );
   }
 
-  // ============================================
   // RENDER: ERROR STATE
-  // ============================================
 
   if (hasError) {
     return (
@@ -233,9 +223,7 @@ const VendorListingPage = () => {
     );
   }
 
-  // ============================================
   // RENDER: MAIN VIEW
-  // ============================================
 
   return (
     <div className="min-h-screen">
@@ -256,7 +244,7 @@ const VendorListingPage = () => {
       />
 
       {/* Dev debug panel */}
-      {process.env.NODE_ENV === "development" && (
+      {/* {process.env.NODE_ENV === "development" && (
         <div className="fixed bottom-4 right-4 bg-black text-white p-3 rounded-lg text-xs max-w-xs opacity-90 shadow-lg z-50">
           <div className="font-bold mb-1 text-green-400">🟢 Debug Info</div>
           <div>Vendors: {vendors?.length || 0}</div>
@@ -272,7 +260,7 @@ const VendorListingPage = () => {
             </div>
           )}
         </div>
-      )}
+      )} */}
     </div>
   );
 };
