@@ -28,7 +28,7 @@ const mapEventData = (rawEvent) => {
 
   const safeTickets = Array.isArray(rawEvent.tickets) ? rawEvent.tickets : [];
   // Determine starting price and tag (Logic added based on event structure)
-  const startingPrice = rawEvent.tickets?.[0]?.price ?? 0;
+ const startingPrice = safeTickets?.[0]?.price ?? 0;
   let tag = null;
   if (startingPrice === 0) {
     tag = "Free Entry";
