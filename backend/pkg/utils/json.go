@@ -15,7 +15,7 @@ func DecodeJSON(r io.Reader, target interface{}) error {
 	decoder := json.NewDecoder(r)
 	
 	// Ensure decoding strictly follows the struct fields
-	decoder.DisallowUnknownFields() 
+//	decoder.DisallowUnknownFields() 
 	
 	if err := decoder.Decode(target); err != nil {
 		return fmt.Errorf("failed to decode JSON: %w", err)

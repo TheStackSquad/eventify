@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 	"net/http"
+	"encoding/json" 
 
 	"eventify/backend/pkg/models"
 	"eventify/backend/pkg/repository"
@@ -56,41 +57,40 @@ func NewOrderService(orderRepo repository.OrderRepository, psClient *PaystackCli
 
 // VerifyAndProcess handles the client-initiated verification flow.
 func (s *OrderServiceImpl) VerifyAndProcess(ctx context.Context, reference string) (*models.Order, error) {
-	// 1. Check DB for existing successful order (Idempotency check)
-existingOrder, err := s.OrderRepo.GetOrderByReference(ctx, reference) 
-
-
-	if err == nil && existingOrder.Status == "success" {
-        // 🎯 FIX: Prefix all symbols from the 'utils' package with 'utils.'
-		return existingOrder, utils.NewError(
+    // 1. Check DB for existing successful order (Idempotency check)
+    existingOrder, err := s.OrderRepo.GetOrderByReference(ctx, reference) 
+    if err == nil && existingOrder.Status == "success" {
+        return existingOrder, utils.NewError(
             utils.ErrConflict, 
             "Idempotency check failed", 
             utils.ErrOrderAlreadyProcessed,
         )
-	}
+    }
 
-	// 2. Call Paystack Verification API (Server-to-Server)
-	paystackResp, err := s.callPaystackVerificationAPI(ctx, reference)
-	if err != nil {
-		return nil, fmt.Errorf("paystack verification failed: %w", err)
-	}
+    // 2. Call Paystack Verification API (Server-to-Server)
+    paystackResp, err := s.callPaystackVerificationAPI(ctx, reference)
+    if err != nil {
+        return nil, fmt.Errorf("paystack verification failed: %w", err)
+    }
 
-	// 3. Status and Amount Check (Anti-Fraud)
-	if paystackResp.Status != true || paystackResp.Data.Status != "success" {
-		return nil, errors.New("paystack transaction was not successful")
-	}
+    // 3. Status and Amount Check (Anti-Fraud)
+    if paystackResp.Status != true || paystackResp.Data.Status != "success" {
+        return nil, errors.New("paystack transaction was not successful")
+    }
 
-	// 4. Extract Data and Create Order
-	// The metadata sent from the frontend (Log 4) is retrieved here.
-	metadata := paystackResp.Data.Metadata.CustomFields 
+    // 4. Parse metadata from Paystack response
+    orderMetadata, err := s.parseOrderMetadata(paystackResp.Data.Metadata)
+    if err != nil {
+        return nil, fmt.Errorf("failed to parse order metadata: %w", err)
+    }
 
-	// 5. Create Order and Tickets (Reusable core logic)
-	order, err := s.createOrderAndTickets(ctx, paystackResp.Data, metadata)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create order and tickets: %w", err)
-	}
+    // 5. Create Order and Tickets (Reusable core logic)
+    order, err := s.createOrderAndTickets(ctx, paystackResp.Data, orderMetadata)
+    if err != nil {
+        return nil, fmt.Errorf("failed to create order and tickets: %w", err)
+    }
 
-	return order, nil
+    return order, nil
 }
 
 // ProcessWebhook handles the server-to-server webhook notification from Paystack.
@@ -112,14 +112,16 @@ func (s *OrderServiceImpl) ProcessWebhook(ctx context.Context, payload *models.P
 	}
 
 	// 4. Extract Data and Create Order
-	// The full order context is in the webhook payload's metadata.
-	metadata := payload.Data.Metadata.CustomFields 
+	  orderMetadata, err := s.parseOrderMetadata(payload.Data.Metadata)
+    if err != nil {
+        return fmt.Errorf("failed to parse order metadata: %w", err)
+    }
 
 	// 5. Create Order and Tickets
-	_, err = s.createOrderAndTickets(ctx, payload.Data, metadata)
-	if err != nil {
-		return fmt.Errorf("webhook processing failed during order creation: %w", err)
-	}
+	  _, err = s.createOrderAndTickets(ctx, payload.Data, orderMetadata)
+    if err != nil {
+        return fmt.Errorf("webhook processing failed during order creation: %w", err)
+    }
 
 	return nil
 }
@@ -171,19 +173,16 @@ func (s *OrderServiceImpl) callPaystackVerificationAPI(ctx context.Context, refe
 }
 
 
-// createOrderAndTickets contains the core business logic for finalization.
 func (s *OrderServiceImpl) createOrderAndTickets(
     ctx context.Context, 
     paystackData *models.PaystackData, 
     metadata *models.OrderMetadata,
 ) (*models.Order, error) {
 
-
     expectedAmountKobo := metadata.Totals.AmountInKobo
     actualAmountKobo := paystackData.Amount
 
     if expectedAmountKobo != actualAmountKobo {
-        // Log a high-severity alert for a payment mismatch!
         return nil, fmt.Errorf(
             "fraud alert: amount mismatch detected for reference %s. Expected: %d, Actual: %d",
             paystackData.Reference, 
@@ -195,15 +194,15 @@ func (s *OrderServiceImpl) createOrderAndTickets(
     // --- 1. DATA MAPPING to Final Order Model ---
     now := time.Now()
     newOrder := models.Order{
-        // Primary ID and User Links (Assuming OrderMetadata can hold UserID if logged in)
+        // Primary ID and User Links
         ID:          primitive.NewObjectID(),
         UserID:      nil, // Set this if authentication data is in the metadata
         
         // Transaction Data (from Paystack/Webhook)
         Reference:   paystackData.Reference,
-        Status:      paystackData.Status, // Should be "success" if it reached here
+        Status:      paystackData.Status,
         AmountKobo:  actualAmountKobo,
-        // FeeKobo:     paystackData.Fees, // Requires adding fees to PaystackData model
+        FeeKobo:     paystackData.Fees,
         
         // Financial Totals (from secure metadata)
         Subtotal:    metadata.Totals.Subtotal,
@@ -213,29 +212,22 @@ func (s *OrderServiceImpl) createOrderAndTickets(
         
         // Nested Data (from secure metadata)
         Customer:    metadata.Customer,
-        // Items:       metadata.Items, // Assuming OrderMetadata now holds the items
+        Items:       metadata.Items, // ✅ FIXED: Use metadata.Items instead of newOrder.Items
         
         // Timestamps
         CreatedAt:   now,
         UpdatedAt:   now,
     }
     
-    // NOTE: For the items array, we must ensure OrderMetadata has an items field 
-    // that matches models.OrderItem[]. For now, we will simulate the loop.
-    
     // --- 2. TICKET GENERATION ---
     var ticketsToInsert []models.Ticket
     
-    // Assuming metadata.Items holds the purchased items (ticket tiers)
-    // We need to loop through the items list (which contains tier and quantity)
-    // The following loop is conceptual, relying on the structure defined in models.Order:
-    
-    for _, item := range newOrder.Items { 
+    // ✅ FIXED: Loop through metadata.Items instead of newOrder.Items
+    for _, item := range metadata.Items { 
         for i := 0; i < item.Quantity; i++ {
             ticket := models.Ticket{
-                // Fields to be generated:
                 ID:          primitive.NewObjectID(),
-                Code:        utils.GenerateUniqueTicketCode(newOrder.Reference, i), // Utility required here
+                Code:        utils.GenerateUniqueTicketCode(newOrder.Reference, i),
                 
                 // Links and Details (from OrderItem):
                 OrderID:     newOrder.ID,
@@ -257,13 +249,85 @@ func (s *OrderServiceImpl) createOrderAndTickets(
     }
     
     // --- 3. ATOMIC PERSISTENCE (Delegation to Repository) ---
-    
- _, err := s.OrderRepo.CreateOrderAndTickets(ctx, &newOrder, ticketsToInsert)
-	if err != nil {
-		return nil, fmt.Errorf("failed to save order and tickets atomically: %w", err)
-	}
+    _, err := s.OrderRepo.CreateOrderAndTickets(ctx, &newOrder, ticketsToInsert)
+    if err != nil {
+        return nil, fmt.Errorf("failed to save order and tickets atomically: %w", err)
+    }
 
-    // --- 4. Success Response ---
-    // Order is successfully saved and tickets are created.
     return &newOrder, nil
+}
+
+func (s *OrderServiceImpl) parseOrderMetadata(paystackMetadata models.PaystackMetadata) (*models.OrderMetadata, error) {
+    var orderMetadata models.OrderMetadata
+
+    // Parse cart_items from JSON string to []OrderItem
+    if paystackMetadata.CartItems != "" {
+        var items []models.OrderItem
+        if err := json.Unmarshal([]byte(paystackMetadata.CartItems), &items); err != nil {
+            return nil, fmt.Errorf("failed to parse cart_items: %w", err)
+        }
+        orderMetadata.Items = items
+    }
+
+    // Parse customer_info from JSON string to CustomerInfo
+    if paystackMetadata.CustomerInfo != nil {
+        // customer_info might be an empty object {}, so we need to check the type
+        switch customerInfo := paystackMetadata.CustomerInfo.(type) {
+        case string:
+            if customerInfo != "" {
+                var custInfo models.CustomerInfo
+                if err := json.Unmarshal([]byte(customerInfo), &custInfo); err != nil {
+                    return nil, fmt.Errorf("failed to parse customer_info: %w", err)
+                }
+                orderMetadata.Customer = custInfo
+            }
+        case map[string]interface{}:
+            // If it's already a map, try to unmarshal it
+            if len(customerInfo) > 0 {
+                jsonBytes, err := json.Marshal(customerInfo)
+                if err != nil {
+                    return nil, fmt.Errorf("failed to marshal customer_info: %w", err)
+                }
+                var custInfo models.CustomerInfo
+                if err := json.Unmarshal(jsonBytes, &custInfo); err != nil {
+                    return nil, fmt.Errorf("failed to parse customer_info from map: %w", err)
+                }
+                orderMetadata.Customer = custInfo
+            }
+        }
+    }
+
+    // Calculate totals from the items
+    if len(orderMetadata.Items) > 0 {
+        var subtotal int
+        for _, item := range orderMetadata.Items {
+            subtotal += item.Subtotal
+        }
+        
+        serviceFee := calculateServiceFee(subtotal)
+        vatAmount := calculateVAT(subtotal)
+        finalTotal := subtotal + serviceFee + vatAmount
+        
+        orderMetadata.Totals = models.OrderTotals{
+            Subtotal:     subtotal,
+            ServiceFee:   serviceFee,
+            VATAmount:    vatAmount,
+            FinalTotal:   finalTotal,
+            AmountInKobo: finalTotal * 100, // Convert to kobo
+        }
+    }
+
+    return &orderMetadata, nil
+}
+
+// Helper function to calculate service fee (adjust as needed)
+func calculateServiceFee(subtotal int) int {
+    // Example: 2.5% service fee
+    return int(float64(subtotal) * 0.025)
+}
+
+// Helper function to calculate VAT (adjust as needed)
+func calculateVAT(subtotal int) int {
+    // Example: 7.5% VAT
+    return int(float64(subtotal) * 0.075)
 }
