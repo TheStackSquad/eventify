@@ -51,7 +51,7 @@ export const API_ENDPOINTS = {
   AUTH: {
     BASE: "/auth",
     SIGNUP: "/auth/signup",
-    SIGNIN: "/auth/login", 
+    SIGNIN: "/auth/login",
     ME: "/auth/me",
     LOGOUT: "/auth/logout",
     // NEW: Added for axios interceptor compatibility
@@ -126,7 +126,7 @@ export const API_ENDPOINTS = {
 
   // NEW: Payment endpoints added for axios config compatibility
   PAYMENTS: {
-    VERIFY: "/payments/verify",
+    VERIFY: "/api/payments/verify",
     WEBHOOK: "/webhooks/paystack",
   },
 };

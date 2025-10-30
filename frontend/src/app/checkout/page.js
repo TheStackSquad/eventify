@@ -88,7 +88,7 @@ export default function CheckoutPage() {
         <p className="text-xl font-medium text-gray-700 mb-4">
           Your cart is empty. Nothing to checkout.
         </p>
-        <Link href="/" className="text-blue-600 hover:underline">
+        <Link href="/events" className="text-blue-600 hover:underline">
           Go back to events
         </Link>
       </div>
