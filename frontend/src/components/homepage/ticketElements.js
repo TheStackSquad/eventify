@@ -39,13 +39,15 @@ export const TicketSelector = ({ event }) => {
   const [selectedTicket, setSelectedTicket] = useState(null);
 
   // Safely handle event data
-  const safeEvent = event || {};
-  const safeTickets = Array.isArray(safeEvent.tickets) ? safeEvent.tickets : [];
+const safeTickets = useMemo(() => {
+    const safeEvent = event || {};
+    return Array.isArray(safeEvent.tickets) ? safeEvent.tickets : [];
+  }, [event]); // Dependency is 'event'
 
   // Memoize calculations with safe data
   const startingPrice = useMemo(
     () => getStartingPrice(safeTickets),
-    [safeTickets]
+    [safeTickets] // safeTickets is now stable when event doesn't change
   );
 
   const hasMultipleTickets = safeTickets.length > 1;
