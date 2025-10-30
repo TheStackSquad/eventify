@@ -96,28 +96,41 @@ export function usePaystackIntegration({ amountInKobo, email, metadata = {} }) {
 
     const reference = generateReference();
 
-   const handler = window.PaystackPop.setup({
-    key: PAYSTACK_PUBLIC_KEY,
-    email: email,
-    amount: amountInKobo,
-    ref: reference,
-    currency: "NGN",
-    channels: ["card", "bank", "ussd", "qr", "mobile_money"],
-    metadata: {
-      ...metadata, // Now includes customer_info
-      cart_items: JSON.stringify(
-        items.map((item) => ({
-          eventId: item.eventId,
-          tierId: item.tierId,
-          quantity: item.quantity,
-          price: item.price,
-          eventTitle: item.eventTitle,
-          tierName: item.tierName,
-        }))
-      ),
-      customer_info: metadata?.customer_info || {},
-      reference: reference,
-      timestamp: new Date().toISOString(),
+    // ✅ FIX: Structure metadata using Paystack's custom_fields format
+    // This ensures the backend can parse it correctly
+    const orderData = {
+      customer: metadata.customer_info || {},
+      items: items.map((item) => ({
+        eventId: item.eventId,
+        tierId: item.tierId,
+        quantity: item.quantity,
+        price: item.price,
+        eventTitle: item.eventTitle,
+        tierName: item.tierName,
+      })),
+      totals: metadata.totals || {},
+    };
+
+    const handler = window.PaystackPop.setup({
+      key: PAYSTACK_PUBLIC_KEY,
+      email: email,
+      amount: amountInKobo,
+      ref: reference,
+      currency: "NGN",
+      channels: ["card", "bank", "ussd", "qr", "mobile_money"],
+      metadata: {
+        // ✅ Use custom_fields for structured data (Paystack best practice)
+        custom_fields: [
+          {
+            display_name: "Order Details",
+            variable_name: "order_details",
+            value: JSON.stringify(orderData),
+          },
+        ],
+        // Keep these for additional tracking
+        reference: reference,
+        timestamp: new Date().toISOString(),
+        referrer: window.location.href,
       },
       callback: (response) => {
         setIsLoading(false);
