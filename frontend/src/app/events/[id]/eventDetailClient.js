@@ -92,7 +92,7 @@ const allEvents = useSelector((state) => state.events?.allEvents || []);
 
       {/* EVENT HEADER AND IMAGE */}
       <div className="flex flex-col lg:flex-row gap-8 mb-10 bg-white shadow-xl rounded-2xl overflow-hidden p-4 md:p-6">
-        <div class="relative w-full lg:w-1/2 h-[400px] lg:h-[450px] md:h-96 rounded-lg overflow-hidden flex-shrink-0">
+        <div className="relative w-full lg:w-1/2 h-[400px] lg:h-[450px] md:h-96 rounded-lg overflow-hidden flex-shrink-0">
           <Image
             src={event.eventImage}
             alt={event.eventTitle}
