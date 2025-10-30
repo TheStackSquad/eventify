@@ -1,5 +1,3 @@
-// backend/pkg/routes/router.go
-
 package routes
 
 import (
@@ -23,7 +21,8 @@ func ConfigureRouter(
 	vendorHandler *handlers.VendorHandler,
 	reviewHandler *handlers.ReviewHandler,
 	inquiryHandler *handlers.InquiryHandler,
-	feedbackHandler *handlers.FeedbackHandler, // 🆕 ADD THIS PARAMETER
+	feedbackHandler *handlers.FeedbackHandler,
+	orderHandler *handlers.OrderHandler, // 🆕 ADDED: Order handler for payment processing
 	authRepo repository.AuthRepository,
 ) *gin.Engine {
 	router := gin.New()
@@ -39,12 +38,12 @@ func ConfigureRouter(
 	router.GET("/", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
 			"message": "Eventify API is running",
-			"status":  "healthy",
+			"status": 	"healthy",
 		})
 	})
 
 	// -------------------------------------------------------------------
-	// 1. PUBLIC ROUTES
+	// 1. PUBLIC ROUTES & PAYMENT INTEGRATION ROUTES
 	// -------------------------------------------------------------------
 	auth := router.Group("/auth")
 	{
@@ -53,11 +52,24 @@ func ConfigureRouter(
 		auth.POST("/refresh", authHandler.RefreshToken)
 		auth.POST("/logout", authHandler.Logout)
 
-		// 🆕 PASSWORD RESET ROUTES
+		// PASSWORD RESET ROUTES
 		auth.POST("/forgot-password", authHandler.ForgotPassword)
 		auth.GET("/verify-reset-token", authHandler.VerifyResetToken)
 		auth.POST("/reset-password", authHandler.ResetPassword)
 	}
+
+	// 🆕 PAYMENT & ORDER ROUTES
+	paymentRoutes := router.Group("/api/payments")
+	{
+		// 1. Client-Initiated Verification: Used by confirmation/page.js
+		// This endpoint verifies the transaction with Paystack and processes the order/ticket creation if successful.
+		paymentRoutes.GET("/verify/:reference", orderHandler.VerifyPayment)
+	}
+
+	// 🆕 WEBHOOK ROUTE (No Auth Required)
+	// This endpoint receives server-to-server notifications from Paystack. It is the primary trigger for order processing.
+	router.POST("/api/webhooks/paystack", orderHandler.HandlePaystackWebhook)
+
 
 	log.Info().Msg("🚀 Registering vendor routes...")
 
@@ -74,7 +86,7 @@ func ConfigureRouter(
 	// ✅ Register inquiry routes
 	RegisterInquiryRoutes(router, inquiryHandler)
 
-	// 🆕 PUBLIC FEEDBACK ROUTE (no auth required)
+	// PUBLIC FEEDBACK ROUTE (no auth required)
 	router.POST("/api/v1/feedback", feedbackHandler.CreateFeedback)
 
 	// -------------------------------------------------------------------
@@ -125,7 +137,7 @@ func ConfigureRouter(
 		adminInquiries.PATCH("/:id", inquiryHandler.UpdateInquiryStatus)
 	}
 
-	// 🆕 ADMIN FEEDBACK ROUTES
+	// ADMIN FEEDBACK ROUTES
 	adminFeedback := router.Group("/api/v1/admin/feedback")
 	adminFeedback.Use(middleware.AuthMiddleware(), middleware.AdminMiddleware(authRepo))
 	{
@@ -138,6 +150,8 @@ func ConfigureRouter(
 
 	return router
 }
+
+// ... (Rest of the file remains the same)
 
 // ✅ Review route registration
 func RegisterReviewRoutes(r *gin.Engine, reviewHandler *handlers.ReviewHandler) {
