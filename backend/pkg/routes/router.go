@@ -1,3 +1,4 @@
+//backend/pkg/routes/router.go
 package routes
 
 import (
@@ -22,7 +23,7 @@ func ConfigureRouter(
 	reviewHandler *handlers.ReviewHandler,
 	inquiryHandler *handlers.InquiryHandler,
 	feedbackHandler *handlers.FeedbackHandler,
-	orderHandler *handlers.OrderHandler, // 🆕 ADDED: Order handler for payment processing
+	orderHandler *handlers.OrderHandler, // payment processing
 	authRepo repository.AuthRepository,
 ) *gin.Engine {
 	router := gin.New()
