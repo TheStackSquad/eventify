@@ -4,6 +4,7 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { CheckCircle, XCircle, Loader2, Clock } from "lucide-react";
+import { ENDPOINTS } from "@/axiosConfig/axios"; 
 import Link from "next/link";
 
 export default function ConfirmationPage() {
@@ -20,36 +21,25 @@ export default function ConfirmationPage() {
       return;
     }
 
-    // Verify payment with backend
-    const verifyPayment = async () => {
-      try {
-        const response = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL}/api/payments/verify/${trxref}`,
-          {
-            method: "GET",
-            headers: {
-              "Content-Type": "application/json",
-            },
-          }
-        );
+   const verifyPaymentWithEndpoint = async () => {
+     try {
+       const response = await axios.get(
+         `${ENDPOINTS.PAYMENTS.VERIFY}/${trxref}`
+       );
 
-        if (!response.ok) {
-          throw new Error("Verification failed");
-        }
+       const data = response.data;
 
-        const data = await response.json();
-
-        if (data.status === "success") {
-          setVerificationStatus("success");
-          setPaymentData(data.data);
-        } else {
-          setVerificationStatus("failed");
-        }
-      } catch (error) {
-        console.error("Payment verification error:", error);
-        setVerificationStatus("error");
-      }
-    };
+       if (data.status === "success") {
+         setVerificationStatus("success");
+         setPaymentData(data.data);
+       } else {
+         setVerificationStatus("failed");
+       }
+     } catch (error) {
+       console.error("Payment verification error:", error);
+       setVerificationStatus("error");
+     }
+   };
 
     verifyPayment();
   }, [trxref]);

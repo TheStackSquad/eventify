@@ -1,32 +1,20 @@
 // frontend/src/axiosConfig/axios.js
+
 import axios from "axios";
-// 1. Import the necessary constants
-import { API_ENDPOINTS, ROUTES } from "../utils/constants/globalConstants";
+import {
+  API_ENDPOINTS,
+  ROUTES,
+  REDIRECT_PATHS,
+} from "@/utils/constants/globalConstants";
 
 // Step 1: Define the base URL using environment variable
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8081";
 
 console.log("Axios Base URL set to:", API_BASE_URL);
 
-// 2. INTEGRATION: Update constants to use the imported endpoints
-// The AUTH_ENDPOINTS are not in globalConstants.js, so we keep the local definition
-// or, ideally, move them to globalConstants.js
-const AUTH_ENDPOINTS = {
-  REFRESH: "/auth/refresh",
-  LOGIN: "/auth/login",
-  LOGOUT: "/auth/logout",
-  ME: "/auth/me",
-};
-
-const REDIRECT_PATHS = {
-  LOGIN: ROUTES.LOGIN,
-  DASHBOARD: "/dashboard", // Keeping as is, since it's not in ROUTES
-};
-
 // 3. EXPORT ALL ENDPOINTS: Exporting all endpoints from this file for easy use
 export const ENDPOINTS = {
-  ...API_ENDPOINTS, // Includes EVENTS, VENDORS, ADMIN_VENDORS, UPLOAD
-  AUTH: AUTH_ENDPOINTS,
+  ...API_ENDPOINTS, // Now includes all endpoints: AUTH, PAYMENTS, EVENTS, VENDORS, etc.
 };
 
 // Step 2: Create axios instance
@@ -58,7 +46,6 @@ const processQueue = (error, token = null) => {
 // Step 5: Helper function for login redirect
 const redirectToLogin = () => {
   if (typeof window !== "undefined") {
-    // 4. Use the integrated redirect path
     window.location.href = REDIRECT_PATHS.LOGIN;
   }
 };
@@ -85,7 +72,7 @@ instance.interceptors.response.use(
     }
 
     // Prevent refresh loop on refresh endpoint itself
-    if (originalRequest.url === AUTH_ENDPOINTS.REFRESH) {
+    if (originalRequest.url === API_ENDPOINTS.AUTH.REFRESH) {
       isRefreshing = false;
       processQueue(error, null);
       redirectToLogin();
@@ -106,7 +93,7 @@ instance.interceptors.response.use(
     isRefreshing = true;
 
     try {
-      await instance.post(AUTH_ENDPOINTS.REFRESH);
+      await instance.post(API_ENDPOINTS.AUTH.REFRESH);
       isRefreshing = false;
       processQueue(null, true);
       return instance(originalRequest);

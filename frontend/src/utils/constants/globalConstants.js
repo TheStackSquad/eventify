@@ -50,10 +50,13 @@ export const REDUX_ACTION_TYPES = {
 export const API_ENDPOINTS = {
   AUTH: {
     BASE: "/auth",
-    SIGNUP: "/auth/signup", // Used by signupUser thunk
-    SIGNIN: "/auth/login", // Used by signinUser thunk
-    ME: "/auth/me", // Used by restoreSession thunk
-    LOGOUT: "/auth/logout", // Used by logoutUser thunk
+    SIGNUP: "/auth/signup",
+    SIGNIN: "/auth/login", 
+    ME: "/auth/me",
+    LOGOUT: "/auth/logout",
+    // NEW: Added for axios interceptor compatibility
+    REFRESH: "/auth/refresh",
+    LOGIN: "/auth/login", // Alias for SIGNIN for backward compatibility
   },
 
   EVENTS: {
@@ -67,6 +70,7 @@ export const API_ENDPOINTS = {
     LIKE: "/events/:eventId/like",
     PUBLISH: "/events/:id/publish",
   },
+
   VENDORS: {
     BASE: "/api/v1/vendors",
     LIST: "/api/v1/vendors",
@@ -74,47 +78,81 @@ export const API_ENDPOINTS = {
     REGISTER: "/api/v1/vendors/register",
     UPDATE: "/api/v1/vendors/:id",
   },
+
   INQUIRIES: {
     BASE: "/api/v1/vendors/:vendor_id/inquiries",
     CREATE: "/api/v1/inquiries/vendor/:vendor_id",
     GET_VENDOR: "/api/v1/inquiries/vendor/:vendor_id",
   },
-  // ✅ REVIEWS ENDPOINTS (NEW)
+
   REVIEWS: {
     BASE: "/api/vendors/:vendor_id/reviews",
     CREATE: "/api/vendors/:vendor_id/reviews",
     GET_VENDOR: "/api/vendors/:vendor_id/reviews",
   },
-  // 🆕 FEEDBACK ENDPOINTS
+
   FEEDBACK: {
     BASE: "/api/v1/feedback",
     CREATE: "/api/v1/feedback",
   },
+
   ADMIN_INQUIRIES: {
     BASE: "/api/v1/admin/inquiries",
     UPDATE_STATUS: "/api/v1/admin/inquiries/:id",
   },
-  // ✅ ADMIN REVIEWS ENDPOINTS (NEW)
+
   ADMIN_REVIEWS: {
     BASE: "/api/v1/admin/reviews",
     UPDATE_STATUS: "/api/v1/admin/reviews/:id/status",
   },
+
   ADMIN_VENDORS: {
     BASE: "/api/v1/admin/vendors",
     VERIFY_IDENTITY: "/api/v1/admin/vendors/:id/verify/identity",
     VERIFY_BUSINESS: "/api/v1/admin/vendors/:id/verify/business",
     DELETE: "/api/v1/admin/vendors/:id",
   },
-  // 🆕 ADMIN FEEDBACK ENDPOINTS
+
   ADMIN_FEEDBACK: {
     BASE: "/api/v1/admin/feedback",
     GET_ALL: "/api/v1/admin/feedback",
     DELETE: "/api/v1/admin/feedback/:id",
   },
+
   UPLOAD: {
     EVENT_IMAGE: "/api/event-image",
     FEEDBACK_IMAGE: "/api/feedback-image",
   },
+
+  // NEW: Payment endpoints added for axios config compatibility
+  PAYMENTS: {
+    VERIFY: "/payments/verify",
+    WEBHOOK: "/webhooks/paystack",
+  },
+};
+
+// ========== ROUTES ==========
+// 🎯 FIX: Move ROUTES to before REDIRECT_PATHS
+export const ROUTES = {
+ LOGIN: "/account/auth/login",
+  MY_EVENTS: "/events/my-events",
+  CREATE_EVENT: "/events/create-events",
+ // 🚨 Note: You have a duplicate 'LOGIN' key here. Using the first one.
+// LOGIN: "/login", 
+DASHBOARD: "/dashboard",
+
+// Vendor Routes (New)
+VENDOR_LISTING: "/vendors",
+VENDOR_PROFILE: "/vendors/:slug", // We'll use a slug for the UI route
+
+ // Admin Routes (New)
+ ADMIN_VENDOR_MANAGEMENT: "/admin/vendors",
+};
+
+// ========== REDIRECT PATHS (For axios interceptor) ==========
+export const REDIRECT_PATHS = {
+  LOGIN: ROUTES.LOGIN,
+  DASHBOARD: ROUTES.DASHBOARD,
 };
 
 // ========== STATUS CONSTANTS (Dependency must come first) ==========
@@ -204,20 +242,6 @@ export const SUCCESS_MESSAGES = {
   IDENTITY_VERIFIED: "Vendor identity verification status updated.",
   BUSINESS_VERIFIED: "Vendor business verification status updated.",
   VENDOR_DELETED: "Vendor permanently removed from the platform.",
-};
-
-// ========== ROUTES ==========
-export const ROUTES = {
-  LOGIN: "/account/auth/login",
-  MY_EVENTS: "/events/my-events",
-  CREATE_EVENT: "/events/create-events",
-
-  // Vendor Routes (New)
-  VENDOR_LISTING: "/vendors",
-  VENDOR_PROFILE: "/vendors/:slug", // We'll use a slug for the UI route
-
-  // Admin Routes (New)
-  ADMIN_VENDOR_MANAGEMENT: "/admin/vendors",
 };
 
 // Named export for the entire constants object
