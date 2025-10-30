@@ -51,7 +51,9 @@ func main() {
 	likesCollection := dbClient.Collection("likes")
 	reviewsCollection := dbClient.Collection("reviews")
 	inquiriesCollection := dbClient.Collection("inquiries")
-	feedbackCollection := dbClient.Collection("feedback") // 🆕 ADD THIS
+	feedbackCollection := dbClient.Collection("feedback")
+	ordersCollection := dbClient.Collection("orders")
+ticketsCollection := dbClient.Collection("tickets")
 
 	// ------------------------------------------------------------
 	// 3️⃣ Repositories
@@ -61,7 +63,8 @@ func main() {
 	likeRepo := repository.NewLikeRepository(likesCollection)
 	reviewRepo := repository.NewMongoReviewRepository(reviewsCollection)
 	inquiryRepo := repository.NewMongoInquiryRepository(inquiriesCollection)
-	feedbackRepo := repository.NewFeedbackRepository(feedbackCollection) // 🆕 ADD THIS
+	feedbackRepo := repository.NewFeedbackRepository(feedbackCollection)
+	orderRepo := repository.NewMongoOrderRepository(ordersCollection, ticketsCollection)
 
 	// ------------------------------------------------------------
 	// 4️⃣ Services
@@ -71,7 +74,12 @@ func main() {
 	vendorService := services.NewVendorService(vendorRepo)
 	reviewService := services.NewReviewService(reviewRepo, vendorRepo)
 	inquiryService := services.NewInquiryService(inquiryRepo, vendorRepo)
-	feedbackService := services.NewFeedbackService(feedbackRepo) // 🆕 ADD THIS
+	feedbackService := services.NewFeedbackService(feedbackRepo)
+	paystackClient := &services.PaystackClient{
+    SecretKey: os.Getenv("PAYSTACK_SECRET_KEY"), // Ensure this env var exists
+    HTTPClient: &http.Client{Timeout: 5 * time.Second},
+}
+	orderService := services.NewOrderService(orderRepo, paystackClient)
 
 	// ------------------------------------------------------------
 	// 5️⃣ Handlers
@@ -81,7 +89,8 @@ func main() {
 	vendorHandler := handlers.NewVendorHandler(vendorService)
 	reviewHandler := handlers.NewReviewHandler(reviewService)
 	inquiryHandler := handlers.NewInquiryHandler(inquiryService)
-	feedbackHandler := handlers.NewFeedbackHandler(feedbackService) // 🆕 ADD THIS
+	feedbackHandler := handlers.NewFeedbackHandler(feedbackService)
+	orderHandler := handlers.NewOrderHandler(orderService)
 
 	// ------------------------------------------------------------
 	// 6️⃣ Router Setup
@@ -92,7 +101,8 @@ func main() {
 		vendorHandler,
 		reviewHandler,
 		inquiryHandler,
-		feedbackHandler, // 🆕 ADD THIS
+		feedbackHandler,
+		orderHandler,
 		authRepo,
 	)
 
