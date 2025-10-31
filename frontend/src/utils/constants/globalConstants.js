@@ -124,6 +124,11 @@ export const API_ENDPOINTS = {
     FEEDBACK_IMAGE: "/api/feedback-image",
   },
 
+  ORDERS: {
+    // New section for order-related operations
+    INITIALIZE: "/api/orders/initialize", // Endpoint for creating the PENDING order
+  },
+
   // NEW: Payment endpoints added for axios config compatibility
   PAYMENTS: {
     VERIFY: "/api/payments/verify",
