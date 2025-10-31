@@ -1,4 +1,4 @@
-// frontend/src/app/confirmation/page.js
+// frontend/src/app/checkout/confirmation/page.js
 "use client";
 
 import { useEffect, useState, Suspense } from "react";

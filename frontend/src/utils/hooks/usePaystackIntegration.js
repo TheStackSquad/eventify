@@ -1,57 +1,77 @@
-// frontend/src/utils/hooks/usePaystackIntegration.js
+//frontend/src/utils/hooks/usePaysatckIntegration.js
+
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
 import { useCart } from "@/context/cartContext";
 import { useRouter } from "next/navigation";
 import toastAlert from "@/components/common/toast/toastAlert";
-import { API_ENDPOINTS } from "@/utils/constants/globalConstants"; // <-- New Import
+import { ENDPOINTS } from "@/axiosConfig/axios";
+import axios from "@/axiosConfig/axios";
 
-export function usePaystackIntegration({ amountInKobo, email, metadata = {} }) {
+export function usePaystackIntegration({
+  amountInKobo,
+  email,
+  metadata
+}) {
   const router = useRouter();
   const { clearCart, items } = useCart();
   const [isScriptLoaded, setIsScriptLoaded] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-
   const PAYSTACK_PUBLIC_KEY = process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY;
 
-  // NOTE: generateReference is no longer needed as the backend will handle this securely.
-  // ... (Script Loading useEffect remains the same)
+  useEffect(() => {
+    const scriptId = "paystack-script";
 
-  // Enhanced success handler - modified to accept the DB-generated reference
+    if (document.getElementById(scriptId) || window.PaystackPop) {
+      setIsScriptLoaded(true);
+      return;
+    }
+
+    const script = document.createElement("script");
+    script.id = scriptId;
+    script.src = "https://js.paystack.co/v1/inline.js";
+    script.async = true;
+
+    script.onload = () => setIsScriptLoaded(true);
+    script.onerror = () => {
+      console.error("Failed to load Paystack script.");
+      toastAlert.error("Payment system unavailable. Please try again later.");
+      setIsScriptLoaded(false);
+    };
+
+    document.head.appendChild(script);
+
+    return () => {
+      if (document.getElementById(scriptId)) {
+        document.head.removeChild(script);
+      }
+    };
+  }, []);
+
   const handleSuccess = useCallback(
-    (response, dbReference) => {
-      // Use dbReference for clarity
+    (response) => {
       console.log("✅ Paystack Transaction Successful:", response);
-
-      // Store payment reference in localStorage for backup
       localStorage.setItem("lastPaymentReference", response.reference);
-
       clearCart();
 
-      // Redirect to confirmation page for server-side verification
-      // The response.reference will match the dbReference used to open Paystack
-      router.push(`${API_ENDPOINTS.PAYMENTS.VERIFY}/${response.reference}`); // Use VERIFY path constant
+      // 💡 FIX: Redirect to a frontend page, passing the reference as a query parameter.
+      router.push(`/checkout/confirmation?reference=${response.reference}`);
     },
     [clearCart, router]
   );
 
-  // Enhanced close handler
   const handleClose = useCallback(() => {
     console.log("Paystack Checkout Modal Closed.");
     toastAlert.warn("Payment cancelled. You can try again anytime.");
   }, []);
 
-  // --- Main Payment Execution Function ---
   const handlePayment = useCallback(async () => {
-    // **CHANGED TO ASYNC**
-    // 1. Validation checks (keep these)
     if (
       !isScriptLoaded ||
-      typeof window.PaystackPop === "undefined" ||
+      !window.PaystackPop ||
       !PAYSTACK_PUBLIC_KEY ||
-      !email ||
-      !email.includes("@") ||
+      !email?.includes("@") ||
       amountInKobo < 100
     ) {
       toastAlert.error(
@@ -63,57 +83,58 @@ export function usePaystackIntegration({ amountInKobo, email, metadata = {} }) {
     setIsLoading(true);
 
     try {
-      // --- STEP 2: POST TO BACKEND TO CREATE PENDING ORDER (CRITICAL DB WRITE) ---
       const orderInitializationData = {
-        // Send all necessary info for backend to calculate, validate, and store
-        email: email,
-        amountInKobo: amountInKobo,
-        items: items, // Send cart items for server-side validation/storage
-        customerInfo: metadata.customer_info || {},
+        email,
+        amountInKobo,
+        items,
+        metadata,
       };
 
-      // 🎯 Call the new initialization endpoint
-      const response = await fetch(API_ENDPOINTS.ORDERS.INITIALIZE, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(orderInitializationData),
-      });
+      // ADDED LOGGING HERE
+      const initializationEndpoint =
+        axios.defaults.baseURL + ENDPOINTS.ORDERS.INITIALIZE;
+      console.log(
+        `📡 Attempting to initialize order: POST ${initializationEndpoint}`
+      );
+      console.log(
+        "   Payload:",
+        JSON.stringify(orderInitializationData, null, 2)
+      );
+      // END LOGGING
 
-      const result = await response.json();
+      const response = await axios.post(
+        ENDPOINTS.ORDERS.INITIALIZE,
+        orderInitializationData
+      );
 
-      // Check API response success and ensure the secure reference is returned
-      if (
-        !response.ok ||
-        result.status !== "success" ||
-        !result.data ||
-        !result.data.reference
-      ) {
-        // This error will be caught below
+      const result = response.data;
+
+      // NOTE: We check for status:"success" which the Go backend now sends.
+      // The backend response is: { status: "success", data: { reference: "..." } }
+      if (result.status !== "success" || !result.data?.reference) {
         throw new Error(
           result.message || "Failed to initialize order on server."
         );
       }
 
-      const dbReference = result.data.reference; // 🎯 SECURE REFERENCE FROM DB
+      const dbReference = result.data.reference;
       console.log("✅ Pending Order Created on Server with Ref:", dbReference);
 
-      // --- STEP 3: SETUP Paystack Configuration ---
       const handler = window.PaystackPop.setup({
         key: PAYSTACK_PUBLIC_KEY,
-        email: email,
+        email,
         amount: amountInKobo,
-        ref: dbReference, // **CRITICAL: Use the DB-generated reference**
+        ref: dbReference,
         currency: "NGN",
         channels: ["card", "bank", "ussd", "qr", "mobile_money"],
         metadata: {
-          // Only minimal data needed here, as the DB has the rest
           reference: dbReference,
           timestamp: new Date().toISOString(),
         },
         callback: (response) => {
           setIsLoading(false);
-          // Pass the DB reference to the success handler
-          handleSuccess(response, dbReference);
+          // FIX: Only passing the Paystack response to handleSuccess
+          handleSuccess(response);
         },
         onClose: () => {
           setIsLoading(false);
@@ -121,13 +142,12 @@ export function usePaystackIntegration({ amountInKobo, email, metadata = {} }) {
         },
       });
 
-      // 4. Open Paystack popup (Only runs if the DB POST was successful)
       handler.openIframe();
     } catch (error) {
-      // Handle server-side initialization failure
+      const serverMessage = error.response?.data?.message || error.message;
       console.error("Payment initialization failed:", error);
       toastAlert.error(
-        error.message || "Could not start payment. Please try again."
+        serverMessage || "Could not start payment. Please try again."
       );
       setIsLoading(false);
     }
@@ -136,13 +156,12 @@ export function usePaystackIntegration({ amountInKobo, email, metadata = {} }) {
     PAYSTACK_PUBLIC_KEY,
     email,
     amountInKobo,
-    items, // Dependency for cart items
+    items,
     metadata,
     handleSuccess,
     handleClose,
   ]);
 
-  // --- Return Values (remains the same) ---
   return {
     handlePayment,
     isScriptLoaded,
