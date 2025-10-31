@@ -137,6 +137,7 @@ export default function CheckoutPage() {
                   customer_info: {
                     firstName: customerInfo.firstName,
                     lastName: customerInfo.lastName,
+                    email: customerInfo.email,
                     phone: customerInfo.phone,
                     city: customerInfo.city,
                     state: customerInfo.state,
