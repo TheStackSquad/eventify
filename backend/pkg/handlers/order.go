@@ -23,6 +23,67 @@ func NewOrderHandler(orderService services.OrderService) *OrderHandler {
 	}
 }
 
+// InitializeOrder handles the creation of a PENDING order record in the database.
+// Endpoint: POST /api/orders/initialize
+// This is the CRITICAL first step for the secure payment flow.
+func (h *OrderHandler) InitializeOrder(c *gin.Context) {
+	var req models.OrderInitializationRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		log.Warn().Err(err).Msg("Failed to bind initialization request JSON")
+		c.JSON(http.StatusBadRequest, gin.H{
+			"status":  "error",
+			"message": "Invalid request format",
+		})
+		return
+	}
+
+	log.Info().
+		Str("email", req.Email).
+		Int("amount", req.AmountInKobo).
+		Msg("Order initialization request received")
+
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
+	defer cancel()
+
+	// 1. Call the service to validate, create the PENDING order, and generate the secure reference.
+	// NOTE: Renamed 'dbReference' to 'order' for clarity, assuming service returns *models.Order
+	order, err := h.OrderService.InitializePendingOrder(ctx, &req) 
+
+	if err != nil {
+		log.Error().
+			Err(err).
+			Str("email", req.Email).
+			Msg("Failed to initialize pending order")
+
+		// Use http.StatusConflict (409) for potential business logic errors like stock issues
+		status := http.StatusInternalServerError 
+		if err.Error() == "stock error" { // Placeholder for a real stock error check
+		    status = http.StatusConflict
+		}
+		
+		c.JSON(status, gin.H{
+			"status":  "error",
+			"message": "Order processing failed: " + err.Error(),
+		})
+		return
+	}
+
+	// 2. Success: Return the server-generated reference to the client.
+	// FIX: Access the string field 'Reference' from the returned order object.
+	log.Info().
+		Str("reference", order.Reference).
+		Msg("Pending order created successfully")
+
+	// This JSON structure exactly matches the frontend's expectation: result.data.reference
+	c.JSON(http.StatusOK, gin.H{
+		"status":  "success",
+		"message": "Order initialized successfully. Proceed to payment.",
+		"data": gin.H{
+			"reference": order.Reference, // FIX: Access the string field 'Reference'
+		},
+	})
+}
+
 // VerifyPayment handles client-initiated payment verification
 // Endpoint: GET /api/payments/verify/:reference
 func (h *OrderHandler) VerifyPayment(c *gin.Context) {

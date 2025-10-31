@@ -1,4 +1,5 @@
 //backend/pkg/routes/router.go
+
 package routes
 
 import (
@@ -39,7 +40,7 @@ func ConfigureRouter(
 	router.GET("/", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
 			"message": "Eventify API is running",
-			"status": 	"healthy",
+			"status":  "healthy",
 		})
 	})
 
@@ -59,13 +60,20 @@ func ConfigureRouter(
 		auth.POST("/reset-password", authHandler.ResetPassword)
 	}
 
-	// 🆕 PAYMENT & ORDER ROUTES
+	// 🆕 PAYMENT VERIFICATION ROUTES
 	paymentRoutes := router.Group("/api/payments")
 	{
 		// 1. Client-Initiated Verification: Used by confirmation/page.js
-		// This endpoint verifies the transaction with Paystack and processes the order/ticket creation if successful.
 		paymentRoutes.GET("/verify/:reference", orderHandler.VerifyPayment)
 	}
+    
+    // 🆕 ORDER INITIALIZATION ROUTES (FIX ADDED HERE)
+    orderRoutes := router.Group("/api/orders")
+    {
+        // 2. Order Initialization: The critical first step for the secure flow.
+        // Frontend POSTs purchase intent; server validates and returns secure reference.
+        orderRoutes.POST("/initialize", orderHandler.InitializeOrder)
+    }
 
 	// 🆕 WEBHOOK ROUTE (No Auth Required)
 	// This endpoint receives server-to-server notifications from Paystack. It is the primary trigger for order processing.
@@ -158,7 +166,7 @@ func ConfigureRouter(
 func RegisterReviewRoutes(r *gin.Engine, reviewHandler *handlers.ReviewHandler) {
 	reviews := r.Group("/api/vendors/:vendor_id/reviews")
 	{
-		reviews.GET("", reviewHandler.GetVendorReviews)                        // Public - gets approved reviews
+		reviews.GET("", reviewHandler.GetVendorReviews) 					// Public - gets approved reviews
 		reviews.POST("", middleware.OptionalAuth(), reviewHandler.CreateReview) // Optional auth - supports anonymous
 	}
 }
