@@ -6,15 +6,9 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"time"
 )
 
-// GenerateUniqueTicketCode generates a unique alphanumeric code for a single ticket.
-// It combines the transaction reference prefix with a secure random string for uniqueness.
-//
-// Parameters:
-// - baseRef: The Paystack transaction reference (e.g., TIX_1761813148409_VL9IHU2M9)
-// - index: The numerical index of the ticket within the order (0, 1, 2, ...)
-//
 // Format: [Ref_Prefix]-[Index]-[Secure_Random_Suffix] e.g., TIX-001-A2B4C6D8
 func GenerateUniqueTicketCode(baseRef string, index int) string {
 	// 1. Get the primary reference prefix (e.g., "TIX" or the first few chars of the full ref)
@@ -44,4 +38,25 @@ func GenerateUniqueTicketCode(baseRef string, index int) string {
 }
 
 // NOTE: You would need to ensure this utility file is imported in your services/order_services.go 
-// and that the main application logic is updated to use the appropriate package path.
+
+// Format: TIX_[Timestamp]_[Random_Suffix]
+func GenerateUniqueTransactionReference() string {
+	// 1. Get current Unix Milliseconds
+	timestamp := time.Now().UnixMilli() 
+
+	// 2. Generate secure random suffix (e.g., 6 bytes -> 12 hex characters)
+	randomBytes := make([]byte, 6) 
+	if _, err := rand.Read(randomBytes); err != nil {
+		// Secure fallback using Nano-timestamp if true randomness fails
+		randomBytes = []byte(fmt.Sprintf("%d", time.Now().UnixNano())) 
+	}
+	// Use the last 8 characters of the hex string for brevity
+	secureSuffix := hex.EncodeToString(randomBytes)
+	if len(secureSuffix) > 8 {
+		secureSuffix = secureSuffix[len(secureSuffix)-8:]
+	}
+
+	// 3. Combine components
+	// Example: TIX_1678886400000_A1B2C3D4
+	return fmt.Sprintf("TIX_%d_%s", timestamp, secureSuffix)
+}
