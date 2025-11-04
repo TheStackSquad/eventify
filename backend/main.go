@@ -65,6 +65,7 @@ ticketsCollection := dbClient.Collection("tickets")
 	inquiryRepo := repository.NewMongoInquiryRepository(inquiriesCollection)
 	feedbackRepo := repository.NewFeedbackRepository(feedbackCollection)
 	orderRepo := repository.NewMongoOrderRepository(ordersCollection, ticketsCollection)
+	eventRepo := repository.NewMongoEventRepository(eventsCollection, ticketsCollection)
 
 	// ------------------------------------------------------------
 	// 4️⃣ Services
@@ -79,7 +80,8 @@ ticketsCollection := dbClient.Collection("tickets")
     SecretKey: os.Getenv("PAYSTACK_SECRET_KEY"), // Ensure this env var exists
     HTTPClient: &http.Client{Timeout: 5 * time.Second},
 }
-	orderService := services.NewOrderService(orderRepo, paystackClient)
+pricingService := services.NewPricingService(eventRepo)
+orderService := services.NewOrderService(orderRepo, pricingService, paystackClient)
 
 	// ------------------------------------------------------------
 	// 5️⃣ Handlers

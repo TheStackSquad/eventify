@@ -1,10 +1,11 @@
-//backend/pkg/services/order_services.go
-
+// backend/pkg/services/order_service.go
 package services
 
 import (
 	"context"
-	"encoding/json"
+	"crypto/hmac"
+	"crypto/sha512"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -24,10 +25,11 @@ import (
 // ============================================================================
 
 type OrderService interface {
-	VerifyAndProcess(ctx context.Context, reference string) (*models.Order, error)
-	ProcessWebhook(ctx context.Context, payload *models.PaystackWebhook) error
 	InitializePendingOrder(ctx context.Context, req *models.OrderInitializationRequest) (*models.Order, error)
-
+	VerifyAndProcess(ctx context.Context, reference string) (*models.Order, error)
+	ProcessWebhook(ctx context.Context, payload *models.PaystackWebhook, signature string) error
+	VerifyWebhookSignature(payload []byte, signature string) bool
+	GetOrderByReference(ctx context.Context, reference string, userID string) (*models.Order, error)
 }
 
 type PaystackClient struct {
@@ -37,322 +39,431 @@ type PaystackClient struct {
 
 type OrderServiceImpl struct {
 	OrderRepo      repository.OrderRepository
+	PricingService PricingService // ✅ NEW: Added dependency for authoritative pricing
 	PaystackClient *PaystackClient
 }
 
-func NewOrderService(orderRepo repository.OrderRepository, psClient *PaystackClient) OrderService {
+// ============================================================================
+// CONSTRUCTOR
+// ============================================================================
+
+// NewOrderService creates a new OrderService instance
+func NewOrderService(
+	orderRepo repository.OrderRepository,
+	pricingService PricingService,
+	psClient *PaystackClient,
+) OrderService {
 	return &OrderServiceImpl{
 		OrderRepo:      orderRepo,
+		PricingService: pricingService, // ✅ NEW: Injected pricing service
 		PaystackClient: psClient,
 	}
 }
 
 // ============================================================================
-// PUBLIC METHODS
+// INITIALIZATION (Step 1 - Refactored for Server Authority)
 // ============================================================================
 
-// InitializePendingOrder handles the creation of an order record in the DB
-func (s *OrderServiceImpl) InitializePendingOrder(ctx context.Context, req *models.OrderInitializationRequest) (*models.Order, error) {
-	// 1. **Security & Validation Checks**
-	if req.AmountInKobo <= 0 {
-		log.Warn().Int("amount", req.AmountInKobo).Msg("Attempted initialization with invalid amount")
-		return nil, errors.New("invalid or zero payment amount")
+// InitializePendingOrder creates a new pending order with authoritative pricing
+func (s *OrderServiceImpl) InitializePendingOrder(
+	ctx context.Context,
+	req *models.OrderInitializationRequest,
+) (*models.Order, error) {
+	// 1. VALIDATE MINIMAL REQUEST (only format, quantity, email)
+	if err := req.Validate(); err != nil {
+		log.Warn().
+			Err(err).
+			Msg("Order initialization basic format validation failed")
+		return nil, fmt.Errorf("validation failed: %w", err)
 	}
 
-	// 2. **Generate Secure Reference** (Uses the new utility function)
+	// 2. CALCULATE AUTHORITATIVE ORDER (Server Source of Truth)
+	// This call performs the database lookups, stock checks, pricing, and fee calculations.
+	pendingOrder, err := s.PricingService.CalculateAuthoritativeOrder(ctx, req)
+	if err != nil {
+		log.Error().Err(err).Msg("❌ Failed to calculate authoritative order price/fees")
+		return nil, fmt.Errorf("pricing calculation failed: %w", err)
+	}
+
+	// 3. GENERATE SECURE REFERENCE & POPULATE ORDER
 	reference := utils.GenerateUniqueTransactionReference()
-
-	// 3. **Create PENDING Order Model** (Transformation)
-	// We map the request data to the secure database model
-	pendingOrder := models.Order{
-		Reference:  reference,
-		Status:     "pending", // CRITICAL: Mark as PENDING
-		AmountKobo: req.AmountInKobo, // CRITICAL: Store the expected amount securely
-		
-		// Map customer and item data for later finalization/ticket generation
-		Customer:   req.CustomerInfo,
-		Items:      req.Items,
-		
-		// The UserID should be set here if the user is authenticated, otherwise nil
-		UserID:     nil, // Assuming guest checkout for now
-	}
+	pendingOrder.Reference = reference
+	pendingOrder.Status = "pending"
+	pendingOrder.Customer = req.Customer // Use customer info from the client request
+	pendingOrder.UserID = nil            // Set if authenticated
 
 	log.Info().
 		Str("reference", reference).
-		Int("expected_kobo", pendingOrder.AmountKobo).
-		Msg("Attempting to save pending order to DB")
+		Int("calculated_kobo", pendingOrder.AmountKobo).
+		Int("subtotal", pendingOrder.Subtotal).
+		Str("email", req.Email).
+		Int("items_count", len(pendingOrder.Items)).
+		Msg("✅ Authoritative order calculated and preparing for save")
 
-	// 4. **Call Repository to Save** (Assumes OrderRepo.SavePendingOrder is implemented)
-	// NOTE: We need to assume OrderRepo.SavePendingOrder is the correct method here.
-	orderID, err := s.OrderRepo.SavePendingOrder(ctx, &pendingOrder)
+	// 4. SAVE TO DATABASE
+	orderID, err := s.OrderRepo.SavePendingOrder(ctx, pendingOrder)
 	if err != nil {
 		log.Error().Err(err).Str("reference", reference).Msg("Failed to save pending order")
 		return nil, fmt.Errorf("failed to initialize payment: %w", err)
 	}
 
-	// Populate the returned object with the generated ID for the response
 	pendingOrder.ID = orderID
 
 	log.Info().
 		Str("reference", reference).
 		Str("order_id", orderID.Hex()).
-		Msg("Pending order saved successfully")
+		Int("amount_kobo", pendingOrder.AmountKobo).
+		Msg("✅ Pending order created successfully")
 
-	// The frontend needs the secure, server-generated reference and the amount
-	return &pendingOrder, nil
+	return pendingOrder, nil
 }
 
+// ============================================================================
+// VERIFICATION (Step 2 - Client Polling)
+// ============================================================================
+
+// VerifyAndProcess handles client-initiated verification (backup to webhook)
 func (s *OrderServiceImpl) VerifyAndProcess(ctx context.Context, reference string) (*models.Order, error) {
-	log.Info().Str("reference", reference).Msg("Starting payment verification")
+	log.Info().Str("reference", reference).Msg("🔍 Starting payment verification")
 
 	// 1. LOAD EXPECTED ORDER FROM DB (Source of Truth)
-	// We MUST ensure the pending order exists and has the expected amount.
 	existingOrder, err := s.OrderRepo.GetOrderByReference(ctx, reference)
-
-	// --- CRITICAL FIX: Check if the PENDING order was found ---
-	if err != nil || existingOrder == nil {
-		log.Error().Err(err).Str("reference", reference).Msg("Verification failed: PENDING order record not found in DB.")
-		// This handles the "Expected: 0" case by failing securely before calling Paystack.
-		return nil, errors.New("order initialization record not found. Cannot verify payment securely.")
+	if err != nil {
+		log.Error().Err(err).Str("reference", reference).Msg("Database error during verification")
+		return nil, fmt.Errorf("database error: %w", err)
 	}
-    
-    // The expected amount is now securely sourced from the database
-    expectedAmountKobo := existingOrder.AmountKobo // 🎯 SECURE VALUE
 
-	// 2. Check Idempotency (Already Successful)
+	if existingOrder == nil {
+		log.Error().Str("reference", reference).Msg("🚨 Verification failed: No pending order found")
+		return nil, errors.New("order initialization record not found. Cannot verify payment securely")
+	}
+
+	// 2. CHECK IDEMPOTENCY (Already Processed)
 	if existingOrder.Status == "success" {
 		log.Info().
 			Str("reference", reference).
 			Str("order_id", existingOrder.ID.Hex()).
-			Msg("Order already processed successfully (idempotency check)")
+			Msg("✅ Order already processed successfully (idempotency check)")
 		return existingOrder, nil
 	}
-    
-    // --- At this point, existingOrder is a PENDING record with the correct expected amount ---
-    
-	// 3. Call Paystack Verification API
-	log.Info().Str("reference", reference).Msg("Calling Paystack verification API")
+
+	// 3. CHECK IF ALREADY FAILED
+	if existingOrder.Status == "failed" || existingOrder.Status == "fraud" {
+		log.Warn().
+			Str("reference", reference).
+			Str("status", existingOrder.Status).
+			Msg("⚠️ Order already marked as failed/fraud")
+		return nil, fmt.Errorf("payment %s", existingOrder.Status)
+	}
+
+	// 4. CALL PAYSTACK VERIFICATION API
+	expectedAmountKobo := existingOrder.AmountKobo
+
+	log.Info().
+		Str("reference", reference).
+		Int("expected_amount", expectedAmountKobo).
+		Msg("📞 Calling Paystack verification API")
+
 	paystackResp, err := s.callPaystackVerificationAPI(ctx, reference)
 	if err != nil {
-		log.Error().Err(err).Str("reference", reference).Msg("Paystack API call failed")
+		log.Error().Err(err).Str("reference", reference).Msg("❌ Paystack API call failed")
 		return nil, fmt.Errorf("paystack verification failed: %w", err)
 	}
 
-    // Check Paystack transaction status
+	// 5. CHECK TRANSACTION STATUS
 	if !paystackResp.Status || paystackResp.Data.Status != "success" {
 		log.Warn().
 			Str("reference", reference).
 			Str("transaction_status", paystackResp.Data.Status).
-			Msg("Transaction not successful on Paystack side.")
-		
-        // TODO: Update the existingOrder status to "failed" in the DB.
-		return nil, errors.New("paystack transaction was not successful or failed")
+			Msg("⚠️ Transaction not successful on Paystack")
+
+		// Update order status to failed
+		_ = s.OrderRepo.UpdateOrderStatus(ctx, existingOrder.ID, "failed")
+
+		return nil, fmt.Errorf("transaction failed: %s", paystackResp.Data.Status)
 	}
 
-	// 4. SECURE FRAUD CHECK (DB Expected vs. Paystack Actual)
-	actualAmountKobo := paystackResp.Data.Amount // ACTUAL VALUE FROM PAYSTACK
-	
+	// 6. CRITICAL SECURITY CHECK: Amount Verification
+	actualAmountKobo := paystackResp.Data.Amount
+
 	log.Info().
 		Str("reference", reference).
-		Int("expected_kobo", expectedAmountKobo). // Log secure amount
-		Int("actual_kobo", actualAmountKobo).     // Log actual amount
-		Msg("Running secure amount validation")
+		Int("expected_kobo", expectedAmountKobo).
+		Int("actual_kobo", actualAmountKobo).
+		Msg("🔒 Performing amount validation")
 
 	if expectedAmountKobo != actualAmountKobo {
 		log.Error().
 			Str("reference", reference).
 			Int("expected", expectedAmountKobo).
 			Int("actual", actualAmountKobo).
-			Msg("🚨 FRAUD ALERT: Amount mismatch detected.")
-        
-        // TODO: Update the existingOrder status to "fraud" and notify internal teams.
+			Msg("🚨 FRAUD ALERT: Amount mismatch detected")
+
+		// Mark as fraud
+		_ = s.OrderRepo.UpdateOrderStatus(ctx, existingOrder.ID, "fraud")
+
 		return nil, fmt.Errorf("fraud alert: amount mismatch. Expected: %d, Actual: %d", expectedAmountKobo, actualAmountKobo)
 	}
 
-	// 5. FINALIZE ORDER
-	log.Info().Str("reference", reference).Msg("Amount matched, finalizing order and generating tickets")
-	
-    // We now call a new dedicated finalization function
-    // The old logic (parsing metadata and calling createOrderAndTickets) is now obsolete/insecure.
-	finalOrder, err := s.finalizeSuccessfulOrder(ctx, existingOrder, paystackResp.Data)
-	if err != nil {
-		log.Error().Err(err).Str("reference", reference).Msg("Order finalization failed")
-		return nil, fmt.Errorf("failed to finalize order and tickets: %w", err)
-	}
-
-	log.Info().Str("reference", reference).Str("order_id", finalOrder.ID.Hex()).Msg("Order and tickets created successfully")
-	return finalOrder, nil
-}
-
-func (s *OrderServiceImpl) ProcessWebhook(ctx context.Context, payload *models.PaystackWebhook) error {
-	reference := payload.Data.Reference
+	// 7. FINALIZE ORDER
 	log.Info().
 		Str("reference", reference).
-		Str("event", payload.Event).
-		Msg("Processing webhook")
+		Msg("✅ Amount matched. Finalizing order and generating tickets")
 
-    // 1. LOAD EXPECTED ORDER FROM DB (Source of Truth)
-    // We MUST ensure the pending order exists and has the expected amount.
-	existingOrder, err := s.OrderRepo.GetOrderByReference(ctx, reference)
-
-	// --- CRITICAL FIX: Check if the PENDING order was found ---
-    // If the record isn't in the DB, we cannot proceed securely.
-	if err != nil || existingOrder == nil {
-		log.Error().Err(err).Str("reference", reference).Msg("Webhook processing failed: PENDING order record not found.")
-		// We return nil (200 OK) here to Paystack to prevent retries, but we log the internal failure.
-		// Note: The lack of a local record means the payment cannot be processed.
-		return errors.New("order initialization record not found during webhook processing")
-	}
-
-    // 2. Check Idempotency (Already Successful)
-	if existingOrder.Status == "success" {
-		log.Info().
-			Str("reference", reference).
-			Str("order_id", existingOrder.ID.Hex()).
-			Msg("Webhook: Order already processed (idempotency check)")
-		return nil
-	}
-
-    // 3. Check Paystack Transaction Status
-	if payload.Data.Status != "success" {
-		log.Warn().
-			Str("reference", reference).
-			Str("status", payload.Data.Status).
-			Msg("Webhook: Non-successful transaction status. Ignoring.")
-        // TODO: Update existingOrder status to "failed" or "abandoned" in the DB.
-		return nil // Return nil to acknowledge the webhook, but take no action.
-	}
-
-    // 4. SECURE FRAUD CHECK (DB Expected vs. Webhook Actual)
-    expectedAmountKobo := existingOrder.AmountKobo // 🎯 SECURE VALUE FROM DB
-    actualAmountKobo := payload.Data.Amount        // ACTUAL VALUE FROM WEBHOOK
-    
-    log.Info().
-		Str("reference", reference).
-		Int("expected_kobo", expectedAmountKobo). 
-		Int("actual_kobo", actualAmountKobo).     
-		Msg("Webhook: Running secure amount validation")
-
-	if expectedAmountKobo != actualAmountKobo {
-		log.Error().
-			Str("reference", reference).
-			Int("expected", expectedAmountKobo).
-			Int("actual", actualAmountKobo).
-			Msg("🚨 FRAUD ALERT: Amount mismatch detected via webhook.")
-        
-        // TODO: Update existingOrder status to "fraud" and notify internal teams.
-		return errors.New("fraud alert: amount mismatch detected via webhook") // Return error to log internal failure
-	}
-
-    // 5. FINALIZE ORDER
-	log.Info().Str("reference", reference).Msg("Webhook: Amount matched, finalizing order and generating tickets")
-	
-    // We replace the old metadata parsing and `createOrderAndTickets` with the finalizer
-	finalOrder, err := s.finalizeSuccessfulOrder(ctx, existingOrder, payload.Data)
+	finalOrder, err := s.finalizeSuccessfulOrder(ctx, existingOrder, paystackResp.Data, "verification")
 	if err != nil {
-		log.Error().Err(err).Str("reference", reference).Msg("Webhook: Order finalization failed")
-		return fmt.Errorf("webhook processing failed during order finalization: %w", err)
+		log.Error().Err(err).Str("reference", reference).Msg("❌ Order finalization failed")
+		return nil, fmt.Errorf("failed to finalize order: %w", err)
 	}
 
 	log.Info().
 		Str("reference", reference).
 		Str("order_id", finalOrder.ID.Hex()).
-		Msg("Webhook: Order processed successfully")
+		Msg("✅ Order verified and processed successfully via verification endpoint")
+
+	return finalOrder, nil
+}
+
+// ============================================================================
+// WEBHOOK PROCESSING (Step 2 - Primary Path)
+// ============================================================================
+
+// VerifyWebhookSignature validates Paystack webhook signature (CRITICAL SECURITY)
+func (s *OrderServiceImpl) VerifyWebhookSignature(payload []byte, signature string) bool {
+	if signature == "" {
+		log.Warn().Msg("⚠️ Webhook received without signature")
+		return false
+	}
+
+	// Create HMAC-SHA512 hash
+	mac := hmac.New(sha512.New, []byte(s.PaystackClient.SecretKey))
+	mac.Write(payload)
+	expectedSignature := hex.EncodeToString(mac.Sum(nil))
+
+	// Constant-time comparison to prevent timing attacks
+	isValid := hmac.Equal([]byte(signature), []byte(expectedSignature))
+
+	if !isValid {
+		log.Error().
+			Str("received_signature", signature[:min(20, len(signature))]+"...").
+			Str("expected_signature", expectedSignature[:20]+"...").
+			Msg("🚨 SECURITY ALERT: Invalid webhook signature")
+	}
+
+	return isValid
+}
+
+// ProcessWebhook handles Paystack webhook notifications (PRIMARY payment confirmation path)
+func (s *OrderServiceImpl) ProcessWebhook(
+	ctx context.Context,
+	payload *models.PaystackWebhook,
+	signature string,
+) error {
+	reference := payload.Data.Reference
+
+	log.Info().
+		Str("reference", reference).
+		Str("event", payload.Event).
+		Str("channel", payload.Data.Channel).
+		Int("amount", payload.Data.Amount).
+		Msg("📨 Processing webhook")
+
+	// Track webhook attempts
+	_ = s.OrderRepo.IncrementWebhookAttempts(ctx, reference)
+
+	// 1. LOAD EXPECTED ORDER FROM DB
+	existingOrder, err := s.OrderRepo.GetOrderByReference(ctx, reference)
+	if err != nil {
+		log.Error().Err(err).Str("reference", reference).Msg("❌ Database error during webhook processing")
+		return fmt.Errorf("database error: %w", err)
+	}
+
+	if existingOrder == nil {
+		log.Error().
+			Str("reference", reference).
+			Msg("🚨 Webhook processing failed: No pending order found")
+		return errors.New("order initialization record not found")
+	}
+
+	// 2. CHECK IDEMPOTENCY
+	if existingOrder.Status == "success" {
+		log.Info().
+			Str("reference", reference).
+			Str("order_id", existingOrder.ID.Hex()).
+			Msg("✅ Webhook: Order already processed (idempotency)")
+		return nil // Not an error - acknowledge webhook
+	}
+
+	// 3. CHECK TRANSACTION STATUS
+	if payload.Data.Status != "success" {
+		log.Warn().
+			Str("reference", reference).
+			Str("status", payload.Data.Status).
+			Msg("⚠️ Webhook: Non-successful transaction status")
+
+		_ = s.OrderRepo.UpdateOrderStatus(ctx, existingOrder.ID, "failed")
+		return nil // Acknowledge webhook but don't process
+	}
+
+	// 4. CRITICAL SECURITY CHECK: Amount Verification
+	expectedAmountKobo := existingOrder.AmountKobo
+	actualAmountKobo := payload.Data.Amount
+
+	log.Info().
+		Str("reference", reference).
+		Int("expected_kobo", expectedAmountKobo).
+		Int("actual_kobo", actualAmountKobo).
+		Msg("🔒 Webhook: Performing amount validation")
+
+	if expectedAmountKobo != actualAmountKobo {
+		log.Error().
+			Str("reference", reference).
+			Int("expected", expectedAmountKobo).
+			Int("actual", actualAmountKobo).
+			Msg("🚨 FRAUD ALERT: Amount mismatch via webhook")
+
+		_ = s.OrderRepo.UpdateOrderStatus(ctx, existingOrder.ID, "fraud")
+
+		return errors.New("fraud alert: amount mismatch via webhook")
+	}
+
+	// 5. FINALIZE ORDER
+	log.Info().
+		Str("reference", reference).
+		Msg("✅ Webhook: Amount matched. Finalizing order")
+
+	finalOrder, err := s.finalizeSuccessfulOrder(ctx, existingOrder, payload.Data, "webhook")
+	if err != nil {
+		log.Error().Err(err).Str("reference", reference).Msg("❌ Webhook: Order finalization failed")
+		return fmt.Errorf("webhook processing failed: %w", err)
+	}
+
+	log.Info().
+		Str("reference", reference).
+		Str("order_id", finalOrder.ID.Hex()).
+		Msg("✅ Webhook processed successfully")
 
 	return nil
+}
+
+// GetOrderByReference retrieves an order by reference, enforcing ownership via userID.
+// ✅ FIX: This function body satisfies the OrderService interface requirement.
+func (s *OrderServiceImpl) GetOrderByReference(ctx context.Context, reference string, userID string) (*models.Order, error) {
+	log.Debug().Str("reference", reference).Str("userID", userID).Msg("Attempting to retrieve order by reference and enforce ownership")
+
+	order, err := s.OrderRepo.GetOrderByReference(ctx, reference) 
+	if err != nil {
+		log.Error().Err(err).Msg("Database retrieval error for order reference")
+		return nil, fmt.Errorf("failed to retrieve order: %w", err)
+	}
+	if order == nil {
+		// Order not found, return nil to the handler
+		return nil, nil
+	}
+
+	// Authorization Check (Ownership Enforcement)
+	// If the order's owner ID does not match the requesting user ID, deny access.
+	// In a complete system, we would also check if the user is an admin here.
+	if order.UserID.Hex() != userID {
+		log.Warn().Str("orderUserID", order.UserID.Hex()).Str("requestingUserID", userID).Msg("Access denied: User does not own this order")
+		// Returning nil causes the handler to send a 404/Access Denied
+		return nil, nil
+	}
+
+	log.Info().Str("reference", reference).Msg("Order found and ownership confirmed")
+	return order, nil
 }
 
 // ============================================================================
 // CORE BUSINESS LOGIC
 // ============================================================================
 
-// finalizeSuccessfulOrder is called ONLY after secure amount verification.
-// It updates the existing PENDING order status and generates/saves tickets.
+// finalizeSuccessfulOrder updates order to success and generates tickets (ATOMIC)
 func (s *OrderServiceImpl) finalizeSuccessfulOrder(
 	ctx context.Context,
-    // 🎯 IMPORTANT: We use the existing, secure order record from the DB
-	existingOrder *models.Order, 
+	existingOrder *models.Order,
 	paystackData *models.PaystackData,
+	processedBy string,
 ) (*models.Order, error) {
-
-    // 1. **REMOVE FRAUD CHECK:** The fraud check is now performed in VerifyAndProcess/ProcessWebhook.
-    // The amount comparison logic is deleted here.
-
 	now := time.Now()
-    
-    // 2. **UPDATE EXISTING ORDER:** Populate the existing object with final details
-    // The Customer and Item details were already securely stored during initialization.
-	
-    existingOrder.Status = "success" // CRITICAL: Update status from "pending"
-    existingOrder.AmountKobo = paystackData.Amount // Final verified amount (should match expected)
+	paidAt := now
+
+	// Parse PaidAt from Paystack if available
+	if paystackData.PaidAt != "" {
+		if t, err := time.Parse(time.RFC3339, paystackData.PaidAt); err == nil {
+			paidAt = t
+		}
+	}
+
+	// Update order with final details
+	existingOrder.Status = "success"
 	existingOrder.FeeKobo = paystackData.Fees
+	existingOrder.PaymentChannel = paystackData.Channel
+	existingOrder.PaidAt = &paidAt
+	existingOrder.ProcessedBy = processedBy
 	existingOrder.UpdatedAt = now
-    
-    // Note: If you still need the Subtotal, ServiceFee, etc. from metadata for any reason,
-    // you would need to store them during the Initialize step instead of relying on parsing Paystack metadata here.
-    // For this refactoring, we rely on the data saved in the PENDING order record.
 
 	log.Info().
 		Str("reference", existingOrder.Reference).
 		Str("order_id", existingOrder.ID.Hex()).
-		Msg("Order object finalized, generating tickets")
+		Int("items_count", len(existingOrder.Items)).
+		Msg("🎫 Starting ticket generation")
 
-    // 3. **Generate Tickets:** Use the securely stored Items/Customer data
+	// Generate tickets from stored items
 	var ticketsToInsert []models.Ticket
 	ticketIndex := 0
 
-    // We iterate over the items already securely stored in the existingOrder object
-	for _, item := range existingOrder.Items { 
-		log.Debug().
+	for itemIdx, item := range existingOrder.Items {
+		log.Info().
+			Int("item_index", itemIdx).
 			Str("event_id", item.EventID).
+			Str("event_title", item.EventTitle).
 			Str("tier", item.TierName).
 			Int("quantity", item.Quantity).
-			Msg("Generating tickets for item")
+			Int("unit_price", item.Price).
+			Msg("Processing order item for ticket generation")
 
 		for i := 0; i < item.Quantity; i++ {
 			ticket := models.Ticket{
-				ID:  primitive.NewObjectID(),
-				Code: utils.GenerateUniqueTicketCode(existingOrder.Reference, ticketIndex),
-				OrderID: existingOrder.ID,
-				EventID: item.EventID,
+				ID:         primitive.NewObjectID(),
+				Code:       utils.GenerateUniqueTicketCode(existingOrder.Reference, ticketIndex),
+				OrderID:    existingOrder.ID,
+				EventID:    item.EventID,
 				EventTitle: item.EventTitle,
-				TierName: item.TierName,
-				Price: item.Price,
+				TierName:   item.TierName,
+				Price:      item.Price,
 				OwnerEmail: existingOrder.Customer.Email,
-				OwnerName: existingOrder.Customer.FirstName + " " + existingOrder.Customer.LastName,
-				IsUsed: false,
-				CreatedAt: now,
-				UpdatedAt: now,
+				OwnerName:  existingOrder.Customer.FirstName + " " + existingOrder.Customer.LastName,
+				IsUsed:     false,
+				CreatedAt:  now,
+				UpdatedAt:  now,
 			}
 			ticketsToInsert = append(ticketsToInsert, ticket)
 			ticketIndex++
+
+			log.Info().
+				Str("ticket_code", ticket.Code).
+				Int("ticket_number", ticketIndex).
+				Str("owner_email", ticket.OwnerEmail).
+				Msg("Ticket generated")
 		}
 	}
 
 	log.Info().
 		Str("reference", existingOrder.Reference).
-		Int("ticket_count", len(ticketsToInsert)).
-		Msg("Tickets generated, starting atomic DB update")
+		Str("order_id", existingOrder.ID.Hex()).
+		Int("total_tickets", len(ticketsToInsert)).
+		Msg("🎫 All tickets generated. Starting atomic DB update")
 
-    // 4. **CALL REPOSITORY (Needs New Method):**
-    // We must replace the old CreateOrderAndTickets call.
-    // We now need a function that performs an **UPDATE** on the OrderCollection
-    // and an **INSERT MANY** on the TicketCollection atomically.
-    
-	// ⚠️ NOTE: This requires a NEW repository function, e.g.:
-	// err := s.OrderRepo.UpdateOrderAndInsertTickets(ctx, existingOrder, ticketsToInsert)
-    
-    // For now, we will use the old function signature and assume we update the logic in order_repo.go
-    // to handle the update/insert instead of just insert.
-    // Let's assume you update `CreateOrderAndTickets` into a flexible `SaveFinalOrder` function.
-    
-    // Since we don't have the updated Repo, let's assume the new signature:
-    err := s.OrderRepo.UpdateOrderAndInsertTickets(ctx, existingOrder, ticketsToInsert)
+	// ATOMIC UPDATE: Order + Tickets (uses MongoDB transaction)
+	err := s.OrderRepo.UpdateOrderAndInsertTickets(ctx, existingOrder, ticketsToInsert)
 	if err != nil {
 		log.Error().
 			Err(err).
 			Str("reference", existingOrder.Reference).
-			Msg("Database persistence failed during finalization")
+			Str("order_id", existingOrder.ID.Hex()).
+			Int("attempted_tickets", len(ticketsToInsert)).
+			Msg("❌ Database persistence failed during finalization")
 		return nil, fmt.Errorf("failed to save final order and tickets atomically: %w", err)
 	}
 
@@ -360,7 +471,11 @@ func (s *OrderServiceImpl) finalizeSuccessfulOrder(
 		Str("reference", existingOrder.Reference).
 		Str("order_id", existingOrder.ID.Hex()).
 		Int("tickets_created", len(ticketsToInsert)).
-		Msg("Order finalized and tickets persisted successfully")
+		Str("processed_by", processedBy).
+		Msg("✅ Order finalized and tickets persisted successfully")
+
+	// TODO: Queue email notification here
+	// s.emailQueue.SendOrderConfirmation(existingOrder, ticketsToInsert)
 
 	return existingOrder, nil
 }
@@ -369,7 +484,11 @@ func (s *OrderServiceImpl) finalizeSuccessfulOrder(
 // HELPER METHODS
 // ============================================================================
 
-func (s *OrderServiceImpl) callPaystackVerificationAPI(ctx context.Context, reference string) (*models.PaystackVerificationResponse, error) {
+// callPaystackVerificationAPI calls Paystack's transaction verification endpoint
+func (s *OrderServiceImpl) callPaystackVerificationAPI(
+	ctx context.Context,
+	reference string,
+) (*models.PaystackVerificationResponse, error) {
 	url := fmt.Sprintf("https://api.paystack.co/transaction/verify/%s", reference)
 
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
@@ -403,104 +522,10 @@ func (s *OrderServiceImpl) callPaystackVerificationAPI(ctx context.Context, refe
 	return &psResponse, nil
 }
 
-func (s *OrderServiceImpl) parseOrderMetadata(paystackMetadata models.PaystackMetadata) (*models.OrderMetadata, error) {
-	log.Debug().Msg("Parsing order metadata from Paystack response")
-
-	var orderMetadata models.OrderMetadata
-	var orderDetailsJSON string
-
-	// Check if custom_fields exists (new Paystack format)
-	if len(paystackMetadata.CustomFields) > 0 {
-		log.Debug().Int("custom_fields_count", len(paystackMetadata.CustomFields)).Msg("Found custom_fields in metadata")
-		
-		for _, field := range paystackMetadata.CustomFields {
-			if field.VariableName == "order_details" {
-				orderDetailsJSON = field.Value
-				log.Debug().Str("order_details_length", fmt.Sprintf("%d", len(orderDetailsJSON))).Msg("Found order_details field")
-				break
-			}
-		}
+// Helper function for min
+func min(a, b int) int {
+	if a < b {
+		return a
 	}
-
-	// Fallback to direct cart_items if custom_fields not found
-	if orderDetailsJSON == "" && paystackMetadata.CartItems != "" {
-		log.Debug().Msg("Using direct cart_items field")
-		orderDetailsJSON = paystackMetadata.CartItems
-	}
-
-	if orderDetailsJSON == "" {
-		log.Error().Msg("No order details found in metadata")
-		return nil, errors.New("order details not found in metadata")
-	}
-
-	// Parse the complete order details JSON
-	var orderDetails struct {
-		Customer struct {
-			FirstName string `json:"firstName"`
-			LastName  string `json:"lastName"`
-			Email     string `json:"email"`
-			Phone     string `json:"phone"`
-			City      string `json:"city"`
-			State     string `json:"state"`
-			Country   string `json:"country"`
-		} `json:"customer"`
-		Items []struct {
-			EventID    string `json:"eventId"`
-			TierID     string `json:"tierId"`
-			Quantity   int    `json:"quantity"`
-			Price      int    `json:"price"`
-			EventTitle string `json:"eventTitle"`
-			TierName   string `json:"tierName"`
-		} `json:"items"`
-		Totals struct {
-			Subtotal     int `json:"subtotal"`
-			ServiceFee   int `json:"serviceFee"`
-			VATAmount    int `json:"vatAmount"`
-			FinalTotal   int `json:"finalTotal"`
-			AmountInKobo int `json:"amountInKobo"`
-		} `json:"totals"`
-	}
-
-	if err := json.Unmarshal([]byte(orderDetailsJSON), &orderDetails); err != nil {
-		log.Error().Err(err).Str("json", orderDetailsJSON).Msg("Failed to parse order details JSON")
-		return nil, fmt.Errorf("failed to parse order details: %w", err)
-	}
-
-	// Map to our models
-	orderMetadata.Customer = models.CustomerInfo{
-		FirstName: orderDetails.Customer.FirstName,
-		LastName:  orderDetails.Customer.LastName,
-		Email:     orderDetails.Customer.Email,
-		Phone:     orderDetails.Customer.Phone,
-		City:      orderDetails.Customer.City,
-		State:     orderDetails.Customer.State,
-		Country:   orderDetails.Customer.Country,
-	}
-
-	for _, item := range orderDetails.Items {
-		orderMetadata.Items = append(orderMetadata.Items, models.OrderItem{
-			EventID:    item.EventID,
-			EventTitle: item.EventTitle,
-			TierName:   item.TierName,
-			Quantity:   item.Quantity,
-			Price:      item.Price,
-			Subtotal:   item.Price * item.Quantity,
-		})
-	}
-
-	orderMetadata.Totals = models.OrderTotals{
-		Subtotal:     orderDetails.Totals.Subtotal,
-		ServiceFee:   orderDetails.Totals.ServiceFee,
-		VATAmount:    orderDetails.Totals.VATAmount,
-		FinalTotal:   orderDetails.Totals.FinalTotal,
-		AmountInKobo: orderDetails.Totals.AmountInKobo,
-	}
-
-	log.Info().
-		Int("items_count", len(orderMetadata.Items)).
-		Str("customer_email", orderMetadata.Customer.Email).
-		Int("total_kobo", orderMetadata.Totals.AmountInKobo).
-		Msg("Metadata parsed successfully")
-
-	return &orderMetadata, nil
+	return b
 }
