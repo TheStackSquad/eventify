@@ -1,81 +1,91 @@
 // frontend/src/components/checkoutUI/customerForm.js
+
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { motion } from "framer-motion";
-import { User, Mail, Phone } from "lucide-react"; // Removed MapPin
-// *** NEW: Import the validation utility ***
+import { User, Mail, Phone } from "lucide-react";
 import { validateCustomerInfo } from "@/utils/validate/customerValidate";
+
+// Nested component to display errors, now explicitly named to fix linting error
+const ErrorMessage = ({ field, errors, touched }) =>
+  errors[field] && touched[field] ? (
+    <motion.p
+      initial={{ opacity: 0, y: -5 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="text-xs text-red-600 mt-1 font-medium"
+    >
+      {errors[field]}
+    </motion.p>
+  ) : null;
+// Must set display name for a nested component if using a linter or for debugging
+ErrorMessage.displayName = "CustomerFormErrorMessage";
 
 export default function CustomerForm({
   onCustomerInfoChange,
-  onValidationChange, // *** NEW PROP: To send validation status to parent ***
-  initialData = {},
+  onValidationChange,
+  // ❌ initialData prop is accepted but ignored for prefill purposes
 }) {
   const [formData, setFormData] = useState({
     firstName: "",
     lastName: "",
     email: "",
     phone: "",
-    // address: "", // Removed as requested
     city: "",
     state: "",
-    country: "Nigeria", // Fixed default value
+    country: "Nigeria",
   });
 
-  // *** NEW STATE: To hold validation errors ***
   const [errors, setErrors] = useState({});
+  const [touched, setTouched] = useState({});
 
-  // Prefill for authenticated users
+  // ❌ REMOVED: initialDataLoaded ref
+  // ❌ REMOVED: useEffect for prefilling authenticated user data
+
+  // Memoize validation to avoid unnecessary recalculations
+  const validationResult = useMemo(() => {
+    const result = validateCustomerInfo(formData);
+    // console.log("🔵 CustomerForm: Validation result", {
+    //   isValid: result.isValid,
+    //   errors: result.errors,
+    //   formData,
+    // });
+    return result;
+  }, [formData]);
+
+  // Update parent components when validation or data changes
   useEffect(() => {
-    if (initialData.user) {
-      const { name, email } = initialData.user;
-      const [firstName, ...lastNameParts] = name?.split(" ") || [];
-      const lastName = lastNameParts.join(" ") || "";
+    setErrors(validationResult.errors);
+    onValidationChange(validationResult.isValid);
 
-      setFormData((prev) => ({
-        ...prev,
-        firstName: firstName || "",
-        lastName: lastName || "",
-        email: email || "",
-        // Removed address field from auto-fill logic
-        ...initialData.additionalInfo,
-      }));
-    }
-  }, [initialData]);
-
-  // *** NEW EFFECT: Validate form whenever formData changes ***
-  useEffect(() => {
-    const { isValid, errors: newErrors } = validateCustomerInfo(formData);
-    setErrors(newErrors);
-    onValidationChange(isValid); // Communicate validity back to the parent page.js
-
-    // Also send data up even if invalid, so parent can preview filled fields
+    // CRITICAL: Always send current form data to parent
+    // console.log("🔵 CustomerForm: Sending data to parent", formData);
     onCustomerInfoChange(formData);
-  }, [formData, onValidationChange, onCustomerInfoChange]);
+  }, [validationResult, formData, onValidationChange, onCustomerInfoChange]);
 
-  // Handlers
-  const handleChange = (field, value) => {
-    const updatedData = { ...formData, [field]: value };
-    setFormData(updatedData);
-    // Note: onCustomerInfoChange is now called inside the useEffect for consistency
-  };
+  // Optimized change handler - batch state updates
+  const handleChange = useCallback((field, value) => {
+    // console.log(`🔵 CustomerForm: Field changed - ${field}:`, value);
+    setFormData((prev) => {
+      const updated = { ...prev, [field]: value };
+      // console.log("🔵 CustomerForm: Updated form data", updated);
+      return updated;
+    });
+  }, []);
 
-  const inputClass = (field) =>
-    `w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent transition-all duration-200 ${
-      errors[field] ? "border-red-500" : "border-gray-300"
-    }`;
+  // Track field blur for showing errors only after user interaction
+  const handleBlur = useCallback((field) => {
+    setTouched((prev) => ({ ...prev, [field]: true }));
+  }, []);
 
-  const ErrorMessage = ({ field }) =>
-    errors[field] ? (
-      <motion.p
-        initial={{ opacity: 0, y: -5 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="text-xs text-red-600 mt-1 font-medium"
-      >
-        {errors[field]}
-      </motion.p>
-    ) : null;
+  // Memoize input class calculation
+  const inputClass = useCallback(
+    (field) =>
+      `w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent transition-all duration-200 ${
+        errors[field] && touched[field] ? "border-red-500" : "border-gray-300"
+      }`,
+    [errors, touched]
+  );
 
   return (
     <div className="space-y-6">
@@ -95,10 +105,11 @@ export default function CustomerForm({
             required
             value={formData.firstName}
             onChange={(e) => handleChange("firstName", e.target.value)}
+            onBlur={() => handleBlur("firstName")}
             className={inputClass("firstName")}
             placeholder="John"
           />
-          <ErrorMessage field="firstName" />
+          <ErrorMessage field="firstName" errors={errors} touched={touched} />
         </div>
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -109,10 +120,11 @@ export default function CustomerForm({
             required
             value={formData.lastName}
             onChange={(e) => handleChange("lastName", e.target.value)}
+            onBlur={() => handleBlur("lastName")}
             className={inputClass("lastName")}
             placeholder="Doe"
           />
-          <ErrorMessage field="lastName" />
+          <ErrorMessage field="lastName" errors={errors} touched={touched} />
         </div>
       </div>
 
@@ -128,10 +140,11 @@ export default function CustomerForm({
             required
             value={formData.email}
             onChange={(e) => handleChange("email", e.target.value)}
+            onBlur={() => handleBlur("email")}
             className={inputClass("email")}
             placeholder="john.doe@example.com"
           />
-          <ErrorMessage field="email" />
+          <ErrorMessage field="email" errors={errors} touched={touched} />
         </div>
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center">
@@ -143,14 +156,13 @@ export default function CustomerForm({
             required
             value={formData.phone}
             onChange={(e) => handleChange("phone", e.target.value)}
+            onBlur={() => handleBlur("phone")}
             className={inputClass("phone")}
             placeholder="+234 800 000 0000"
           />
-          <ErrorMessage field="phone" />
+          <ErrorMessage field="phone" errors={errors} touched={touched} />
         </div>
       </div>
-
-      {/* Removed Address section here */}
 
       {/* City & State */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -163,10 +175,11 @@ export default function CustomerForm({
             required
             value={formData.city}
             onChange={(e) => handleChange("city", e.target.value)}
+            onBlur={() => handleBlur("city")}
             className={inputClass("city")}
             placeholder="Lagos"
           />
-          <ErrorMessage field="city" />
+          <ErrorMessage field="city" errors={errors} touched={touched} />
         </div>
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -176,6 +189,7 @@ export default function CustomerForm({
             required
             value={formData.state}
             onChange={(e) => handleChange("state", e.target.value)}
+            onBlur={() => handleBlur("state")}
             className={inputClass("state")}
           >
             <option value="">Select State</option>
@@ -190,7 +204,7 @@ export default function CustomerForm({
             <option value="Ogun">Ogun</option>
             <option value="Enugu">Enugu</option>
           </select>
-          <ErrorMessage field="state" />
+          <ErrorMessage field="state" errors={errors} touched={touched} />
         </div>
       </div>
 
