@@ -45,6 +45,17 @@ function ConfirmationContent() {
         if (data.status === "success" && data.data) {
           setVerificationStatus("success");
           setPaymentData(data.data);
+
+          // ✅ CLEAR CART ONLY AFTER BACKEND CONFIRMS SUCCESS
+          clearCart();
+
+          // ✅ After 2 seconds, redirect to ticket page
+          setTimeout(() => {
+            const reference = data.data.reference;
+            router.push(`/tickets?ref=${reference}`);
+          }, 2000);
+
+          console.log("🧹 Cart cleared after successful verification");
         } else if (data.status === "pending") {
           // Payment is still processing
           setVerificationStatus("pending");

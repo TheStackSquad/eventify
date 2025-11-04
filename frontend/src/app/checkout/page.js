@@ -5,7 +5,7 @@ import { useMemo, useState, useEffect, useCallback, memo } from "react";
 import { useCart } from "@/context/cartContext";
 import PaystackCheckout from "@/components/checkoutUI/checkout";
 import CustomerForm from "@/components/checkoutUI/customerForm";
-import { useRouter } from "next/navigation";
+//import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, User, CheckCircle } from "lucide-react";
 import { calculateOrderTotals, formatCurrency } from "@/utils/currency";
