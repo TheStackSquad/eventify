@@ -1,25 +1,62 @@
-//frontend/src/utils/hooks/usePaysatckIntegration.js
-
+//frontend/src/utils/hooks/usePaystackIntegration.js
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { useCart } from "@/context/cartContext";
 import { useRouter } from "next/navigation";
 import toastAlert from "@/components/common/toast/toastAlert";
-import { ENDPOINTS } from "@/axiosConfig/axios";
-import axios from "@/axiosConfig/axios";
+import axios, { ENDPOINTS } from "@/axiosConfig/axios";
 
-export function usePaystackIntegration({
-  amountInKobo,
-  email,
-  metadata
-}) {
+/**
+ * ✅ REFACTORED: Builds MINIMAL order initialization payload.
+ * NO price calculations - server will fetch prices from database.
+ * Client only sends IDENTIFICATION data (what they want to buy).
+ */
+const buildInitializationPayload = (email, items, metadata) => {
+  const customerInfo = metadata?.customer_info || {};
+
+  return {
+    email,
+
+    // ✅ Send ONLY identification data (event_id, tier_name, quantity)
+    // Server will look up prices from database
+    items: items.map((item) => ({
+      event_id: item.eventId,
+      tier_name: item.tierName,
+      quantity: item.quantity,
+      // ❌ REMOVED: event_title, unit_price - server has these
+    })),
+
+    // Customer information
+    customer: {
+      first_name: customerInfo.firstName || "",
+      last_name: customerInfo.lastName || "",
+      email: customerInfo.email || email,
+      phone: customerInfo.phone || "",
+      city: customerInfo.city || "",
+      state: customerInfo.state || "",
+      country: customerInfo.country || "Nigeria",
+    },
+  };
+};
+
+/**
+ * ✅ REFACTORED: usePaystackIntegration hook
+ * NO LONGER accepts amountInKobo prop - server calculates this!
+ */
+export function usePaystackIntegration({ email, metadata }) {
   const router = useRouter();
   const { clearCart, items } = useCart();
   const [isScriptLoaded, setIsScriptLoaded] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const PAYSTACK_PUBLIC_KEY = process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY;
 
+  // --- Constants ---
+  const PAYSTACK_PUBLIC_KEY = useMemo(
+    () => process.env.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY,
+    []
+  );
+
+  // --- SDK Loading Effect ---
   useEffect(() => {
     const scriptId = "paystack-script";
 
@@ -36,27 +73,29 @@ export function usePaystackIntegration({
     script.onload = () => setIsScriptLoaded(true);
     script.onerror = () => {
       console.error("Failed to load Paystack script.");
-      toastAlert.error("Payment system unavailable. Please try again later.");
+      toastAlert.error("Payment system unavailable. Please refresh.");
       setIsScriptLoaded(false);
     };
 
     document.head.appendChild(script);
 
     return () => {
-      if (document.getElementById(scriptId)) {
-        document.head.removeChild(script);
+      const existingScript = document.getElementById(scriptId);
+      if (existingScript) {
+        document.head.removeChild(existingScript);
       }
     };
   }, []);
 
+  // --- Payment Handlers ---
+
   const handleSuccess = useCallback(
     (response) => {
       console.log("✅ Paystack Transaction Successful:", response);
-      localStorage.setItem("lastPaymentReference", response.reference);
       clearCart();
-
-      // 💡 FIX: Redirect to a frontend page, passing the reference as a query parameter.
-      router.push(`/checkout/confirmation?reference=${response.reference}`);
+      router.push(
+        `/checkout/confirmation?trxref=${response.reference}&status=success`
+      );
     },
     [clearCart, router]
   );
@@ -66,42 +105,52 @@ export function usePaystackIntegration({
     toastAlert.warn("Payment cancelled. You can try again anytime.");
   }, []);
 
+  /**
+   * ✅ REFACTORED: handlePayment
+   * Key changes:
+   * 1. Removed client-side amount calculation
+   * 2. Server returns authoritative amount
+   * 3. Use server's amount for Paystack
+   */
   const handlePayment = useCallback(async () => {
-    if (
-      !isScriptLoaded ||
-      !window.PaystackPop ||
-      !PAYSTACK_PUBLIC_KEY ||
-      !email?.includes("@") ||
-      amountInKobo < 100
-    ) {
-      toastAlert.error(
-        "Payment validation failed. Check email or gateway status."
-      );
+    // --- Pre-flight Validation ---
+    if (!isScriptLoaded || !window.PaystackPop) {
+      toastAlert.error("Payment gateway not ready. Please wait.");
+      return;
+    }
+
+    if (!PAYSTACK_PUBLIC_KEY) {
+      toastAlert.error("Payment configuration error: Public key missing.");
+      return;
+    }
+
+    if (!email?.includes("@")) {
+      toastAlert.error("Please provide a valid email address.");
+      return;
+    }
+
+    if (!items || items.length === 0) {
+      toastAlert.error("Your cart is empty.");
       return;
     }
 
     setIsLoading(true);
 
     try {
-      const orderInitializationData = {
+      // 1. Build MINIMAL payload (no prices, just identification)
+      const orderInitializationData = buildInitializationPayload(
         email,
-        amountInKobo,
         items,
-        metadata,
-      };
+        metadata
+      );
 
-      // ADDED LOGGING HERE
       const initializationEndpoint =
         axios.defaults.baseURL + ENDPOINTS.ORDERS.INITIALIZE;
-      console.log(
-        `📡 Attempting to initialize order: POST ${initializationEndpoint}`
-      );
-      console.log(
-        "   Payload:",
-        JSON.stringify(orderInitializationData, null, 2)
-      );
-      // END LOGGING
 
+      console.log(`📡 Initializing order: POST ${initializationEndpoint}`);
+      console.log("📦 Payload (identification only):", orderInitializationData);
+
+      // 2. Initialize order - SERVER calculates the authoritative amount
       const response = await axios.post(
         ENDPOINTS.ORDERS.INITIALIZE,
         orderInitializationData
@@ -109,31 +158,46 @@ export function usePaystackIntegration({
 
       const result = response.data;
 
-      // NOTE: We check for status:"success" which the Go backend now sends.
-      // The backend response is: { status: "success", data: { reference: "..." } }
       if (result.status !== "success" || !result.data?.reference) {
         throw new Error(
           result.message || "Failed to initialize order on server."
         );
       }
 
+      // ✅ CRITICAL: Extract server-calculated amount
       const dbReference = result.data.reference;
-      console.log("✅ Pending Order Created on Server with Ref:", dbReference);
+      const serverAmountKobo = result.data.amount_kobo; // 🔒 SERVER AUTHORITY!
+
+      console.log("✅ Order initialized successfully");
+      console.log(`   Reference: ${dbReference}`);
+      console.log(
+        `   Server-calculated amount: ₦${(serverAmountKobo / 100).toFixed(2)}`
+      );
+
+      // 3. Open Paystack with SERVER-AUTHORITATIVE amount
+      const customerInfo = orderInitializationData.customer;
 
       const handler = window.PaystackPop.setup({
         key: PAYSTACK_PUBLIC_KEY,
         email,
-        amount: amountInKobo,
+        amount: serverAmountKobo, // 🔒 USE SERVER AMOUNT, NOT CLIENT CALCULATION!
         ref: dbReference,
         currency: "NGN",
         channels: ["card", "bank", "ussd", "qr", "mobile_money"],
         metadata: {
           reference: dbReference,
+          customer_info: customerInfo,
+          // ✅ Include item details for Paystack dashboard (display only)
+          items: items.map((item) => ({
+            event_id: item.eventId,
+            event_title: item.eventTitle,
+            tier_name: item.tierName,
+            quantity: item.quantity,
+          })),
           timestamp: new Date().toISOString(),
         },
         callback: (response) => {
           setIsLoading(false);
-          // FIX: Only passing the Paystack response to handleSuccess
           handleSuccess(response);
         },
         onClose: () => {
@@ -145,27 +209,50 @@ export function usePaystackIntegration({
       handler.openIframe();
     } catch (error) {
       const serverMessage = error.response?.data?.message || error.message;
-      console.error("Payment initialization failed:", error);
-      toastAlert.error(
-        serverMessage || "Could not start payment. Please try again."
-      );
+      const serverDetails = error.response?.data?.details;
+
+      console.error("❌ Payment initialization failed:", error);
+
+      // Provide helpful error messages
+      let errorMessage = "Could not start payment. Please try again.";
+
+      if (
+        serverDetails?.includes("out of stock") ||
+        serverDetails?.includes("insufficient")
+      ) {
+        errorMessage =
+          "Some items are no longer available. Please update your cart.";
+      } else if (
+        serverDetails?.includes("not found") ||
+        serverDetails?.includes("invalid event")
+      ) {
+        errorMessage =
+          "Some items in your cart are no longer valid. Please refresh and try again.";
+      } else if (serverMessage) {
+        errorMessage = serverMessage;
+      }
+
+      toastAlert.error(errorMessage);
       setIsLoading(false);
     }
   }, [
     isScriptLoaded,
     PAYSTACK_PUBLIC_KEY,
     email,
-    amountInKobo,
     items,
     metadata,
     handleSuccess,
     handleClose,
   ]);
 
+  // ✅ UPDATED: isReady check (no longer checks amountInKobo)
+  const isReady =
+    isScriptLoaded && !!PAYSTACK_PUBLIC_KEY && !!email && items?.length > 0;
+
   return {
     handlePayment,
     isScriptLoaded,
     isLoading,
-    isReady: isScriptLoaded && !!PAYSTACK_PUBLIC_KEY,
+    isReady,
   };
 }

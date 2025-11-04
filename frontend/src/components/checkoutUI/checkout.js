@@ -1,19 +1,34 @@
-// frontend/src/components/checkoutUI/checkout.js
+// frontend/src/components/checkoutUI/checkout.
 "use client";
 
+import { useEffect } from "react";
 import { motion } from "framer-motion";
 import { CreditCard, Loader2, AlertTriangle } from "lucide-react";
 import { usePaystackIntegration } from "@/utils/hooks/usePaystackIntegration";
 
+// The component is exported directly without memo()
 export default function PaystackCheckout({
   amountInKobo,
   email,
   totalAmount,
   formatCurrency,
+  metadata,
 }) {
+  // CRITICAL DEBUG: Log what this component receives
+  useEffect(() => {
+    console.log("🟠 PaystackCheckout: Component mounted/updated");
+    console.log("🟠 PaystackCheckout: Received props:", {
+      amountInKobo,
+      email,
+      totalAmount,
+      metadata,
+    });
+  }, [amountInKobo, email, totalAmount, metadata]);
+
   const { handlePayment, isLoading, isReady } = usePaystackIntegration({
     amountInKobo,
     email,
+    metadata,
   });
 
   return (
@@ -33,8 +48,8 @@ export default function PaystackCheckout({
         />
         <p className="text-sm text-yellow-800">
           This is a simulated Paystack integration for demonstration. In
-          production, ensure you&apos;re using your live keys and proper server-side
-          verification.
+          production, ensure you&apos;re using your live keys and proper
+          server-side verification.
         </p>
       </div>
 
@@ -73,3 +88,5 @@ export default function PaystackCheckout({
     </div>
   );
 }
+
+PaystackCheckout.displayName = "PaystackCheckout";
