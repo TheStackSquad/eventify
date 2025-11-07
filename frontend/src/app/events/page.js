@@ -1,9 +1,8 @@
-
 // src/app/events/page.jsx
 
 "use client";
 
-import { useState, useMemo, useEffect, useRef } from "react";
+import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { useSelector, useDispatch } from "react-redux";
 import { fetchAllEvents } from "@/redux/action/eventAction";
 
@@ -40,6 +39,7 @@ const normalizeEvents = (rawEvents) => {
       });
     };
 
+    // Use nullish coalescing for safety
     const startingPrice = event.tickets?.[0]?.price ?? 0;
 
     let tag = "New";
@@ -81,15 +81,8 @@ export default function EventsPage() {
     [eventsState?.allEvents]
   );
 
-  // Fetch events on mount
-  useEffect(() => {
-    if (
-      eventsStatus === "idle" ||
-      (eventsStatus === "failed" && rawEvents.length === 0)
-    ) {
-      dispatch(fetchAllEvents());
-    }
-  }, [dispatch, eventsStatus, rawEvents.length]);
+  // Refs for sticky behavior
+  const heroRef = useRef(null);
 
   // Local state
   const [searchTerm, setSearchTerm] = useState("");
@@ -101,8 +94,26 @@ export default function EventsPage() {
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [isFilterSticky, setIsFilterSticky] = useState(false);
 
-  // Refs for sticky behavior
-  const heroRef = useRef(null);
+  // --- Data Initialization & Abort Logic ---
+  useEffect(() => {
+    // 1. Create the AbortController
+    const controller = new AbortController();
+    const signal = controller.signal;
+
+    // Simplified condition: fetch if we haven't successfully fetched yet
+    const shouldFetch = eventsStatus === "idle" || eventsStatus === "failed";
+
+    if (shouldFetch && rawEvents.length === 0) {
+      dispatch(fetchAllEvents(signal));
+    }
+
+    // 2. FIX: Implement Cleanup Function for AbortController
+    return () => {
+      controller.abort();
+    };
+  }, [dispatch, eventsStatus, rawEvents.length]);
+
+  // --- Memoized Data ---
 
   // Normalized events
   const EVENTS_DATA_SOURCE = useMemo(
@@ -146,20 +157,26 @@ export default function EventsPage() {
       return matchesSearch && matchesCategory && matchesLocation;
     });
 
-    // Apply sorting
+    // Apply sorting (create a mutable copy before sorting)
+    const sortedResult = [...result];
+
     if (sortBy === "date-asc") {
-      result.sort((a, b) => new Date(a.startDate) - new Date(b.startDate));
+      sortedResult.sort(
+        (a, b) => new Date(a.startDate) - new Date(b.startDate)
+      );
     } else if (sortBy === "date-desc") {
-      result.sort((a, b) => new Date(b.startDate) - new Date(a.startDate));
+      sortedResult.sort(
+        (a, b) => new Date(b.startDate) - new Date(a.startDate)
+      );
     } else if (sortBy === "price-asc") {
-      result.sort((a, b) => a.price - b.price);
+      sortedResult.sort((a, b) => a.price - b.price);
     } else if (sortBy === "price-desc") {
-      result.sort((a, b) => b.price - a.price);
+      sortedResult.sort((a, b) => b.price - a.price);
     } else if (sortBy === "location") {
-      result.sort((a, b) => a.filterCity.localeCompare(b.filterCity));
+      sortedResult.sort((a, b) => a.filterCity.localeCompare(b.filterCity));
     }
 
-    return result;
+    return sortedResult;
   }, [
     EVENTS_DATA_SOURCE,
     searchTerm,
@@ -175,8 +192,9 @@ export default function EventsPage() {
 
   const hasMore = displayedEventsCount < filteredEvents.length;
 
-  // Load more handler
-  const handleLoadMore = () => {
+  // --- Handlers (Memoized with useCallback for performance) ---
+
+  const handleLoadMore = useCallback(() => {
     if (hasMore && !isLoadingMore) {
       setIsLoadingMore(true);
       setTimeout(() => {
@@ -184,17 +202,25 @@ export default function EventsPage() {
         setIsLoadingMore(false);
       }, 800);
     }
-  };
+  }, [hasMore, isLoadingMore]);
+
+  // Clear all filters
+  const handleClearFilters = useCallback(() => {
+    setSearchTerm("");
+    setSelectedCategory("All");
+    setSelectedLocation("All Locations");
+    setSortBy("date-asc");
+  }, []); // Empty dependency array means this function is stable
+
+  // --- Effects ---
 
   // Reset display count on filter change
   useEffect(() => {
     setDisplayedEventsCount(EVENTS_PER_LOAD);
   }, [searchTerm, selectedCategory, selectedLocation, sortBy]);
 
-  // Sticky filter bar behavior
-  // Sticky filter bar behavior
+  // Sticky filter bar behavior (No change needed, it was already correct)
   useEffect(() => {
-    // 1. Capture the mutable ref value in a stable variable
     const currentHeroRef = heroRef.current;
 
     const observer = new IntersectionObserver(
@@ -204,34 +230,25 @@ export default function EventsPage() {
       { threshold: 0, rootMargin: "-80px 0px 0px 0px" }
     );
 
-    // 2. Use the stable variable for observing
     if (currentHeroRef) {
       observer.observe(currentHeroRef);
     }
 
     return () => {
-      // 3. Use the stable variable for cleanup
-      // This guarantees you unobserve the exact element you observed.
       if (currentHeroRef) {
         observer.unobserve(currentHeroRef);
       }
     };
   }, []);
 
-  // Clear all filters
-  const handleClearFilters = () => {
-    setSearchTerm("");
-    setSelectedCategory("All");
-    setSelectedLocation("All Locations");
-    setSortBy("date-asc");
-  };
-
-  // Check if any filters are active
+  // --- Derived State for UI ---
   const hasActiveFilters =
     searchTerm !== "" ||
     selectedCategory !== "All" ||
     selectedLocation !== "All Locations" ||
     sortBy !== "date-asc";
+
+  // --- Render ---
 
   // Loading state
   if (eventsStatus === "loading") {
