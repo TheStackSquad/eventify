@@ -1,4 +1,0 @@
-//frontend/.babelrc
-{
-  "presets": ["next/babel"]
-}
