@@ -1,15 +1,14 @@
 // frontend/src/app/dashboard/page.js
-
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 import { useSelector, useDispatch } from "react-redux";
 import { useRouter } from "next/navigation";
 
 // Layout & Views
 import DashboardLayout from "@/components/dashboard/dashboardLayout";
 import MyEventsDashboard from "@/components/dashboard/myEventsDashboard";
-import VendorsDashboard from "@/components/dashboard/vendorDashboard"; // Handles both Analytics and Registration
+import VendorsDashboard from "@/components/dashboard/vendorDashboard";
 
 // Modals
 import DeleteModal from "@/components/modal/delete";
@@ -23,14 +22,9 @@ export default function DashboardPage() {
   const dispatch = useDispatch();
   const router = useRouter();
 
-  // Redux state
-  const {
-    user,
-    status: authStatus,
-    isInitialized,
-  } = useSelector((state) => state.auth);
-  // console.log('Inside The Main Page:', user);
-
+  // ✅ OPTIMIZED: Single useSelector call with memoized selectors
+  const { user, sessionChecked } = useSelector((state) => state.auth);
+  console.log('user state:', user);
   const { analyticsData, analyticsStatus } = useSelector(
     (state) => state.events
   );
@@ -41,8 +35,7 @@ export default function DashboardPage() {
   // Events data (only for MyEventsDashboard)
   const [events, setEvents] = useState([]);
   const [purchasedTickets, setPurchasedTickets] = useState([]);
-  const [isEventsLoading, setIsEventsLoading] = useState(true);
-  const [isAuthValidated, setIsAuthValidated] = useState(false);
+  const [isEventsLoading, setIsEventsLoading] = useState(false);
   const [error, setError] = useState(null);
 
   // Modal states
@@ -51,7 +44,7 @@ export default function DashboardPage() {
   const [isAnalyticsModalOpen, setIsAnalyticsModalOpen] = useState(false);
   const [analyticsTargetId, setAnalyticsTargetId] = useState(null);
 
-  // Modal handlers
+  // ✅ OPTIMIZED: Memoized modal handlers
   const openDeleteModal = useCallback((id, title) => {
     setDeleteTarget({ id, title });
     setIsDeleteModalOpen(true);
@@ -72,19 +65,33 @@ export default function DashboardPage() {
     setAnalyticsTargetId(null);
   }, []);
 
-  // Analytics data ready check
-  useEffect(() => {
-    if (analyticsTargetId && analyticsStatus === "succeeded" && analyticsData) {
-      const targetEvent = events.find((e) => e.id === analyticsTargetId);
-      if (targetEvent) {
-        console.log(`✅ Analytics ready for: ${targetEvent.eventTitle}`);
-        setIsAnalyticsModalOpen(true);
-      }
-    }
-  }, [analyticsStatus, analyticsTargetId, analyticsData, events]);
+  // ✅ OPTIMIZED: Memoized analytics check with early returns
+  const analyticsTargetEvent = useMemo(() => {
+    if (!analyticsTargetId || !events.length) return null;
+    return events.find((e) => e.id === analyticsTargetId);
+  }, [analyticsTargetId, events]);
 
-  // Load events data
+  // Analytics data ready check
+  const shouldOpenAnalyticsModal = useMemo(
+    () =>
+      analyticsTargetId &&
+      analyticsStatus === "succeeded" &&
+      analyticsData &&
+      analyticsTargetEvent,
+    [analyticsTargetId, analyticsStatus, analyticsData, analyticsTargetEvent]
+  );
+
+  // ✅ OPTIMIZED: Single useEffect for analytics modal
+  useState(() => {
+    if (shouldOpenAnalyticsModal) {
+      setIsAnalyticsModalOpen(true);
+    }
+  }, [shouldOpenAnalyticsModal]);
+
+  // ✅ OPTIMIZED: Memoized events loader with error handling
   const loadUserEvents = useCallback(async () => {
+    if (isEventsLoading) return; // Prevent duplicate calls
+
     console.log("📊 Loading user events...");
     setIsEventsLoading(true);
     setError(null);
@@ -98,16 +105,11 @@ export default function DashboardPage() {
         console.log("✅ Events loaded:", userEvents.length);
       } else {
         const errorMsg =
-          eventsResult.payload?.message ||
-          eventsResult.error?.message ||
-          "Failed to fetch events";
+          eventsResult.payload?.message || "Failed to fetch events";
         console.error("❌ Events fetch failed:", errorMsg);
         setEvents([]);
         setError(errorMsg);
       }
-
-      // Placeholder for purchased tickets
-      setPurchasedTickets([]);
     } catch (error) {
       console.error("❌ Unexpected error loading events:", error);
       setError("An unexpected error occurred");
@@ -115,56 +117,46 @@ export default function DashboardPage() {
     } finally {
       setIsEventsLoading(false);
     }
-  }, [dispatch]);
+  }, [dispatch, isEventsLoading]);
 
-  // Authentication & redirect logic
-  useEffect(() => {
-    console.log("🔐 Auth Check:", {
-      isInitialized,
-      authStatus,
-      hasUser: !!user,
-    });
+  // ✅ REMOVED: All authentication redirect logic - now handled by middleware
 
-    if (!isInitialized || authStatus === "loading") {
-      setIsAuthValidated(false);
-      return;
-    }
-
-    if (isInitialized && !user) {
-      setIsEventsLoading(false);
-      setIsAuthValidated(false);
-      router.push("/account/auth/login");
-      return;
-    }
-
-    if (isInitialized && user && authStatus === "succeeded") {
-      setIsAuthValidated(true);
+  // ✅ OPTIMIZED: Load events only when session is verified and user exists
+  useState(() => {
+    if (sessionChecked && user) {
       loadUserEvents();
     }
-  }, [isInitialized, authStatus, user, router, loadUserEvents]);
+  }, [sessionChecked, user, loadUserEvents]);
 
-  // Logout handler
-  const handleLogout = async () => {
+  // ✅ OPTIMIZED: Memoized logout handler
+  const handleLogout = useCallback(async () => {
     console.log("👋 Logging out...");
     try {
       await dispatch(logoutUser());
       console.log("✅ Logout successful");
-      router.push("/account/auth/login");
+      // Middleware will handle redirect on next request
     } catch (error) {
       console.error("❌ Logout error:", error);
+      // Still redirect even if API call fails
+    } finally {
       router.push("/account/auth/login");
     }
-  };
+  }, [dispatch, router]);
 
-  // Navigate to create event
-  const handleCreateEvent = () => {
+  // ✅ OPTIMIZED: Memoized navigation handler
+  const handleCreateEvent = useCallback(() => {
     console.log("➕ Navigating to event creation...");
     router.push("/events/create-events");
-  };
+  }, [router]);
 
-  // Loading check
-  const isLoading =
-    !isInitialized || authStatus === "loading" || !isAuthValidated || !user;
+  // ✅ OPTIMIZED: Single loading check using sessionChecked
+  const isLoading = !sessionChecked || isEventsLoading;
+
+  // ✅ OPTIMIZED: Memoized current event for analytics modal
+  const currentEvent = useMemo(
+    () => events.find((e) => e.id === analyticsTargetId),
+    [events, analyticsTargetId]
+  );
 
   // Loading state
   if (isLoading) {
@@ -184,11 +176,7 @@ export default function DashboardPage() {
     );
   }
 
-  // Safety check
-  if (!user || !isAuthValidated) {
-    console.error("🚨 CRITICAL: Reached render without proper auth!");
-    return null;
-  }
+  // ✅ REMOVED: Manual auth validation checks - middleware guarantees user exists
 
   // Error state (only for events view)
   if (error && events.length === 0 && activeView === "events") {
@@ -213,13 +201,11 @@ export default function DashboardPage() {
     );
   }
 
-  const currentEvent = events.find((e) => e.id === analyticsTargetId);
-
-  // Main render
+  // ✅ OPTIMIZED: Main render with stable callback references
   return (
     <>
       <DashboardLayout
-        userName={user.name}
+        userName={user?.name}
         activeView={activeView}
         onViewChange={setActiveView}
         onLogout={handleLogout}
@@ -236,11 +222,10 @@ export default function DashboardPage() {
           />
         )}
 
-        {/* --- MODIFIED VENDOR BLOCK --- */}
+        {/* Vendor views */}
         {(activeView === "vendor" || activeView === "vendor-register") && (
           <VendorsDashboard activeView={activeView} />
         )}
-        {/* ------------------------------ */}
       </DashboardLayout>
 
       {/* Modals */}

@@ -53,6 +53,15 @@ const redirectToLogin = () => {
 // Step 6: Request Interceptor (optional, for logging or adding headers)
 instance.interceptors.request.use(
   (config) => {
+    // 🐛 DEBUG: Log all outgoing requests
+    console.log("📤 [AXIOS REQUEST]", {
+      method: config.method?.toUpperCase(),
+      url: config.url,
+      baseURL: config.baseURL,
+      fullURL: `${config.baseURL}${config.url}`,
+      withCredentials: config.withCredentials,
+      headers: config.headers,
+    });
     return config;
   },
   (error) => {
@@ -64,6 +73,12 @@ instance.interceptors.request.use(
 instance.interceptors.response.use(
   (response) => response,
   async (error) => {
+    // 🐛 DEBUG: Log successful responses
+    console.log("📥 [AXIOS RESPONSE SUCCESS]", {
+      status: response.status,
+      url: response.config.url,
+      method: response.config.method?.toUpperCase(),
+    });
     const originalRequest = error.config;
 
     // Prevent handling non-401 errors or already retried requests

@@ -54,7 +54,7 @@ export const API_ENDPOINTS = {
     SIGNIN: "/auth/login",
     ME: "/auth/me",
     LOGOUT: "/auth/logout",
-    // NEW: Added for axios interceptor compatibility
+    VERIFY: "/auth/me",
     REFRESH: "/auth/refresh",
     LOGIN: "/auth/login", // Alias for SIGNIN for backward compatibility
   },
@@ -137,7 +137,6 @@ export const API_ENDPOINTS = {
 };
 
 // ========== ROUTES ==========
-// 🎯 FIX: Move ROUTES to before REDIRECT_PATHS
 export const ROUTES = {
  LOGIN: "/account/auth/login",
   MY_EVENTS: "/events/my-events",

@@ -1,5 +1,26 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Disable caching in development
+  experimental: {
+    staleTimes: {
+      dynamic: 0, // Always fresh for dynamic content
+      static: 0, // Always fresh for static content
+    },
+  },
+  // Add headers to prevent caching
+  async headers() {
+    return [
+      {
+        source: "/:path*",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "no-store, no-cache, must-revalidate, proxy-revalidate",
+          },
+        ],
+      },
+    ];
+  },
   images: {
     remotePatterns: [
       {

@@ -1,6 +1,6 @@
 // frontend/src/redux/action/actionAuth.js
 
-import { createAsyncThunk } from "@reduxjs/toolkit";
+import { createAsyncThunk, createAction } from "@reduxjs/toolkit";
 import axios from "@/axiosConfig/axios";
 //import toastAlert from "@/components/common/toast/toastAlert";
 import {
@@ -67,34 +67,46 @@ export const signinUser = createAsyncThunk(
   }
 );
 
-// restoreSession with state management
-export const restoreSession = createAsyncThunk(
-  // Use the constant for the action type
-  REDUX_ACTION_TYPES.RESTORE_SESSION,
-  async (_, { rejectWithValue }) => {
-    console.log(
-      "[restoreSession Thunk] Starting session restoration attempt..."
-    );
+export const verifySession = createAsyncThunk(
+  REDUX_ACTION_TYPES.VERIFY_SESSION,
+  async (_, { rejectWithValue, dispatch }) => {
+    console.log("🟣 [VERIFY SESSION] Starting...");
+
     try {
-      console.log(
-        "[restoreSession Thunk] Calling GET",
-        API_ENDPOINTS.AUTH.ME, // 👈 Use the constant
-        "..."
-      );
-      const response = await axios.get(
-        API_ENDPOINTS.AUTH.ME // 👈 Use the constant
-      );
-      // ... (Rest of restoreSession thunk remains the same)
+      console.log("🟣 [VERIFY SESSION] Calling:", API_ENDPOINTS.AUTH.ME);
+      const response = await axios.get(API_ENDPOINTS.AUTH.ME);
+
+      console.log("✅ [VERIFY SESSION] Success:", {
+        status: response.status,
+        userId: response.data.user?.id,
+        userEmail: response.data.user?.email,
+      });
+
       return {
-        user: response.data,
-        restored: true,
+        user: {
+          id: response.data.user?.id,
+          name: response.data.user?.name,
+          email: response.data.user?.email,
+          is_admin: response.data.user?.is_admin,
+        },
+        sessionChecked: true,
+        isAuthenticated: true,
       };
     } catch (error) {
-      // ... (Error handling remains the same)
+      console.error("❌ [VERIFY SESSION] Failed:", {
+        status: error.response?.status,
+        message: error.message,
+        hasResponse: !!error.response,
+        hasRequest: !!error.request,
+      });
+
+      dispatch(clearStaleAuthData());
+
       return rejectWithValue({
-        message: isAuthError ? "Session expired" : "Session restoration failed",
+        message: "Session verification failed",
+        status: error.response?.status,
         silent: true,
-        isAuthError,
+        isAuthError: error.response?.status === 401,
       });
     }
   }
@@ -123,3 +135,7 @@ export const logoutUser = createAsyncThunk(
     }
   }
 );
+
+
+// Helper action to clear sensitive data
+export const clearStaleAuthData = createAction('CLEAR_STALE_AUTH_DATA');
