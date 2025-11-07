@@ -11,7 +11,7 @@ import (
 
 	"eventify/backend/pkg/models"
 	"eventify/backend/pkg/utils"
-	"eventify/backend/pkg/repository" // <-- Import the repository package
+	"eventify/backend/pkg/repository"
 
 	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog/log"

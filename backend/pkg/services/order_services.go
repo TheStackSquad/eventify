@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"eventify/backend/pkg/models"
@@ -39,7 +40,8 @@ type PaystackClient struct {
 
 type OrderServiceImpl struct {
 	OrderRepo      repository.OrderRepository
-	PricingService PricingService // ✅ NEW: Added dependency for authoritative pricing
+	EventRepo      repository.EventRepository // ✅ ADD: For ticket stock management
+	PricingService PricingService
 	PaystackClient *PaystackClient
 }
 
@@ -47,58 +49,54 @@ type OrderServiceImpl struct {
 // CONSTRUCTOR
 // ============================================================================
 
-// NewOrderService creates a new OrderService instance
+// ✅ UPDATED: Added EventRepo dependency
 func NewOrderService(
 	orderRepo repository.OrderRepository,
+	eventRepo repository.EventRepository, // ✅ NEW
 	pricingService PricingService,
 	psClient *PaystackClient,
 ) OrderService {
 	return &OrderServiceImpl{
 		OrderRepo:      orderRepo,
-		PricingService: pricingService, // ✅ NEW: Injected pricing service
+		EventRepo:      eventRepo, // ✅ NEW
+		PricingService: pricingService,
 		PaystackClient: psClient,
 	}
 }
 
 // ============================================================================
-// INITIALIZATION (Step 1 - Refactored for Server Authority)
+// INITIALIZATION (Step 1)
 // ============================================================================
 
-// InitializePendingOrder creates a new pending order with authoritative pricing
 func (s *OrderServiceImpl) InitializePendingOrder(
 	ctx context.Context,
 	req *models.OrderInitializationRequest,
 ) (*models.Order, error) {
-	// 1. VALIDATE MINIMAL REQUEST (only format, quantity, email)
+	// 1. VALIDATE REQUEST
 	if err := req.Validate(); err != nil {
-		log.Warn().
-			Err(err).
-			Msg("Order initialization basic format validation failed")
+		log.Warn().Err(err).Msg("Order initialization validation failed")
 		return nil, fmt.Errorf("validation failed: %w", err)
 	}
 
-	// 2. CALCULATE AUTHORITATIVE ORDER (Server Source of Truth)
-	// This call performs the database lookups, stock checks, pricing, and fee calculations.
+	// 2. CALCULATE AUTHORITATIVE ORDER (checks stock availability)
 	pendingOrder, err := s.PricingService.CalculateAuthoritativeOrder(ctx, req)
 	if err != nil {
-		log.Error().Err(err).Msg("❌ Failed to calculate authoritative order price/fees")
+		log.Error().Err(err).Msg("❌ Failed to calculate authoritative order")
 		return nil, fmt.Errorf("pricing calculation failed: %w", err)
 	}
 
-	// 3. GENERATE SECURE REFERENCE & POPULATE ORDER
+	// 3. GENERATE SECURE REFERENCE
 	reference := utils.GenerateUniqueTransactionReference()
 	pendingOrder.Reference = reference
 	pendingOrder.Status = "pending"
-	pendingOrder.Customer = req.Customer // Use customer info from the client request
-	pendingOrder.UserID = nil            // Set if authenticated
+	pendingOrder.Customer = req.Customer
+	pendingOrder.UserID = nil
 
 	log.Info().
 		Str("reference", reference).
-		Int("calculated_kobo", pendingOrder.AmountKobo).
-		Int("subtotal", pendingOrder.Subtotal).
+		Int("amount_kobo", pendingOrder.AmountKobo).
 		Str("email", req.Email).
-		Int("items_count", len(pendingOrder.Items)).
-		Msg("✅ Authoritative order calculated and preparing for save")
+		Msg("✅ Order calculated, saving as pending")
 
 	// 4. SAVE TO DATABASE
 	orderID, err := s.OrderRepo.SavePendingOrder(ctx, pendingOrder)
@@ -108,12 +106,7 @@ func (s *OrderServiceImpl) InitializePendingOrder(
 	}
 
 	pendingOrder.ID = orderID
-
-	log.Info().
-		Str("reference", reference).
-		Str("order_id", orderID.Hex()).
-		Int("amount_kobo", pendingOrder.AmountKobo).
-		Msg("✅ Pending order created successfully")
+	log.Info().Str("reference", reference).Str("order_id", orderID.Hex()).Msg("✅ Pending order created")
 
 	return pendingOrder, nil
 }
@@ -122,105 +115,75 @@ func (s *OrderServiceImpl) InitializePendingOrder(
 // VERIFICATION (Step 2 - Client Polling)
 // ============================================================================
 
-// VerifyAndProcess handles client-initiated verification (backup to webhook)
 func (s *OrderServiceImpl) VerifyAndProcess(ctx context.Context, reference string) (*models.Order, error) {
 	log.Info().Str("reference", reference).Msg("🔍 Starting payment verification")
 
-	// 1. LOAD EXPECTED ORDER FROM DB (Source of Truth)
+	// 1. LOAD ORDER
 	existingOrder, err := s.OrderRepo.GetOrderByReference(ctx, reference)
 	if err != nil {
-		log.Error().Err(err).Str("reference", reference).Msg("Database error during verification")
+		log.Error().Err(err).Str("reference", reference).Msg("Database error")
 		return nil, fmt.Errorf("database error: %w", err)
 	}
 
 	if existingOrder == nil {
-		log.Error().Str("reference", reference).Msg("🚨 Verification failed: No pending order found")
+		log.Error().Str("reference", reference).Msg("🚨 No order found")
 		return nil, errors.New("order initialization record not found. Cannot verify payment securely")
 	}
 
-	// 2. CHECK IDEMPOTENCY (Already Processed)
+	// 2. IDEMPOTENCY CHECK
 	if existingOrder.Status == "success" {
-		log.Info().
-			Str("reference", reference).
-			Str("order_id", existingOrder.ID.Hex()).
-			Msg("✅ Order already processed successfully (idempotency check)")
+		log.Info().Str("reference", reference).Msg("✅ Already processed (idempotent)")
 		return existingOrder, nil
 	}
 
-	// 3. CHECK IF ALREADY FAILED
+	// 3. CHECK ALREADY FAILED
 	if existingOrder.Status == "failed" || existingOrder.Status == "fraud" {
-		log.Warn().
-			Str("reference", reference).
-			Str("status", existingOrder.Status).
-			Msg("⚠️ Order already marked as failed/fraud")
+		log.Warn().Str("reference", reference).Str("status", existingOrder.Status).Msg("⚠️ Already failed")
 		return nil, fmt.Errorf("payment %s", existingOrder.Status)
 	}
 
-	// 4. CALL PAYSTACK VERIFICATION API
-	expectedAmountKobo := existingOrder.AmountKobo
+	// ✅ NEW: Check if processing is already in progress
+	if existingOrder.Status == "processing" {
+		log.Info().Str("reference", reference).Msg("⏳ Already being processed by another request")
+		return nil, errors.New("payment is being processed, please wait")
+	}
 
-	log.Info().
-		Str("reference", reference).
-		Int("expected_amount", expectedAmountKobo).
-		Msg("📞 Calling Paystack verification API")
-
+	// 4. CALL PAYSTACK API
 	paystackResp, err := s.callPaystackVerificationAPI(ctx, reference)
 	if err != nil {
-		log.Error().Err(err).Str("reference", reference).Msg("❌ Paystack API call failed")
+		log.Error().Err(err).Str("reference", reference).Msg("❌ Paystack API failed")
 		return nil, fmt.Errorf("paystack verification failed: %w", err)
 	}
 
-	// 5. CHECK TRANSACTION STATUS
+	// 5. CHECK STATUS
 	if !paystackResp.Status || paystackResp.Data.Status != "success" {
-		log.Warn().
-			Str("reference", reference).
-			Str("transaction_status", paystackResp.Data.Status).
-			Msg("⚠️ Transaction not successful on Paystack")
-
-		// Update order status to failed
+		log.Warn().Str("reference", reference).Str("status", paystackResp.Data.Status).Msg("⚠️ Not successful")
 		_ = s.OrderRepo.UpdateOrderStatus(ctx, existingOrder.ID, "failed")
-
 		return nil, fmt.Errorf("transaction failed: %s", paystackResp.Data.Status)
 	}
 
-	// 6. CRITICAL SECURITY CHECK: Amount Verification
-	actualAmountKobo := paystackResp.Data.Amount
-
-	log.Info().
-		Str("reference", reference).
-		Int("expected_kobo", expectedAmountKobo).
-		Int("actual_kobo", actualAmountKobo).
-		Msg("🔒 Performing amount validation")
-
-	if expectedAmountKobo != actualAmountKobo {
+	// 6. AMOUNT VERIFICATION
+	if existingOrder.AmountKobo != paystackResp.Data.Amount {
 		log.Error().
 			Str("reference", reference).
-			Int("expected", expectedAmountKobo).
-			Int("actual", actualAmountKobo).
-			Msg("🚨 FRAUD ALERT: Amount mismatch detected")
+			Int("expected", existingOrder.AmountKobo).
+			Int("actual", paystackResp.Data.Amount).
+			Msg("🚨 FRAUD: Amount mismatch")
 
-		// Mark as fraud
 		_ = s.OrderRepo.UpdateOrderStatus(ctx, existingOrder.ID, "fraud")
-
-		return nil, fmt.Errorf("fraud alert: amount mismatch. Expected: %d, Actual: %d", expectedAmountKobo, actualAmountKobo)
+		return nil, fmt.Errorf("fraud alert: amount mismatch")
 	}
 
-	// 7. FINALIZE ORDER
-	log.Info().
-		Str("reference", reference).
-		Msg("✅ Amount matched. Finalizing order and generating tickets")
+	// 7. ✅ FINALIZE WITH ATOMIC TRANSACTION
+	log.Info().Str("reference", reference).Msg("✅ Verified, finalizing atomically")
 
 	finalOrder, err := s.finalizeSuccessfulOrder(ctx, existingOrder, paystackResp.Data, "verification")
 	if err != nil {
-		log.Error().Err(err).Str("reference", reference).Msg("❌ Order finalization failed")
+		log.Error().Err(err).Str("reference", reference).Msg("❌ Finalization failed")
 		return nil, fmt.Errorf("failed to finalize order: %w", err)
 	}
 
-	log.Info().
-		Str("reference", reference).
-		Str("order_id", finalOrder.ID.Hex()).
-		Msg("✅ Order verified and processed successfully via verification endpoint")
-
+	log.Info().Str("reference", reference).Msg("✅ Order verified and processed successfully")
 	return finalOrder, nil
 }
 
@@ -228,32 +191,25 @@ func (s *OrderServiceImpl) VerifyAndProcess(ctx context.Context, reference strin
 // WEBHOOK PROCESSING (Step 2 - Primary Path)
 // ============================================================================
 
-// VerifyWebhookSignature validates Paystack webhook signature (CRITICAL SECURITY)
 func (s *OrderServiceImpl) VerifyWebhookSignature(payload []byte, signature string) bool {
 	if signature == "" {
-		log.Warn().Msg("⚠️ Webhook received without signature")
+		log.Warn().Msg("⚠️ Webhook without signature")
 		return false
 	}
 
-	// Create HMAC-SHA512 hash
 	mac := hmac.New(sha512.New, []byte(s.PaystackClient.SecretKey))
 	mac.Write(payload)
 	expectedSignature := hex.EncodeToString(mac.Sum(nil))
 
-	// Constant-time comparison to prevent timing attacks
 	isValid := hmac.Equal([]byte(signature), []byte(expectedSignature))
 
 	if !isValid {
-		log.Error().
-			Str("received_signature", signature[:min(20, len(signature))]+"...").
-			Str("expected_signature", expectedSignature[:20]+"...").
-			Msg("🚨 SECURITY ALERT: Invalid webhook signature")
+		log.Error().Msg("🚨 SECURITY: Invalid webhook signature")
 	}
 
 	return isValid
 }
 
-// ProcessWebhook handles Paystack webhook notifications (PRIMARY payment confirmation path)
 func (s *OrderServiceImpl) ProcessWebhook(
 	ctx context.Context,
 	payload *models.PaystackWebhook,
@@ -261,124 +217,88 @@ func (s *OrderServiceImpl) ProcessWebhook(
 ) error {
 	reference := payload.Data.Reference
 
-	log.Info().
-		Str("reference", reference).
-		Str("event", payload.Event).
-		Str("channel", payload.Data.Channel).
-		Int("amount", payload.Data.Amount).
-		Msg("📨 Processing webhook")
+	log.Info().Str("reference", reference).Str("event", payload.Event).Msg("📨 Processing webhook")
 
-	// Track webhook attempts
 	_ = s.OrderRepo.IncrementWebhookAttempts(ctx, reference)
 
-	// 1. LOAD EXPECTED ORDER FROM DB
+	// 1. LOAD ORDER
 	existingOrder, err := s.OrderRepo.GetOrderByReference(ctx, reference)
 	if err != nil {
-		log.Error().Err(err).Str("reference", reference).Msg("❌ Database error during webhook processing")
+		log.Error().Err(err).Str("reference", reference).Msg("❌ Database error")
 		return fmt.Errorf("database error: %w", err)
 	}
 
 	if existingOrder == nil {
-		log.Error().
-			Str("reference", reference).
-			Msg("🚨 Webhook processing failed: No pending order found")
+		log.Error().Str("reference", reference).Msg("🚨 No order found")
 		return errors.New("order initialization record not found")
 	}
 
-	// 2. CHECK IDEMPOTENCY
+	// 2. IDEMPOTENCY
 	if existingOrder.Status == "success" {
-		log.Info().
-			Str("reference", reference).
-			Str("order_id", existingOrder.ID.Hex()).
-			Msg("✅ Webhook: Order already processed (idempotency)")
-		return nil // Not an error - acknowledge webhook
+		log.Info().Str("reference", reference).Msg("✅ Already processed (webhook idempotent)")
+		return nil
 	}
 
-	// 3. CHECK TRANSACTION STATUS
+	// 3. CHECK STATUS
 	if payload.Data.Status != "success" {
-		log.Warn().
-			Str("reference", reference).
-			Str("status", payload.Data.Status).
-			Msg("⚠️ Webhook: Non-successful transaction status")
-
+		log.Warn().Str("reference", reference).Str("status", payload.Data.Status).Msg("⚠️ Non-success webhook")
 		_ = s.OrderRepo.UpdateOrderStatus(ctx, existingOrder.ID, "failed")
-		return nil // Acknowledge webhook but don't process
+		return nil
 	}
 
-	// 4. CRITICAL SECURITY CHECK: Amount Verification
-	expectedAmountKobo := existingOrder.AmountKobo
-	actualAmountKobo := payload.Data.Amount
+	// ✅ NEW: Check if processing
+	if existingOrder.Status == "processing" {
+		log.Info().Str("reference", reference).Msg("⏳ Webhook: Already being processed")
+		return nil // Acknowledge but don't process
+	}
 
-	log.Info().
-		Str("reference", reference).
-		Int("expected_kobo", expectedAmountKobo).
-		Int("actual_kobo", actualAmountKobo).
-		Msg("🔒 Webhook: Performing amount validation")
-
-	if expectedAmountKobo != actualAmountKobo {
+	// 4. AMOUNT VERIFICATION
+	if existingOrder.AmountKobo != payload.Data.Amount {
 		log.Error().
 			Str("reference", reference).
-			Int("expected", expectedAmountKobo).
-			Int("actual", actualAmountKobo).
-			Msg("🚨 FRAUD ALERT: Amount mismatch via webhook")
+			Int("expected", existingOrder.AmountKobo).
+			Int("actual", payload.Data.Amount).
+			Msg("🚨 FRAUD: Webhook amount mismatch")
 
 		_ = s.OrderRepo.UpdateOrderStatus(ctx, existingOrder.ID, "fraud")
-
 		return errors.New("fraud alert: amount mismatch via webhook")
 	}
 
-	// 5. FINALIZE ORDER
-	log.Info().
-		Str("reference", reference).
-		Msg("✅ Webhook: Amount matched. Finalizing order")
+	// 5. ✅ FINALIZE ATOMICALLY
+	log.Info().Str("reference", reference).Msg("✅ Webhook validated, finalizing atomically")
 
-	finalOrder, err := s.finalizeSuccessfulOrder(ctx, existingOrder, payload.Data, "webhook")
+	_, err = s.finalizeSuccessfulOrder(ctx, existingOrder, payload.Data, "webhook")
 	if err != nil {
-		log.Error().Err(err).Str("reference", reference).Msg("❌ Webhook: Order finalization failed")
+		log.Error().Err(err).Str("reference", reference).Msg("❌ Webhook finalization failed")
 		return fmt.Errorf("webhook processing failed: %w", err)
 	}
 
-	log.Info().
-		Str("reference", reference).
-		Str("order_id", finalOrder.ID.Hex()).
-		Msg("✅ Webhook processed successfully")
-
+	log.Info().Str("reference", reference).Msg("✅ Webhook processed successfully")
 	return nil
 }
 
-// GetOrderByReference retrieves an order by reference, enforcing ownership via userID.
-// ✅ FIX: This function body satisfies the OrderService interface requirement.
 func (s *OrderServiceImpl) GetOrderByReference(ctx context.Context, reference string, userID string) (*models.Order, error) {
-	log.Debug().Str("reference", reference).Str("userID", userID).Msg("Attempting to retrieve order by reference and enforce ownership")
-
-	order, err := s.OrderRepo.GetOrderByReference(ctx, reference) 
+	order, err := s.OrderRepo.GetOrderByReference(ctx, reference)
 	if err != nil {
-		log.Error().Err(err).Msg("Database retrieval error for order reference")
 		return nil, fmt.Errorf("failed to retrieve order: %w", err)
 	}
 	if order == nil {
-		// Order not found, return nil to the handler
 		return nil, nil
 	}
 
-	// Authorization Check (Ownership Enforcement)
-	// If the order's owner ID does not match the requesting user ID, deny access.
-	// In a complete system, we would also check if the user is an admin here.
 	if order.UserID.Hex() != userID {
-		log.Warn().Str("orderUserID", order.UserID.Hex()).Str("requestingUserID", userID).Msg("Access denied: User does not own this order")
-		// Returning nil causes the handler to send a 404/Access Denied
+		log.Warn().Str("orderUserID", order.UserID.Hex()).Str("requestingUserID", userID).Msg("Access denied")
 		return nil, nil
 	}
 
-	log.Info().Str("reference", reference).Msg("Order found and ownership confirmed")
 	return order, nil
 }
 
 // ============================================================================
-// CORE BUSINESS LOGIC
+// ✅ CRITICAL: ATOMIC FINALIZATION WITH TICKET STOCK REDUCTION
 // ============================================================================
 
-// finalizeSuccessfulOrder updates order to success and generates tickets (ATOMIC)
+// finalizeSuccessfulOrder performs ALL operations atomically in a transaction
 func (s *OrderServiceImpl) finalizeSuccessfulOrder(
 	ctx context.Context,
 	existingOrder *models.Order,
@@ -388,7 +308,6 @@ func (s *OrderServiceImpl) finalizeSuccessfulOrder(
 	now := time.Now()
 	paidAt := now
 
-	// Parse PaidAt from Paystack if available
 	if paystackData.PaidAt != "" {
 		if t, err := time.Parse(time.RFC3339, paystackData.PaidAt); err == nil {
 			paidAt = t
@@ -403,13 +322,7 @@ func (s *OrderServiceImpl) finalizeSuccessfulOrder(
 	existingOrder.ProcessedBy = processedBy
 	existingOrder.UpdatedAt = now
 
-	log.Info().
-		Str("reference", existingOrder.Reference).
-		Str("order_id", existingOrder.ID.Hex()).
-		Int("items_count", len(existingOrder.Items)).
-		Msg("🎫 Starting ticket generation")
-
-	// Generate tickets from stored items
+	// Generate tickets
 	var ticketsToInsert []models.Ticket
 	ticketIndex := 0
 
@@ -417,11 +330,9 @@ func (s *OrderServiceImpl) finalizeSuccessfulOrder(
 		log.Info().
 			Int("item_index", itemIdx).
 			Str("event_id", item.EventID).
-			Str("event_title", item.EventTitle).
 			Str("tier", item.TierName).
 			Int("quantity", item.Quantity).
-			Int("unit_price", item.Price).
-			Msg("Processing order item for ticket generation")
+			Msg("Generating tickets for item")
 
 		for i := 0; i < item.Quantity; i++ {
 			ticket := models.Ticket{
@@ -433,49 +344,42 @@ func (s *OrderServiceImpl) finalizeSuccessfulOrder(
 				TierName:   item.TierName,
 				Price:      item.Price,
 				OwnerEmail: existingOrder.Customer.Email,
-				OwnerName:  existingOrder.Customer.FirstName + " " + existingOrder.Customer.LastName,
+				OwnerName:  strings.TrimSpace(existingOrder.Customer.FirstName + " " + existingOrder.Customer.LastName),
 				IsUsed:     false,
 				CreatedAt:  now,
 				UpdatedAt:  now,
 			}
 			ticketsToInsert = append(ticketsToInsert, ticket)
 			ticketIndex++
-
-			log.Info().
-				Str("ticket_code", ticket.Code).
-				Int("ticket_number", ticketIndex).
-				Str("owner_email", ticket.OwnerEmail).
-				Msg("Ticket generated")
 		}
 	}
 
 	log.Info().
 		Str("reference", existingOrder.Reference).
-		Str("order_id", existingOrder.ID.Hex()).
 		Int("total_tickets", len(ticketsToInsert)).
-		Msg("🎫 All tickets generated. Starting atomic DB update")
+		Int("total_items", len(existingOrder.Items)).
+		Msg("🎫 Tickets generated, starting ATOMIC transaction")
 
-	// ATOMIC UPDATE: Order + Tickets (uses MongoDB transaction)
-	err := s.OrderRepo.UpdateOrderAndInsertTickets(ctx, existingOrder, ticketsToInsert)
+	// ✅ CRITICAL: Call new atomic method that includes stock reduction
+	err := s.OrderRepo.FinalizeOrderAtomically(ctx, existingOrder, ticketsToInsert, s.EventRepo)
 	if err != nil {
 		log.Error().
 			Err(err).
 			Str("reference", existingOrder.Reference).
-			Str("order_id", existingOrder.ID.Hex()).
-			Int("attempted_tickets", len(ticketsToInsert)).
-			Msg("❌ Database persistence failed during finalization")
-		return nil, fmt.Errorf("failed to save final order and tickets atomically: %w", err)
+			Msg("❌ ATOMIC TRANSACTION FAILED - Nothing was saved")
+		return nil, fmt.Errorf("atomic finalization failed: %w", err)
 	}
 
 	log.Info().
 		Str("reference", existingOrder.Reference).
-		Str("order_id", existingOrder.ID.Hex()).
 		Int("tickets_created", len(ticketsToInsert)).
 		Str("processed_by", processedBy).
-		Msg("✅ Order finalized and tickets persisted successfully")
+		Msg("✅ Order finalized ATOMICALLY with stock reduction")
 
-	// TODO: Queue email notification here
-	// s.emailQueue.SendOrderConfirmation(existingOrder, ticketsToInsert)
+	// ✅ NOTE: Email notifications should happen AFTER successful transaction
+	// to avoid sending emails for failed transactions
+	// TODO: Queue email notification here (non-blocking)
+	// go s.sendOrderConfirmationEmail(existingOrder, ticketsToInsert)
 
 	return existingOrder, nil
 }
@@ -484,7 +388,6 @@ func (s *OrderServiceImpl) finalizeSuccessfulOrder(
 // HELPER METHODS
 // ============================================================================
 
-// callPaystackVerificationAPI calls Paystack's transaction verification endpoint
 func (s *OrderServiceImpl) callPaystackVerificationAPI(
 	ctx context.Context,
 	reference string,
@@ -510,7 +413,7 @@ func (s *OrderServiceImpl) callPaystackVerificationAPI(
 		log.Error().
 			Int("status_code", resp.StatusCode).
 			Str("response_body", string(errorBody)).
-			Msg("Paystack API returned non-200 status")
+			Msg("Paystack API error")
 		return nil, fmt.Errorf("paystack returned status %d: %s", resp.StatusCode, errorBody)
 	}
 
@@ -522,7 +425,6 @@ func (s *OrderServiceImpl) callPaystackVerificationAPI(
 	return &psResponse, nil
 }
 
-// Helper function for min
 func min(a, b int) int {
 	if a < b {
 		return a

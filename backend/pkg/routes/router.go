@@ -98,28 +98,27 @@ func ConfigureRouter(
 	// PUBLIC FEEDBACK ROUTE (no auth required)
 	router.POST("/api/v1/feedback", feedbackHandler.CreateFeedback)
 
-	// -------------------------------------------------------------------
-	// 2. PROTECTED ROUTES
-	// -------------------------------------------------------------------
-	protected := router.Group("/")
-	protected.Use(middleware.AuthMiddleware())
-	{
-		protected.GET("/me", authHandler.GetCurrentUser)
-		protected.POST("/create-events", eventHandler.CreateEvent)
-		protected.PUT("/api/v1/vendors/:id", vendorHandler.UpdateVendor)
-	}
+// -------------------------------------------------------------------
+// PUBLIC EVENT ROUTES (No Auth Required)
+// -------------------------------------------------------------------
+publicEvents := router.Group("/events")
+{
+	publicEvents.GET("", eventHandler.GetAllEventsHandler)      // Browse all events
+	publicEvents.GET("/:eventId", eventHandler.GetEventByID)    // View event details
+}
 
-	events := router.Group("/events")
-	events.Use(middleware.AuthMiddleware())
-	{
-		events.GET("", eventHandler.GetAllEventsHandler)
-		events.GET("/my-events", eventHandler.GetUserEventsHandler)
-		events.GET("/:eventId", eventHandler.GetEventByID)
-		events.PUT("/:eventId", eventHandler.UpdateEvent)
-		events.DELETE("/:eventId", eventHandler.DeleteEvent)
-		events.POST("/:eventId/like", eventHandler.ToggleLikeHandler)
-		events.GET("/:eventId/analytics", eventHandler.FetchEventAnalytics)
-	}
+// -------------------------------------------------------------------
+// PROTECTED EVENT ROUTES (Auth Required)
+// -------------------------------------------------------------------
+protectedEvents := router.Group("/events")
+protectedEvents.Use(middleware.AuthMiddleware())
+{
+	protectedEvents.GET("/my-events", eventHandler.GetUserEventsHandler)
+	protectedEvents.PUT("/:eventId", eventHandler.UpdateEvent)
+	protectedEvents.DELETE("/:eventId", eventHandler.DeleteEvent)
+	protectedEvents.POST("/:eventId/like", eventHandler.ToggleLikeHandler)
+	protectedEvents.GET("/:eventId/analytics", eventHandler.FetchEventAnalytics)
+}
 
 	// -------------------------------------------------------------------
 	// 3. ADMIN ROUTES
