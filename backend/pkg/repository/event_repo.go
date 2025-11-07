@@ -8,10 +8,12 @@ import (
 	"fmt"
 
 	"eventify/backend/pkg/models"
+	"github.com/rs/zerolog/log"
 
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 // ============================================================================
@@ -40,6 +42,7 @@ type EventRepository interface {
 	
 	// GetEventByID retrieves a complete event document (for future use)
 	GetEventByID(ctx context.Context, eventID string) (*models.Event, error)
+	DecrementTicketStock(ctx context.Context, eventID string, tierName string, quantity int) error
 }
 
 // ============================================================================
@@ -159,4 +162,131 @@ func (r *MongoEventRepository) GetEventByID(
 	}
 
 	return &event, nil
+}
+func (r *MongoEventRepository) DecrementTicketStock(
+	ctx context.Context,
+	eventID string,
+	tierName string,
+	quantity int,
+) error {
+	if quantity <= 0 {
+		return errors.New("quantity must be positive")
+	}
+
+	eventOID, err := primitive.ObjectIDFromHex(eventID)
+	if err != nil {
+		return fmt.Errorf("invalid event ID format: %w", err)
+	}
+
+	log.Info().
+		Str("event_id", eventID).
+		Str("tier", tierName).
+		Int("quantity", quantity).
+		Msg("🎟️ Attempting to decrement ticket stock")
+
+	// ✅ ATOMIC UPDATE with CONDITIONAL CHECK
+	// This ensures we only decrement if sufficient stock exists
+	// The filter ensures we only match tiers with enough available tickets
+	filter := bson.M{
+		"_id": eventOID,
+		"tiers": bson.M{
+			"$elemMatch": bson.M{
+				"name":      tierName,
+				"available": bson.M{"$gte": quantity}, // Must have enough tickets
+			},
+		},
+	}
+
+	// Decrement the available count for the matching tier
+	update := bson.M{
+		"$inc": bson.M{
+			"tiers.$[tier].available": -quantity, // Reduce available tickets
+			"tiers.$[tier].sold":      quantity,  // Increase sold count
+		},
+	}
+
+	// Array filters to target the specific tier by name
+	arrayFilters := []interface{}{
+		bson.M{"tier.name": tierName},
+	}
+
+	opts := options.Update().SetArrayFilters(options.ArrayFilters{
+		Filters: arrayFilters,
+	})
+
+	result, err := r.EventCollection.UpdateOne(ctx, filter, update, opts)
+	if err != nil {
+		log.Error().
+			Err(err).
+			Str("event_id", eventID).
+			Str("tier", tierName).
+			Msg("❌ Database error during stock decrement")
+		return fmt.Errorf("failed to decrement stock: %w", err)
+	}
+
+	// Check if the update matched any documents
+	if result.MatchedCount == 0 {
+		log.Error().
+			Str("event_id", eventID).
+			Str("tier", tierName).
+			Int("requested_quantity", quantity).
+			Msg("🚨 CRITICAL: Insufficient ticket stock or tier not found")
+
+		// This is a CRITICAL ERROR - means either:
+		// 1. The tier doesn't exist
+		// 2. Not enough tickets available (race condition or overselling attempt)
+		return fmt.Errorf("insufficient stock for event %s tier %s (requested: %d)", eventID, tierName, quantity)
+	}
+
+	// Check if the update actually modified the document
+	if result.ModifiedCount == 0 {
+		log.Warn().
+			Str("event_id", eventID).
+			Str("tier", tierName).
+			Msg("⚠️ Stock update matched but didn't modify - possible race condition")
+		return fmt.Errorf("stock update failed for event %s tier %s", eventID, tierName)
+	}
+
+	log.Info().
+		Str("event_id", eventID).
+		Str("tier", tierName).
+		Int("quantity", quantity).
+		Msg("✅ Ticket stock decremented successfully")
+
+	return nil
+}
+
+// ============================================================================
+// OPTIONAL: STOCK VERIFICATION (for validation before creating pending order)
+// ============================================================================
+
+// CheckTicketAvailability verifies if sufficient tickets are available
+// This is useful for early validation but the atomic decrement is the true check
+func (r *MongoEventRepository) CheckTicketAvailability(
+	ctx context.Context,
+	eventID string,
+	tierName string,
+	quantity int,
+) (bool, error) {
+	eventOID, err := primitive.ObjectIDFromHex(eventID)
+	if err != nil {
+		return false, fmt.Errorf("invalid event ID: %w", err)
+	}
+
+	filter := bson.M{
+		"_id": eventOID,
+		"tiers": bson.M{
+			"$elemMatch": bson.M{
+				"name":      tierName,
+				"available": bson.M{"$gte": quantity},
+			},
+		},
+	}
+
+	count, err := r.EventCollection.CountDocuments(ctx, filter)
+	if err != nil {
+		return false, fmt.Errorf("failed to check availability: %w", err)
+	}
+
+	return count > 0, nil
 }

@@ -30,6 +30,7 @@ export default function TicketPage() {
   const checkLocalStorage = (ref) => {
     if (ref) {
       const saved = localStorage.getItem(`ticket_${ref}`);
+      console.log("Local Storage:", saved);
       setSavedLocally(!!saved);
     }
   };
@@ -76,75 +77,174 @@ export default function TicketPage() {
 
   // --- HANDLERS using imported utility functions ---
 
-  const handleSave = () => {
-    if (!orderData) return;
-    const success = saveTicketDataLocally(reference, orderData);
+const handleSave = () => {
+  // 🪵 LOG: Function execution started
+  console.log("handleSave: Attempting to save ticket locally...");
 
-    if (success) {
-      setSavedLocally(true);
-      setNotification({
-        message: "✅ Ticket saved to your device for offline use!",
-        type: "success",
-      });
-    } else {
-      setNotification({
-        message: "❌ Failed to save ticket locally.",
-        type: "error",
-      });
-    }
-    setTimeout(() => setNotification({ message: "", type: "" }), 4000); // Clear notification
-  };
+  if (!orderData) {
+    // 🪵 LOG: Guard clause triggered
+    console.warn("handleSave: Aborting save. orderData is null or undefined.");
+    return;
+  }
 
-  const handleDownload = () => {
-    if (!orderData) return;
-    const success = downloadTicket(orderData);
-    if (success) {
-      setNotification({
-        message: "📥 Ticket download started!",
-        type: "success",
-      });
-    } else {
-      setNotification({ message: "❌ Download failed.", type: "error" });
-    }
-    setTimeout(() => setNotification({ message: "", type: "" }), 4000); // Clear notification
-  };
-
-  const handleShare = async () => {
-    if (!orderData) return;
-    const result = await shareTicket(orderData);
-
-    if (result === "copied") {
-      setNotification({
-        message: "🔗 Link copied to clipboard!",
-        type: "success",
-      });
-    } else if (result === true) {
-      // Native share successful (no notification needed as OS handles it)
-    } else {
-      setNotification({
-        message: "❌ Share failed. Try copying the URL manually.",
-        type: "error",
-      });
-    }
-    setTimeout(() => setNotification({ message: "", type: "" }), 4000); // Clear notification
-  };
-
-  // Custom Notification Toast
-  const NotificationToast = () => (
-    <div
-      className={`fixed top-4 right-4 z-50 p-4 rounded-xl shadow-xl transition-transform duration-500 ease-out transform ${
-        notification.message
-          ? "translate-y-0 opacity-100"
-          : "translate-y-full opacity-0"
-      } ${
-        notification.type === "success"
-          ? "bg-green-600 text-white"
-          : "bg-red-600 text-white"
-      }`}
-    >
-      {notification.message}
-    </div>
+  // 🪵 LOG: Parameters for external call
+  console.log(
+    "handleSave: Calling saveTicketDataLocally with reference:",
+    reference,
+    "and orderData:",
+    orderData
   );
+  const success = saveTicketDataLocally(reference, orderData);
+
+  // 🪵 LOG: Result of external call
+  console.log(
+    "handleSave: saveTicketDataLocally returned success status:",
+    success
+  );
+
+  if (success) {
+    setSavedLocally(true);
+    setNotification({
+      message: "✅ Ticket saved to your device for offline use!",
+      type: "success",
+    });
+    // 🪵 LOG: Success branch
+    console.log(
+      "handleSave: Successfully saved ticket and setting success notification."
+    );
+  } else {
+    setNotification({
+      message: "❌ Failed to save ticket locally.",
+      type: "error",
+    });
+    // 🪵 LOG: Error branch
+    console.error(
+      "handleSave: Failed to save ticket locally and setting error notification."
+    );
+  }
+
+  // 🪵 LOG: Scheduling notification clear
+  console.log("handleSave: Scheduling notification to clear in 4000ms.");
+  setTimeout(() => setNotification({ message: "", type: "" }), 4000); // Clear notification
+};
+
+const handleDownload = () => {
+  // 🪵 LOG: Function execution started
+  console.log("handleDownload: Attempting to download ticket...");
+
+  if (!orderData) {
+    // 🪵 LOG: Guard clause triggered
+    console.warn(
+      "handleDownload: Aborting download. orderData is null or undefined."
+    );
+    return;
+  }
+
+  // 🪵 LOG: Parameters for external call
+  console.log(
+    "handleDownload: Calling downloadTicket with orderData:",
+    orderData
+  );
+  const success = downloadTicket(orderData);
+
+  // 🪵 LOG: Result of external call
+  console.log(
+    "handleDownload: downloadTicket returned success status:",
+    success
+  );
+
+  if (success) {
+    setNotification({
+      message: "📥 Ticket download started!",
+      type: "success",
+    });
+    // 🪵 LOG: Success branch
+    console.log(
+      "handleDownload: Download function indicated success. Setting success notification."
+    );
+  } else {
+    setNotification({ message: "❌ Download failed.", type: "error" });
+    // 🪵 LOG: Error branch
+    console.error(
+      "handleDownload: Download function indicated failure. Setting error notification."
+    );
+  }
+
+  // 🪵 LOG: Scheduling notification clear
+  console.log("handleDownload: Scheduling notification to clear in 4000ms.");
+  setTimeout(() => setNotification({ message: "", type: "" }), 4000); // Clear notification
+};
+
+const handleShare = async () => {
+  // 🪵 LOG: Function execution started
+  console.log("handleShare: Attempting to share ticket...");
+
+  if (!orderData) {
+    // 🪵 LOG: Guard clause triggered
+    console.warn(
+      "handleShare: Aborting share. orderData is null or undefined."
+    );
+    return;
+  }
+
+  // 🪵 LOG: Parameters for external call
+  console.log(
+    "handleShare: Calling async shareTicket with orderData:",
+    orderData
+  );
+  const result = await shareTicket(orderData);
+
+  // 🪵 LOG: Result of external call
+  console.log("handleShare: shareTicket returned result:", result);
+
+  if (result === "copied") {
+    setNotification({
+      message: "🔗 Link copied to clipboard!",
+      type: "success",
+    });
+    // 🪵 LOG: Success branch (Copied to clipboard)
+    console.log(
+      "handleShare: Share result is 'copied'. Setting success notification."
+    );
+  } else if (result === true) {
+    // Native share successful (no notification needed as OS handles it)
+    // 🪵 LOG: Success branch (Native share)
+    console.log(
+      "handleShare: Share result is 'true' (Native Share API successful). No notification needed."
+    );
+  } else {
+    setNotification({
+      message: "❌ Share failed. Try copying the URL manually.",
+      type: "error",
+    });
+    // 🪵 LOG: Error branch
+    console.error(
+      "handleShare: Share failed (result was:",
+      result,
+      "). Setting error notification."
+    );
+  }
+
+  // 🪵 LOG: Scheduling notification clear
+  console.log("handleShare: Scheduling notification to clear in 4000ms.");
+  setTimeout(() => setNotification({ message: "", type: "" }), 4000); // Clear notification
+};
+
+const NotificationToast = () => (
+  <div
+    className={`fixed top-4 right-4 z-50 p-4 rounded-xl shadow-xl transition-transform duration-500 ease-out transform ${
+      notification.message
+        ? "translate-y-0 opacity-100"
+        : "translate-y-full opacity-0"
+    } ${
+      notification.type === "success"
+        ? "bg-green-600 text-white"
+        : "bg-red-600 text-white"
+    }`}
+  >
+    {notification.message}
+  </div>
+);
 
   // --- Conditional Renders ---
   if (loading) {
@@ -171,7 +271,7 @@ export default function TicketPage() {
             reference.
           </p>
           <Link
-            href="/"
+            href="/events"
             className="inline-block bg-red-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-red-700 transition-colors"
           >
             Browse Events

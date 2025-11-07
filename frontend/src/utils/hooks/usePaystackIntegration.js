@@ -92,12 +92,12 @@ export function usePaystackIntegration({ email, metadata }) {
   const handleSuccess = useCallback(
     (response) => {
       console.log("✅ Paystack Transaction Successful:", response);
-      clearCart();
+     // clearCart();
       router.push(
         `/checkout/confirmation?trxref=${response.reference}&status=success`
       );
     },
-    [clearCart, router]
+    [router]
   );
 
   const handleClose = useCallback(() => {

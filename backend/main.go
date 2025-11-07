@@ -43,7 +43,10 @@ func main() {
 	db.ConnectDB()
 	log.Info().Msg("Database connection established successfully.")
 
+	// ...
+	//  GET BOTH: Database AND Client
 	dbClient := db.GetDB()
+	mongoClient := db.Client
 
 	eventsCollection := dbClient.Collection("events")
 	vendorsCollection := dbClient.Collection("vendors")
@@ -53,7 +56,7 @@ func main() {
 	inquiriesCollection := dbClient.Collection("inquiries")
 	feedbackCollection := dbClient.Collection("feedback")
 	ordersCollection := dbClient.Collection("orders")
-ticketsCollection := dbClient.Collection("tickets")
+	ticketsCollection := dbClient.Collection("tickets")
 
 	// ------------------------------------------------------------
 	// 3️⃣ Repositories
@@ -64,7 +67,15 @@ ticketsCollection := dbClient.Collection("tickets")
 	reviewRepo := repository.NewMongoReviewRepository(reviewsCollection)
 	inquiryRepo := repository.NewMongoInquiryRepository(inquiriesCollection)
 	feedbackRepo := repository.NewFeedbackRepository(feedbackCollection)
-	orderRepo := repository.NewMongoOrderRepository(ordersCollection, ticketsCollection)
+	
+	// ✅ FIXED: Order repository with mongo client
+	orderRepo := repository.NewMongoOrderRepository(
+		mongoClient,         // ✅ Pass mongo client for transactions
+		ordersCollection,
+		ticketsCollection,
+	)
+	
+	// ✅ Event repository for stock management
 	eventRepo := repository.NewMongoEventRepository(eventsCollection, ticketsCollection)
 
 	// ------------------------------------------------------------
@@ -76,12 +87,23 @@ ticketsCollection := dbClient.Collection("tickets")
 	reviewService := services.NewReviewService(reviewRepo, vendorRepo)
 	inquiryService := services.NewInquiryService(inquiryRepo, vendorRepo)
 	feedbackService := services.NewFeedbackService(feedbackRepo)
+	
+	// ✅ Paystack client configuration
 	paystackClient := &services.PaystackClient{
-    SecretKey: os.Getenv("PAYSTACK_SECRET_KEY"), // Ensure this env var exists
-    HTTPClient: &http.Client{Timeout: 5 * time.Second},
-}
-pricingService := services.NewPricingService(eventRepo)
-orderService := services.NewOrderService(orderRepo, pricingService, paystackClient)
+		SecretKey:  os.Getenv("PAYSTACK_SECRET_KEY"), // Ensure this env var exists
+		HTTPClient: &http.Client{Timeout: 30 * time.Second},
+	}
+	
+	// ✅ Pricing service for server-side calculations
+	pricingService := services.NewPricingService(eventRepo)
+	
+	// ✅ FIXED: Order service with all dependencies
+	orderService := services.NewOrderService(
+		orderRepo,
+		eventRepo,   // ✅ Pass event repo for stock management
+		pricingService,
+		paystackClient,
+	)
 
 	// ------------------------------------------------------------
 	// 5️⃣ Handlers
