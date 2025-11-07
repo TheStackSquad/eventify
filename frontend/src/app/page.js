@@ -1,5 +1,5 @@
 // src/app/page.js
-"use client"; // 💡 STEP 1: Convert to Client Component
+"use client";
 
 import { useEffect } from "react";
 import { useDispatch } from "react-redux";
@@ -8,7 +8,7 @@ import TicketCard from "@/components/homepage/ticketCard";
 import { fetchAllEvents } from "@/redux/action/eventAction";
 
 export default function Home() {
-  // 💡 STEP 3: Initialize dispatch
+  // // 💡 STEP 3: Initialize dispatch
   const dispatch = useDispatch();
 
   // 💡 STEP 4: Dispatch the fetch action on mount

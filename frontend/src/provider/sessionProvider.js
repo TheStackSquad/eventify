@@ -3,28 +3,19 @@
 
 import { useEffect } from "react";
 import { useDispatch, useSelector } from "react-redux";
-import { restoreSession } from "@/redux/action/actionAuth";
+import { verifySession } from "@/redux/action/actionAuth";
 
 export default function SessionProvider({ children }) {
-  // 1. Get dispatch function
   const dispatch = useDispatch();
-
-  const { isInitialized } = useSelector((state) => state.auth);
-  console.log(`[SessionProvider] Render: isInitialized=${isInitialized}`); // 3. Effect hook to dispatch session restoration
+  const { sessionChecked } = useSelector((state) => state.auth);
 
   useEffect(() => {
-    console.log(
-      `[SessionProvider] Effect running. isInitialized=${isInitialized}`
-    );
-    if (!isInitialized) {
-      console.log("[SessionProvider] Dispatching restoreSession...");
-      dispatch(restoreSession());
-    } else {
-      console.log(
-        "[SessionProvider] Session already initialized. Skipping dispatch."
-      );
+    // Verify session once on app load to populate Redux state
+    if (!sessionChecked) {
+      console.log("[SessionProvider] Verifying session for Redux state...");
+      dispatch(verifySession());
     }
-  }, [dispatch, isInitialized]);
+  }, [dispatch, sessionChecked]);
 
   return <>{children}</>;
 }

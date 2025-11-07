@@ -1,7 +1,7 @@
 // frontend/src/app/events/create-events/page.js
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useDispatch, useSelector } from "react-redux";
 import {
@@ -19,6 +19,7 @@ import {
   ROUTES,
 } from "@/utils/constants/globalConstants";
 
+// ✅ OPTIMIZED: Memoized transform function outside component
 const transformEventToFormData = (event) => {
   const safeParseDate = (dateString) => {
     if (!dateString) return "";
@@ -56,7 +57,7 @@ const transformEventToFormData = (event) => {
 };
 
 export default function CreateEventsPage() {
-  // ========== STATE MANAGEMENT (NOW OWNS FORM DATA) ==========
+  // ========== STATE MANAGEMENT ==========
   const [formData, setFormData] = useState(INITIAL_FORM_DATA);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoadingEvent, setIsLoadingEvent] = useState(false);
@@ -67,50 +68,53 @@ export default function CreateEventsPage() {
   const dispatch = useDispatch();
   const eventId = searchParams.get("id");
 
-  const { user, isAuthenticated } = useSelector((state) => state.auth);
+  // ✅ OPTIMIZED: Single useSelector call
+  const { user, sessionChecked } = useSelector((state) => state.auth);
   const { currentEvent } = useSelector((state) => state.events);
 
-  // ========== AUTHENTICATION GUARD ==========
-  useEffect(() => {
-    if (!isAuthenticated) {
-      toastAlert.error(ERROR_MESSAGES.AUTH_REQUIRED);
-      router.push(ROUTES.LOGIN);
-    }
-  }, [isAuthenticated, router]);
+  // ✅ REMOVED: All authentication guard logic - handled by middleware
+
+  // ✅ OPTIMIZED: Memoized event ID check
+  const isEditMode = useMemo(() => !!eventId, [eventId]);
 
   // ========== EVENT DATA FETCHING ==========
-  useEffect(() => {
-    const fetchEventData = async () => {
-      if (!eventId) {
-        setFormData(INITIAL_FORM_DATA); // Reset for create mode
-        return;
+  const fetchEventData = useCallback(async () => {
+    if (!eventId) {
+      setFormData(INITIAL_FORM_DATA);
+      return;
+    }
+
+    setIsLoadingEvent(true);
+    setError(null);
+
+    try {
+      console.debug("🎯 Fetching event with ID:", eventId);
+      const result = await dispatch(getEventById(eventId));
+
+      if (getEventById.rejected.match(result)) {
+        throw new Error(
+          result.payload?.message || ERROR_MESSAGES.FETCH_EVENT_FAILED
+        );
       }
 
-      setIsLoadingEvent(true);
-      setError(null);
-
-      try {
-        console.debug("🎯 Fetching event with ID:", eventId);
-        const result = await dispatch(getEventById(eventId));
-
-        if (getEventById.rejected.match(result)) {
-          throw new Error(
-            result.payload?.message || ERROR_MESSAGES.FETCH_EVENT_FAILED
-          );
-        }
-
-        console.debug("✅ Event fetched successfully");
-      } catch (error) {
-        console.error("Error fetching event:", error);
-        setError(error.message);
-        toastAlert.error(error.message);
-      } finally {
-        setIsLoadingEvent(false);
-      }
-    };
-
-    fetchEventData();
+      console.debug("✅ Event fetched successfully");
+    } catch (error) {
+      console.error("Error fetching event:", error);
+      setError(error.message);
+      toastAlert.error(error.message);
+    } finally {
+      setIsLoadingEvent(false);
+    }
   }, [eventId, dispatch]);
+
+  // ✅ OPTIMIZED: Fetch event only when session is verified and eventId exists
+  useEffect(() => {
+    if (sessionChecked && eventId) {
+      fetchEventData();
+    } else if (sessionChecked && !eventId) {
+      setFormData(INITIAL_FORM_DATA);
+    }
+  }, [sessionChecked, eventId, fetchEventData]);
 
   // ========== UPDATE FORM DATA WHEN REDUX DATA ARRIVES ==========
   useEffect(() => {
@@ -123,13 +127,13 @@ export default function CreateEventsPage() {
   }, [currentEvent, eventId]);
 
   // ========== FORM CHANGE HANDLER ==========
-  const handleFormChange = (updatedFormData) => {
+  const handleFormChange = useCallback((updatedFormData) => {
     console.debug("📝 Form data changed:", updatedFormData);
     setFormData(updatedFormData);
-  };
+  }, []);
 
-  // ========== IMAGE UPLOAD HANDLER ==========
-  const handleImageUpload = async (imageFile) => {
+  // ✅ OPTIMIZED: Memoized image upload handler
+  const handleImageUpload = useCallback(async (imageFile) => {
     const formData = new FormData();
     formData.append("file", imageFile);
 
@@ -145,152 +149,188 @@ export default function CreateEventsPage() {
 
     const result = await response.json();
     return result.url;
-  };
+  }, []);
 
-  // ========== PAYLOAD PREPARATION ==========
-  const prepareEventPayload = (formData, imageUrl) => {
-    const payload = {
-      ...formData,
-      organizerId: user.id,
-    };
+  // ✅ OPTIMIZED: Memoized payload preparation
+  const prepareEventPayload = useCallback(
+    (formData, imageUrl) => {
+      const payload = {
+        ...formData,
+        organizerId: user.id,
+      };
 
-    console.log("📦 Preparing payload from formData:", formData);
+      console.log("📦 Preparing payload from formData:", formData);
 
-    if (imageUrl) {
-      payload.eventImage = imageUrl;
-    }
-
-    if (payload.startDate && payload.startTime) {
-      const startDateTimeStr = `${payload.startDate}T${payload.startTime}:00`;
-      const endDateTimeStr = `${payload.endDate}T${payload.endTime}:00`;
-
-      const startDateTime = new Date(startDateTimeStr);
-      const endDateTime = new Date(endDateTimeStr);
-
-      if (!isNaN(startDateTime.getTime())) {
-        payload.startDate = startDateTime.toISOString();
+      if (imageUrl) {
+        payload.eventImage = imageUrl;
       }
-      if (!isNaN(endDateTime.getTime())) {
-        payload.endDate = endDateTime.toISOString();
-      }
-    }
 
-    if (payload.maxAttendees) {
-      payload.maxAttendees = parseInt(payload.maxAttendees, 10);
-      if (isNaN(payload.maxAttendees)) {
+      if (payload.startDate && payload.startTime) {
+        const startDateTimeStr = `${payload.startDate}T${payload.startTime}:00`;
+        const endDateTimeStr = `${payload.endDate}T${payload.endTime}:00`;
+
+        const startDateTime = new Date(startDateTimeStr);
+        const endDateTime = new Date(endDateTimeStr);
+
+        if (!isNaN(startDateTime.getTime())) {
+          payload.startDate = startDateTime.toISOString();
+        }
+        if (!isNaN(endDateTime.getTime())) {
+          payload.endDate = endDateTime.toISOString();
+        }
+      }
+
+      if (payload.maxAttendees) {
+        payload.maxAttendees = parseInt(payload.maxAttendees, 10);
+        if (isNaN(payload.maxAttendees)) {
+          delete payload.maxAttendees;
+        }
+      } else {
         delete payload.maxAttendees;
       }
-    } else {
-      delete payload.maxAttendees;
-    }
 
-    const fieldsToRemove = [
-      "eventImagePreview",
-      "startTime",
-      "endTime",
-      "timezone",
-    ];
+      const fieldsToRemove = [
+        "eventImagePreview",
+        "startTime",
+        "endTime",
+        "timezone",
+      ];
 
-    fieldsToRemove.forEach((field) => {
-      if (Object.prototype.hasOwnProperty.call(payload, field)) {
-        delete payload[field];
-      }
-    });
+      fieldsToRemove.forEach((field) => {
+        if (Object.prototype.hasOwnProperty.call(payload, field)) {
+          delete payload[field];
+        }
+      });
 
-    console.log("✅ Final payload:", payload);
-    return payload;
-  };
+      console.log("✅ Final payload:", payload);
+      return payload;
+    },
+    [user?.id]
+  );
 
-  // ========== MAIN SUBMIT HANDLER ==========
-  const handleSubmit = async (finalFormData) => {
-    if (!user?.id) {
-      toastAlert.error(ERROR_MESSAGES.AUTH_REQUIRED);
-      return;
-    }
-
-    if (typeof finalFormData !== "object" || Array.isArray(finalFormData)) {
-      toastAlert.error("Form submission error: Invalid data received.");
-      console.error("❌ Invalid formData:", finalFormData);
-      return;
-    }
-
-    console.log("🚀 Submitting form with data:", finalFormData);
-
-    setIsSubmitting(true);
-    setError(null);
-
-    try {
-      let imageUrl = null;
-
-      if (
-        finalFormData.eventImage &&
-        typeof finalFormData.eventImage !== "string"
-      ) {
-        imageUrl = await handleImageUpload(finalFormData.eventImage);
-      } else if (finalFormData.eventImage) {
-        imageUrl = finalFormData.eventImage;
+  // ✅ OPTIMIZED: Memoized submit handler
+  const handleSubmit = useCallback(
+    async (finalFormData) => {
+      if (!user?.id) {
+        toastAlert.error(ERROR_MESSAGES.AUTH_REQUIRED);
+        return;
       }
 
-      const finalPayload = prepareEventPayload(finalFormData, imageUrl);
-
-      console.debug("📤 Sending payload to backend:", finalPayload);
-
-      let resultAction;
-      if (eventId) {
-        resultAction = await dispatch(
-          updateEvent({
-            eventId,
-            updates: finalPayload,
-          })
-        );
-      } else {
-        resultAction = await dispatch(createEvent(finalPayload));
+      if (typeof finalFormData !== "object" || Array.isArray(finalFormData)) {
+        toastAlert.error("Form submission error: Invalid data received.");
+        console.error("❌ Invalid formData:", finalFormData);
+        return;
       }
 
-      if (resultAction.error) {
-        throw new Error(resultAction.payload?.message || "Operation failed");
+      console.log("🚀 Submitting form with data:", finalFormData);
+
+      setIsSubmitting(true);
+      setError(null);
+
+      try {
+        let imageUrl = null;
+
+        if (
+          finalFormData.eventImage &&
+          typeof finalFormData.eventImage !== "string"
+        ) {
+          imageUrl = await handleImageUpload(finalFormData.eventImage);
+        } else if (finalFormData.eventImage) {
+          imageUrl = finalFormData.eventImage;
+        }
+
+        const finalPayload = prepareEventPayload(finalFormData, imageUrl);
+
+        console.debug("📤 Sending payload to backend:", finalPayload);
+
+        let resultAction;
+        if (eventId) {
+          resultAction = await dispatch(
+            updateEvent({
+              eventId,
+              updates: finalPayload,
+            })
+          );
+        } else {
+          resultAction = await dispatch(createEvent(finalPayload));
+        }
+
+        if (resultAction.error) {
+          throw new Error(resultAction.payload?.message || "Operation failed");
+        }
+
+        const successMessage = eventId
+          ? SUCCESS_MESSAGES.EVENT_UPDATED
+          : SUCCESS_MESSAGES.EVENT_CREATED;
+
+        toastAlert.success(successMessage);
+
+        // Reset form on successful create
+        if (!eventId) {
+          setFormData(INITIAL_FORM_DATA);
+          router.push(ROUTES.MY_EVENTS);
+        }
+      } catch (error) {
+        console.error("❌ Error processing event:", error);
+        setError(error.message);
+        toastAlert.error(error.message);
+      } finally {
+        setIsSubmitting(false);
       }
+    },
+    [
+      user?.id,
+      eventId,
+      dispatch,
+      handleImageUpload,
+      prepareEventPayload,
+      router,
+    ]
+  );
 
-      const successMessage = eventId
-        ? SUCCESS_MESSAGES.EVENT_UPDATED
-        : SUCCESS_MESSAGES.EVENT_CREATED;
-
-      toastAlert.success(successMessage);
-
-      // Reset form on successful create
-      if (!eventId) {
-        setFormData(INITIAL_FORM_DATA);
-        router.push(ROUTES.MY_EVENTS);
-      }
-    } catch (error) {
-      console.error("❌ Error processing event:", error);
-      setError(error.message);
-      toastAlert.error(error.message);
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  // ========== NAVIGATION HANDLERS ==========
-  const handleBack = () => {
+  // ✅ OPTIMIZED: Memoized navigation handlers
+  const handleBack = useCallback(() => {
     router.back();
-  };
+  }, [router]);
 
-  const handleCancel = () => {
+  const handleCancel = useCallback(() => {
     router.push(ROUTES.MY_EVENTS);
-  };
+  }, [router]);
 
-  console.debug("🎯 Page State:", {
-    eventId,
-    hasCurrentEvent: !!currentEvent,
-    formDataTitle: formData.eventTitle,
-    isLoadingEvent,
-    isSubmitting,
-    error,
-  });
+  // ✅ OPTIMIZED: Debug logging with memoized state
+  const debugState = useMemo(
+    () => ({
+      eventId,
+      hasCurrentEvent: !!currentEvent,
+      formDataTitle: formData.eventTitle,
+      isLoadingEvent,
+      isSubmitting,
+      error,
+      sessionChecked,
+      hasUser: !!user,
+    }),
+    [
+      eventId,
+      currentEvent,
+      formData.eventTitle,
+      isLoadingEvent,
+      isSubmitting,
+      error,
+      sessionChecked,
+      user,
+    ]
+  );
+
+  useEffect(() => {
+    console.debug("🎯 Page State:", debugState);
+  }, [debugState]);
 
   // ========== RENDER LOGIC ==========
-  if (isLoadingEvent) {
+
+  // ✅ OPTIMIZED: Single loading check using sessionChecked
+  const isLoading = !sessionChecked || isLoadingEvent;
+
+  if (isLoading) {
     return (
       <LoadingSpinner
         message="Loading event data..."
@@ -316,8 +356,8 @@ export default function CreateEventsPage() {
         onBack={handleBack}
         onCancel={handleCancel}
         isSubmitting={isSubmitting}
-        mode={eventId ? "edit" : "create"}
-        isEditMode={!!eventId}
+        mode={isEditMode ? "edit" : "create"}
+        isEditMode={isEditMode}
       />
     </div>
   );

@@ -35,7 +35,7 @@ const structuredData = {
   offers: {
     "@type": "Offer",
     price: "0",
-    priceCurrency: "USD",
+    priceCurrency: "NGN",
   },
   description:
     "Comprehensive event management platform for creating events, selling tickets, and connecting with vendors",

@@ -2,7 +2,7 @@
 "use client";
 
 import { useEffect, useState, Suspense } from "react";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import {
   CheckCircle,
   XCircle,
@@ -13,9 +13,12 @@ import {
 import { ENDPOINTS } from "@/axiosConfig/axios";
 import axios from "@/axiosConfig/axios";
 import Link from "next/link";
+import { useCart } from "@/context/cartContext";
 
 function ConfirmationContent() {
   const searchParams = useSearchParams();
+  const router = useRouter(); // ✅ ADD THIS
+  const { clearCart } = useCart(); // ✅ ADD THIS
   const [verificationStatus, setVerificationStatus] = useState("verifying");
   const [paymentData, setPaymentData] = useState(null);
   const [retryCount, setRetryCount] = useState(0);
@@ -47,15 +50,19 @@ function ConfirmationContent() {
           setPaymentData(data.data);
 
           // ✅ CLEAR CART ONLY AFTER BACKEND CONFIRMS SUCCESS
-          clearCart();
+          try {
+            clearCart();
+            console.log("🧹 Cart cleared after successful verification");
+          } catch (cartError) {
+            console.error("Cart clear error (non-critical):", cartError);
+            // Don't fail the flow if cart clear fails
+          }
 
           // ✅ After 2 seconds, redirect to ticket page
           setTimeout(() => {
             const reference = data.data.reference;
             router.push(`/tickets?ref=${reference}`);
           }, 2000);
-
-          console.log("🧹 Cart cleared after successful verification");
         } else if (data.status === "pending") {
           // Payment is still processing
           setVerificationStatus("pending");
@@ -66,6 +73,9 @@ function ConfirmationContent() {
               setRetryCount((prev) => prev + 1);
               verifyPaymentWithEndpoint();
             }, 3000); // Wait 3 seconds before retry
+          } else {
+            // Max retries exceeded
+            setVerificationStatus("pending_timeout");
           }
         } else {
           setVerificationStatus("failed");
@@ -85,7 +95,7 @@ function ConfirmationContent() {
     };
 
     verifyPaymentWithEndpoint();
-  }, [trxref, retryCount]);
+  }, [trxref, retryCount, router, clearCart]); // ✅ Add dependencies
 
   const formatCurrency = (amount) => {
     return new Intl.NumberFormat("en-NG", {
@@ -128,10 +138,50 @@ function ConfirmationContent() {
             </p>
             <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 max-w-md mx-auto mb-6">
               <p className="text-sm text-yellow-800">
-                Please don&apos;t close this page. We&apos;re checking with your bank...
+                Please don&apos;t close this page. We&apos;re checking with your
+                bank...
               </p>
             </div>
             <div className="text-sm text-gray-500">Reference: {trxref}</div>
+          </div>
+        );
+
+      case "pending_timeout":
+        return (
+          <div className="text-center">
+            <AlertCircle className="mx-auto h-16 w-16 text-yellow-600 mb-4" />
+            <h2 className="text-2xl font-bold text-gray-900 mb-2">
+              Payment Still Processing
+            </h2>
+            <p className="text-gray-600 mb-4">
+              Your payment is taking longer than expected.
+            </p>
+            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 max-w-md mx-auto mb-6">
+              <p className="text-sm text-yellow-800">
+                Reference: <span className="font-mono">{trxref}</span>
+              </p>
+              <p className="text-xs text-yellow-700 mt-2">
+                We&apos;ll email you once your payment is confirmed. You can
+                also check your tickets page later.
+              </p>
+            </div>
+            <div className="space-y-3">
+              <Link
+                href="/tickets"
+                className="inline-block bg-blue-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-blue-700 transition-colors"
+              >
+                Check My Tickets
+              </Link>
+              <div className="text-sm text-gray-500">
+                <Link href="/support" className="text-blue-600 hover:underline">
+                  Contact support
+                </Link>
+                {" | "}
+                <Link href="/" className="text-blue-600 hover:underline">
+                  Return to homepage
+                </Link>
+              </div>
+            </div>
           </div>
         );
 
@@ -185,7 +235,7 @@ function ConfirmationContent() {
 
             <div className="space-y-3">
               <Link
-                href="/tickets"
+                href={`/tickets?ref=${paymentData?.reference || trxref}`}
                 className="inline-flex items-center gap-2 bg-red-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-red-700 transition-colors"
               >
                 <Download size={20} />

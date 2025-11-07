@@ -2,7 +2,7 @@
 
 export const heroImages = [
   {
-    path: "/img/hero1.webp",
+    path: "/img/hero3.webp",
     alt: "Scenic travel destination 1",
     focalPoint: "center center",
   },
@@ -12,7 +12,7 @@ export const heroImages = [
     focalPoint: "center center",
   },
   {
-    path: "/img/hero3.webp",
+    path: "/img/hero1.webp",
     alt: "Scenic travel destination 3",
     focalPoint: "center center",
   },

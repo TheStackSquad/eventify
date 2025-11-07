@@ -1,4 +1,4 @@
-// src/app/login/page.js - FIXED VERSION
+// src/app/login/page.js
 import LoginForm from "@/components/account/LoginForm";
 
 export default function AccountLoginPage() {
