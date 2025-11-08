@@ -1,13 +1,13 @@
 // frontend/src/components/checkoutUI/customerForm.js
-
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { motion } from "framer-motion";
 import { User, Mail, Phone } from "lucide-react";
+// Assuming this path is correct:
 import { validateCustomerInfo } from "@/utils/validate/customerValidate";
 
-// Nested component to display errors, now explicitly named to fix linting error
+// Nested component to display errors
 const ErrorMessage = ({ field, errors, touched }) =>
   errors[field] && touched[field] ? (
     <motion.p
@@ -18,13 +18,12 @@ const ErrorMessage = ({ field, errors, touched }) =>
       {errors[field]}
     </motion.p>
   ) : null;
-// Must set display name for a nested component if using a linter or for debugging
 ErrorMessage.displayName = "CustomerFormErrorMessage";
 
 export default function CustomerForm({
   onCustomerInfoChange,
   onValidationChange,
-  // ❌ initialData prop is accepted but ignored for prefill purposes
+  // Accepted but unused initialData prop kept for context
 }) {
   const [formData, setFormData] = useState({
     firstName: "",
@@ -39,38 +38,21 @@ export default function CustomerForm({
   const [errors, setErrors] = useState({});
   const [touched, setTouched] = useState({});
 
-  // ❌ REMOVED: initialDataLoaded ref
-  // ❌ REMOVED: useEffect for prefilling authenticated user data
-
   // Memoize validation to avoid unnecessary recalculations
   const validationResult = useMemo(() => {
-    const result = validateCustomerInfo(formData);
-    // console.log("🔵 CustomerForm: Validation result", {
-    //   isValid: result.isValid,
-    //   errors: result.errors,
-    //   formData,
-    // });
-    return result;
+    return validateCustomerInfo(formData);
   }, [formData]);
 
   // Update parent components when validation or data changes
   useEffect(() => {
     setErrors(validationResult.errors);
     onValidationChange(validationResult.isValid);
-
-    // CRITICAL: Always send current form data to parent
-    // console.log("🔵 CustomerForm: Sending data to parent", formData);
     onCustomerInfoChange(formData);
   }, [validationResult, formData, onValidationChange, onCustomerInfoChange]);
 
   // Optimized change handler - batch state updates
   const handleChange = useCallback((field, value) => {
-    // console.log(`🔵 CustomerForm: Field changed - ${field}:`, value);
-    setFormData((prev) => {
-      const updated = { ...prev, [field]: value };
-      // console.log("🔵 CustomerForm: Updated form data", updated);
-      return updated;
-    });
+    setFormData((prev) => ({ ...prev, [field]: value }));
   }, []);
 
   // Track field blur for showing errors only after user interaction
@@ -87,20 +69,29 @@ export default function CustomerForm({
     [errors, touched]
   );
 
+  // Array of Nigerian states for dropdown
+  const NigerianStates = [
+    "Lagos", "Abuja", "Rivers", "Kano", "Oyo", "Edo", "Delta", "Kaduna", "Ogun", "Enugu",
+    // ... add all 36 states if required for a complete list
+  ];
+  
   return (
     <div className="space-y-6">
       <h3 className="text-xl font-bold text-gray-900 flex items-center">
-        <User className="mr-2" size={20} />
+        <User className="mr-2" size={20} data-testid="user-icon" />
         Customer Information
       </h3>
 
       {/* Name Row */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
+          {/* FIX: Added htmlFor attribute */}
+          <label htmlFor="firstName" className="block text-sm font-medium text-gray-700 mb-2">
             First Name *
           </label>
           <input
+            id="firstName"
+            name="firstName"
             type="text"
             required
             value={formData.firstName}
@@ -108,14 +99,19 @@ export default function CustomerForm({
             onBlur={() => handleBlur("firstName")}
             className={inputClass("firstName")}
             placeholder="John"
+            // Adding a test ID for robust selection in tests where label text is complex
+            data-testid="input-firstName" 
           />
           <ErrorMessage field="firstName" errors={errors} touched={touched} />
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
+          {/* FIX: Added htmlFor attribute */}
+          <label htmlFor="lastName" className="block text-sm font-medium text-gray-700 mb-2">
             Last Name *
           </label>
           <input
+            id="lastName"
+            name="lastName"
             type="text"
             required
             value={formData.lastName}
@@ -123,6 +119,7 @@ export default function CustomerForm({
             onBlur={() => handleBlur("lastName")}
             className={inputClass("lastName")}
             placeholder="Doe"
+            data-testid="input-lastName"
           />
           <ErrorMessage field="lastName" errors={errors} touched={touched} />
         </div>
@@ -131,11 +128,14 @@ export default function CustomerForm({
       {/* Contact Row */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center">
-            <Mail className="mr-1" size={16} />
+          {/* FIX: Added htmlFor attribute */}
+          <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2 flex items-center">
+            <Mail className="mr-1" size={16} data-testid="mail-icon" />
             Email Address *
           </label>
           <input
+            id="email"
+            name="email"
             type="email"
             required
             value={formData.email}
@@ -143,15 +143,19 @@ export default function CustomerForm({
             onBlur={() => handleBlur("email")}
             className={inputClass("email")}
             placeholder="john.doe@example.com"
+            data-testid="input-email"
           />
           <ErrorMessage field="email" errors={errors} touched={touched} />
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center">
-            <Phone className="mr-1" size={16} />
+        
+          <label htmlFor="phone" className="block text-sm font-medium text-gray-700 mb-2 flex items-center">
+            <Phone className="mr-1" size={16} data-testid="phone-icon" />
             Phone Number *
           </label>
           <input
+            id="phone"
+            name="phone"
             type="tel"
             required
             value={formData.phone}
@@ -159,6 +163,7 @@ export default function CustomerForm({
             onBlur={() => handleBlur("phone")}
             className={inputClass("phone")}
             placeholder="+234 800 000 0000"
+            data-testid="input-phone"
           />
           <ErrorMessage field="phone" errors={errors} touched={touched} />
         </div>
@@ -167,10 +172,13 @@ export default function CustomerForm({
       {/* City & State */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
+          {/* FIX: Added htmlFor attribute */}
+          <label htmlFor="city" className="block text-sm font-medium text-gray-700 mb-2">
             City *
           </label>
           <input
+            id="city"
+            name="city"
             type="text"
             required
             value={formData.city}
@@ -178,31 +186,30 @@ export default function CustomerForm({
             onBlur={() => handleBlur("city")}
             className={inputClass("city")}
             placeholder="Lagos"
+            data-testid="input-city"
           />
           <ErrorMessage field="city" errors={errors} touched={touched} />
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
+          <label htmlFor="state" className="block text-sm font-medium text-gray-700 mb-2">
             State *
           </label>
           <select
+            id="state"
+            name="state"
             required
             value={formData.state}
             onChange={(e) => handleChange("state", e.target.value)}
             onBlur={() => handleBlur("state")}
             className={inputClass("state")}
+            data-testid="select-state"
           >
             <option value="">Select State</option>
-            <option value="Lagos">Lagos</option>
-            <option value="Abuja">Abuja</option>
-            <option value="Rivers">Rivers</option>
-            <option value="Kano">Kano</option>
-            <option value="Oyo">Oyo</option>
-            <option value="Edo">Edo</option>
-            <option value="Delta">Delta</option>
-            <option value="Kaduna">Kaduna</option>
-            <option value="Ogun">Ogun</option>
-            <option value="Enugu">Enugu</option>
+            {NigerianStates.map((state) => (
+              <option key={state} value={state}>
+                {state}
+              </option>
+            ))}
           </select>
           <ErrorMessage field="state" errors={errors} touched={touched} />
         </div>
