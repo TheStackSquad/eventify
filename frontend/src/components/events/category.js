@@ -1,16 +1,39 @@
 //frontend/src/components/events/category.js
 
-import {MapPin, Calendar, Tag, DollarSign, ChevronDown } from "lucide-react";
+import { MapPin, Calendar, Tag, DollarSign, ChevronDown } from "lucide-react";
 import { motion } from "framer-motion";
 import { allCategories } from "@/data/upcomingEvents";
 
 export default function FilterControls({
-  selectedCategory,
-  onCategoryChange,
-  locations,
-  selectedLocation,
-  onLocationChange,
+  selectedCategory = "All", // Default value
+  onCategoryChange = () => {}, // Default empty function
+  locations = ["All Locations"], // Default locations
+  selectedLocation = "All Locations", // Default value
+  onLocationChange = () => {}, // Default empty function
 }) {
+  // Safe event handlers with validation
+  const handleCategoryChange = (category) => {
+    if (typeof onCategoryChange === "function") {
+      onCategoryChange(category);
+    }
+  };
+
+  const handleLocationChange = (location) => {
+    if (typeof onLocationChange === "function") {
+      onLocationChange(location);
+    }
+  };
+
+  // Ensure locations is always an array and has at least one item
+  const safeLocations =
+    Array.isArray(locations) && locations.length > 0
+      ? locations
+      : ["All Locations"];
+
+  // Ensure selected values are valid or fall back to defaults
+  const safeSelectedCategory = selectedCategory || "All";
+  const safeSelectedLocation = selectedLocation || safeLocations[0];
+
   return (
     <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 p-4 bg-white rounded-xl shadow-md mb-8">
       {/* Location Dropdown */}
@@ -22,11 +45,11 @@ export default function FilterControls({
       >
         <MapPin className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-500 pointer-events-none" />
         <select
-          value={selectedLocation}
-          onChange={(e) => onLocationChange(e.target.value)}
+          value={safeSelectedLocation}
+          onChange={(e) => handleLocationChange(e.target.value)}
           className="appearance-none w-full py-3 pl-10 pr-8 border border-gray-300 bg-gray-50 rounded-lg focus:outline-none focus:ring-1 focus:ring-warm-yellow-500 text-gray-700 cursor-pointer"
         >
-          {locations.map((loc) => (
+          {safeLocations.map((loc) => (
             <option key={loc} value={loc}>
               {loc}
             </option>
@@ -45,11 +68,11 @@ export default function FilterControls({
         {allCategories.map((cat) => (
           <button
             key={cat}
-            onClick={() => onCategoryChange(cat)}
+            onClick={() => handleCategoryChange(cat)}
             className={`
               flex items-center px-4 py-2 text-sm font-semibold rounded-full transition-all duration-200 shadow-sm
               ${
-                selectedCategory === cat
+                safeSelectedCategory === cat
                   ? "bg-blue-600 text-white shadow-blue-300/50 hover:bg-blue-700"
                   : "bg-gray-100 text-gray-700 hover:bg-gray-200"
               } font-body whitespace-nowrap
@@ -73,4 +96,3 @@ export default function FilterControls({
     </div>
   );
 }
-

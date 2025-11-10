@@ -12,15 +12,16 @@ import {
 } from "@/redux/action/likeAction";
 
 export default function EventCard({ event }) {
-  const dispatch = useDispatch();
-
-  // The isFavorited and likeCount are correctly managed by the Redux-provided event object
-  const isFavorited = event.isLikedByUser || false;
-  const likeCount = event.likeCount || 0;
-
+  // 1. **FIXED LOGIC:** Check for 'event' immediately before accessing any of its properties.
   if (!event || typeof event.price === "undefined") {
     return null;
   }
+
+  const dispatch = useDispatch();
+
+  // 2. Accessing properties is now safe because we confirmed 'event' is defined.
+  const isFavorited = event.isLikedByUser || false;
+  const likeCount = event.likeCount || 0;
 
   const tagColors = {
     Trending: "bg-yellow-100 text-yellow-800",

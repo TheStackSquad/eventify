@@ -1,5 +1,5 @@
 
-//src/components/events/filters/FilterBar.jsx
+//src/components/events/filters/filterBar.jsx
 
 import { MapPin, ArrowUpDown } from "lucide-react";
 

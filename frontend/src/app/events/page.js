@@ -1,4 +1,4 @@
-// src/app/events/page.jsx
+// src/app/events/page.js
 
 "use client";
 

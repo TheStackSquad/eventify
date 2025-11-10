@@ -1,5 +1,5 @@
 
-// src/components/events/filters/activeFilters.jsx
+// src/components/events/filters/activeFilters.js
 
 import { X } from "lucide-react";
 
