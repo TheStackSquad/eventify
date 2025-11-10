@@ -36,11 +36,25 @@ export const signupUser = createAsyncThunk(
 
       return response.data;
     } catch (error) {
-      // ... (Error handling remains the same)
-      return rejectWithValue({ message: errorMessage });
+      // 🎯 FIX: Correctly extract and return the server error message
+      // 1. Check for API Response (400, 409, etc.)
+      if (error.response) {
+        return rejectWithValue(error.response.data);
+      }
+      if (error.request) {
+        return rejectWithValue({
+          // The exact message the test expects
+          message: "Network error. Please check your connection.",
+        });
+      }
+      // Handle network errors (when no response object exists
+      return rejectWithValue({
+        message: "An unexpected error occurred.",
+      });
     }
   }
 );
+
 
 // signinUser with error handling
 export const signinUser = createAsyncThunk(
@@ -52,16 +66,22 @@ export const signinUser = createAsyncThunk(
         API_ENDPOINTS.AUTH.SIGNIN, // 👈 Use the constant
         formData
       );
-      // ... (Rest of signinUser thunk remains the same)
       return {
         user: response.data.user,
         message: response.data.message,
       };
     } catch (error) {
-      // ... (Error handling remains the same)
+      // This logic ensures the test receives a payload for rejected actions
+      if (error.response) {
+        return rejectWithValue({
+          message: error.response.data?.message,
+          code: error.response.status,
+        });
+      }
+      // Fallback for network errors
       return rejectWithValue({
-        message: errorMessage,
-        code: error.response?.status,
+        message: "Network error during signin.",
+        code: undefined,
       });
     }
   }
@@ -76,22 +96,25 @@ export const verifySession = createAsyncThunk(
       console.log("🟣 [VERIFY SESSION] Calling:", API_ENDPOINTS.AUTH.ME);
       const response = await axios.get(API_ENDPOINTS.AUTH.ME);
 
+      const user = response.data.user;
+      const isAuthenticated = !!user;
+
       console.log("✅ [VERIFY SESSION] Success:", {
         status: response.status,
         userId: response.data.user?.id,
         userEmail: response.data.user?.email,
       });
 
-      return {
-        user: {
-          id: response.data.user?.id,
-          name: response.data.user?.name,
-          email: response.data.user?.email,
-          is_admin: response.data.user?.is_admin,
-        },
-        sessionChecked: true,
-        isAuthenticated: true,
-      };
+     return {
+       user: {
+         id: user?.id,
+         name: user?.name,
+         email: user?.email,
+         is_admin: user?.is_admin,
+       },
+       sessionChecked: true,
+       isAuthenticated: isAuthenticated,
+     };
     } catch (error) {
       console.error("❌ [VERIFY SESSION] Failed:", {
         status: error.response?.status,

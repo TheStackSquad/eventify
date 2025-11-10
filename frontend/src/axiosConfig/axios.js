@@ -71,14 +71,16 @@ instance.interceptors.request.use(
 
 // Step 7: Enhanced Response Interceptor (using integrated AUTH_ENDPOINTS)
 instance.interceptors.response.use(
-  (response) => response,
-  async (error) => {
-    // 🐛 DEBUG: Log successful responses
+  (response) => {
+    // 🐛 DEBUG: Log successful responses - FIXED: use response parameter
     console.log("📥 [AXIOS RESPONSE SUCCESS]", {
       status: response.status,
       url: response.config.url,
       method: response.config.method?.toUpperCase(),
     });
+    return response;
+  },
+  async (error) => {
     const originalRequest = error.config;
 
     // Prevent handling non-401 errors or already retried requests

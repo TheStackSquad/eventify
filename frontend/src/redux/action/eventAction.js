@@ -11,12 +11,16 @@ import {
 } from "@/utils/constants/globalConstants";
 
 // Helper function to check for and handle the AbortError
+// NOTE: This function simply returns the rejectWithValue object.
 const handleAbortError = (error, rejectWithValue) => {
   if (axios.isCancel(error) || error.name === "AbortError") {
     // Return a message that we can ignore in the component if needed
     return rejectWithValue({ message: "Request aborted", isAborted: true });
   }
+  return null; // Must return null or undefined if no abort error occurred
 };
+
+// --- CORE ASYNC THUNKS ---
 
 export const createEvent = createAsyncThunk(
   REDUX_ACTION_TYPES.CREATE_EVENT,
@@ -28,12 +32,17 @@ export const createEvent = createAsyncThunk(
         API_ENDPOINTS.EVENTS.CREATE,
         eventData,
         { signal }
-      ); // PASS SIGNAL
+      );
       toastAlert.success(SUCCESS_MESSAGES.EVENT_CREATED);
       return response.data;
     } catch (error) {
-      handleAbortError(error, rejectWithValue); // Handle Abort
+      // 1. Check for Abort and return immediately if found
+      const abortResult = handleAbortError(error, rejectWithValue);
+      if (abortResult) {
+        return abortResult;
+      }
 
+      // 2. Handle API/network error
       const message =
         error.response?.data?.message || ERROR_MESSAGES.CREATE_EVENT_FAILED;
       toastAlert("error", message);
@@ -49,13 +58,19 @@ export const fetchUserEvents = createAsyncThunk(
     try {
       const response = await axios.get(API_ENDPOINTS.EVENTS.MY_EVENTS, {
         signal,
-      }); // PASS SIGNAL
+      });
       return response.data;
     } catch (error) {
-      handleAbortError(error, rejectWithValue); // Handle Abort
+      // 1. Check for Abort and return immediately if found
+      const abortResult = handleAbortError(error, rejectWithValue);
+      if (abortResult) {
+        return abortResult;
+      }
 
+      // 2. Handle API/network error
       const message =
         error.response?.data?.message || ERROR_MESSAGES.FETCH_EVENTS_FAILED;
+      // Note: No toastAlert here for non-critical listing fetches, as per original logic.
       return rejectWithValue({ message });
     }
   }
@@ -67,13 +82,19 @@ export const fetchAllEvents = createAsyncThunk(
   // Accept signal directly since there was no original argument
   async (signal, { rejectWithValue }) => {
     try {
-      const response = await axios.get(API_ENDPOINTS.EVENTS.BASE, { signal }); // PASS SIGNAL
+      const response = await axios.get(API_ENDPOINTS.EVENTS.BASE, { signal });
       return response.data;
     } catch (error) {
-      handleAbortError(error, rejectWithValue); // Handle Abort
+      // 1. Check for Abort and return immediately if found
+      const abortResult = handleAbortError(error, rejectWithValue);
+      if (abortResult) {
+        return abortResult;
+      }
 
+      // 2. Handle API/network error
       const message =
         error.response?.data?.message || ERROR_MESSAGES.FETCH_EVENTS_FAILED;
+      // Note: No toastAlert here for non-critical listing fetches, as per original logic.
       return rejectWithValue({ message });
     }
   }
@@ -85,11 +106,16 @@ export const fetchEventAnalytics = createAsyncThunk(
   async ({ eventId, signal }, { rejectWithValue }) => {
     try {
       const endpoint = API_ENDPOINTS.EVENTS.ANALYTICS.replace(":id", eventId);
-      const response = await axios.get(endpoint, { signal }); // PASS SIGNAL
+      const response = await axios.get(endpoint, { signal });
       return response.data;
     } catch (error) {
-      handleAbortError(error, rejectWithValue); // Handle Abort
+      // 1. Check for Abort and return immediately if found
+      const abortResult = handleAbortError(error, rejectWithValue);
+      if (abortResult) {
+        return abortResult;
+      }
 
+      // 2. Handle API/network error
       const message =
         error.response?.data?.message || ERROR_MESSAGES.FETCH_ANALYTICS_FAILED;
       return rejectWithValue({ message });
@@ -102,18 +128,22 @@ export const getEventById = createAsyncThunk(
   // Destructure eventId and signal from the payload
   async ({ eventId, signal }, { rejectWithValue }) => {
     try {
-      // Use string replacement
       const endpoint = API_ENDPOINTS.EVENTS.GET_BY_ID.replace(
         ":eventId",
         eventId
       );
-      console.log("🔍 Fetching event from:", endpoint); // Debug log
+      console.log("🔍 Fetching event from:", endpoint);
 
-      const response = await axios.get(endpoint, { signal }); // PASS SIGNAL
+      const response = await axios.get(endpoint, { signal });
       return response.data;
     } catch (error) {
-      handleAbortError(error, rejectWithValue); // Handle Abort
+      // 1. Check for Abort and return immediately if found
+      const abortResult = handleAbortError(error, rejectWithValue);
+      if (abortResult) {
+        return abortResult;
+      }
 
+      // 2. Handle API/network error
       const message =
         error.response?.data?.message || ERROR_MESSAGES.FETCH_EVENT_FAILED;
       toastAlert("error", message);
@@ -128,12 +158,17 @@ export const updateEvent = createAsyncThunk(
   async ({ eventId, updates, signal }, { rejectWithValue }) => {
     try {
       const endpoint = API_ENDPOINTS.EVENTS.UPDATE.replace(":id", eventId);
-      const response = await axios.put(endpoint, updates, { signal }); // PASS SIGNAL
+      const response = await axios.put(endpoint, updates, { signal });
       toastAlert.success(SUCCESS_MESSAGES.EVENT_UPDATED);
       return response.data;
     } catch (error) {
-      handleAbortError(error, rejectWithValue); // Handle Abort
+      // 1. Check for Abort and return immediately if found
+      const abortResult = handleAbortError(error, rejectWithValue);
+      if (abortResult) {
+        return abortResult;
+      }
 
+      // 2. Handle API/network error
       const message =
         error.response?.data?.message || ERROR_MESSAGES.UPDATE_EVENT_FAILED;
       toastAlert("error", message);
@@ -148,12 +183,17 @@ export const deleteEvent = createAsyncThunk(
   async ({ eventId, signal }, { rejectWithValue }) => {
     try {
       const endpoint = API_ENDPOINTS.EVENTS.DELETE.replace(":id", eventId);
-      await axios.delete(endpoint, { signal }); // PASS SIGNAL
+      await axios.delete(endpoint, { signal });
       toastAlert.success(SUCCESS_MESSAGES.EVENT_DELETED);
       return { eventId };
     } catch (error) {
-      handleAbortError(error, rejectWithValue); // Handle Abort
+      // 1. Check for Abort and return immediately if found
+      const abortResult = handleAbortError(error, rejectWithValue);
+      if (abortResult) {
+        return abortResult;
+      }
 
+      // 2. Handle API/network error
       const message =
         error.response?.data?.message || ERROR_MESSAGES.DELETE_EVENT_FAILED;
       toastAlert("error", message);
@@ -170,9 +210,11 @@ export const publishEvent = createAsyncThunk(
       const response = await axios.patch(
         `/events/${eventId}/publish`,
         { isPublished },
-        { signal } // PASS SIGNAL
+        { signal }
       );
 
+      // Using toastAlert directly as per original logic, though toastAlert.success
+      // might be cleaner, this preserves original intent.
       toastAlert(
         "success",
         isPublished ? "Event published! 🚀" : "Event unpublished"
@@ -180,8 +222,13 @@ export const publishEvent = createAsyncThunk(
 
       return response.data;
     } catch (error) {
-      handleAbortError(error, rejectWithValue); // Handle Abort
+      // 1. Check for Abort and return immediately if found
+      const abortResult = handleAbortError(error, rejectWithValue);
+      if (abortResult) {
+        return abortResult;
+      }
 
+      // 2. Handle API/network error
       const message =
         error.response?.data?.message || "Failed to update event status";
       toastAlert("error", message);
