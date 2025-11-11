@@ -42,7 +42,22 @@ jest.mock("react-redux", () => ({
 // Mock fetch for image upload
 global.fetch = jest.fn();
 
+// Global variable to hold the spy
+let consoleErrorSpy;
+
 describe("FeedbackModal - Critical Tests", () => {
+  // 1. Silence console.error for the entire test suite
+  beforeAll(() => {
+    // Spy on console.error and replace it with an empty function
+    // This prevents the intentional error logs in 'Form Submission' tests from polluting the output.
+    consoleErrorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
+  });
+
+  // 2. Restore the original console.error implementation after all tests
+  afterAll(() => {
+    consoleErrorSpy.mockRestore();
+  });
+  
   let mockOnClose;
   let mockDispatch;
 

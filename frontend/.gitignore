@@ -10,12 +10,34 @@
 !.yarn/releases
 !.yarn/versions
 
+# Test files
+*.test.js
+*.test.jsx
+*.test.ts
+*.test.tsx
+**/*.test.js
+**/*.test.jsx
+**/*.test.ts
+**/*.test.tsx
+
+# Test directories
+__tests__/
+__mocks__/
+coverage/
+.jest/
+
 # testing
 /coverage
 
 # next.js
 /.next/
 /out/
+
+
+# Ignore frontend test files
+frontend/src/**/*.test.js
+frontend/src/**/*.unit.js
+
 
 # production
 /build
