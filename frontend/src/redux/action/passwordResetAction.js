@@ -11,14 +11,6 @@ const ACTION_TYPES = {
   RESET_PASSWORD: "passwordReset/resetPassword",
 };
 
-/**
- * Step 1: Request Password Reset
- * User enters email → Backend sends reset link to email
- *
- * Expected Backend Endpoint: POST /auth/forgot-password
- * Request Body: { email: string }
- * Response: { message: string }
- */
 export const requestPasswordReset = createAsyncThunk(
   ACTION_TYPES.REQUEST_RESET,
   async (formData, { rejectWithValue }) => {
@@ -56,13 +48,7 @@ export const requestPasswordReset = createAsyncThunk(
   }
 );
 
-/**
- * Step 2: Verify Reset Token (Optional but recommended)
- * Validates the token when user lands on reset page
- *
- * Expected Backend Endpoint: GET /auth/verify-reset-token?token=xyz
- * Response: { valid: boolean, message?: string }
- */
+
 export const verifyResetToken = createAsyncThunk(
   ACTION_TYPES.VERIFY_TOKEN,
   async ({ token }, { rejectWithValue }) => {
@@ -95,14 +81,7 @@ export const verifyResetToken = createAsyncThunk(
   }
 );
 
-/**
- * Step 3: Reset Password
- * User submits new password with token → Backend updates password
- *
- * Expected Backend Endpoint: POST /auth/reset-password
- * Request Body: { token: string, newPassword: string }
- * Response: { message: string }
- */
+
 export const resetPassword = createAsyncThunk(
   ACTION_TYPES.RESET_PASSWORD,
   async ({ token, newPassword }, { rejectWithValue }) => {
