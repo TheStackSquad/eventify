@@ -20,6 +20,7 @@ export const REDUX_ACTION_TYPES = {
   FETCH_VENDORS: "vendors/fetchVendors",
   GET_VENDOR_PROFILE: "vendors/getVendorProfile",
   REGISTER_VENDOR: "vendors/registerVendor",
+  UPDATE_VENDOR: "vendors/updateVendor",
 
   // INQUIRY ACTIONS
   CREATE_INQUIRY: "inquiry/createInquiry",
@@ -218,6 +219,7 @@ export const ERROR_MESSAGES = {
   FETCH_VENDORS_FAILED: "Failed to fetch vendors list",
   FETCH_PROFILE_FAILED: "Failed to load vendor profile.",
   REGISTER_VENDOR_FAILED: "Failed to complete vendor registration.",
+  UPDATE_VENDOR_FAILED: "Failed to update vendor profile.",
 
   FEEDBACK_SUBMIT_FAILED: "Failed to submit feedback. Please try again.",
   FEEDBACK_DELETE_FAILED: "Failed to delete feedback. Please try again.",

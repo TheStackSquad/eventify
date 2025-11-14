@@ -19,7 +19,7 @@ const RateVendor = ({ vendorId, vendorName, onClose }) => {
 
   const isSubmitting = status === STATUS.LOADING;
   const isSubmitted = status === STATUS.SUCCESS;
-  const hasError = status === STATUS.ERROR;
+  const hasError = status === STATUS.FAILED;
 
   // ✅ Reset form after successful submission
   useEffect(() => {
@@ -74,24 +74,40 @@ const RateVendor = ({ vendorId, vendorName, onClose }) => {
     );
   };
 
-  const StarIcon = ({ filled, hovered, onClick, onHover, onLeave }) => (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      className={`h-10 w-10 cursor-pointer transition-all duration-200 transform ${
-        hovered ? "scale-125 rotate-12" : "scale-100"
-      } ${
-        filled
-          ? "text-yellow-400 fill-current drop-shadow-lg"
-          : "text-gray-300 hover:text-gray-400"
-      }`}
-      viewBox="0 0 20 20"
-      fill="currentColor"
+  const StarIcon = ({
+    filled,
+    hovered,
+    onClick,
+    onHover,
+    onLeave,
+    starValue,
+  }) => (
+    <button
+      type="button"
+      className="focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 rounded-full"
       onClick={onClick}
       onMouseEnter={onHover}
       onMouseLeave={onLeave}
+      aria-label={`Rate ${starValue} out of 5 stars`}
+      data-testid={`star-${starValue}`}
     >
-      <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-    </svg>
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        className={`h-10 w-10 cursor-pointer transition-all duration-200 transform ${
+          hovered ? "scale-125 rotate-12" : "scale-100"
+        } ${
+          filled
+            ? "text-yellow-400 fill-current drop-shadow-lg"
+            : "text-gray-300 hover:text-gray-400"
+        }`}
+        viewBox="0 0 20 20"
+        fill="currentColor"
+        role="img"
+        aria-hidden="true"
+      >
+        <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+      </svg>
+    </button>
   );
 
   const renderStars = () => {
@@ -107,6 +123,7 @@ const RateVendor = ({ vendorId, vendorName, onClose }) => {
           onClick={() => handleStarClick(starValue)}
           onHover={() => handleStarHover(starValue)}
           onLeave={handleStarLeave}
+          starValue={starValue}
         />
       );
     });
@@ -136,7 +153,10 @@ const RateVendor = ({ vendorId, vendorName, onClose }) => {
   // ✅ Success State
   if (isSubmitted) {
     return (
-      <div className="bg-gradient-to-br from-green-50 to-emerald-50 border-2 border-green-200 rounded-2xl p-8 text-center shadow-xl animate-fade-in">
+      <div
+        className="bg-gradient-to-br from-green-50 to-emerald-50 border-2 border-green-200 rounded-2xl p-8 text-center shadow-xl animate-fade-in"
+        data-testid="success-message"
+      >
         <div className="relative w-20 h-20 bg-gradient-to-br from-green-400 to-emerald-500 rounded-full flex items-center justify-center mx-auto mb-4 shadow-lg animate-bounce-in">
           <svg
             className="w-10 h-10 text-white"
@@ -167,9 +187,13 @@ const RateVendor = ({ vendorId, vendorName, onClose }) => {
   }
 
   const ratingInfo = getRatingText();
+  const displayRating = hoverRating || rating;
 
   return (
-    <div className="rate-vendor-component bg-gradient-to-br from-white to-gray-50 rounded-2xl shadow-2xl border border-gray-200 p-8">
+    <div
+      className="rate-vendor-component bg-gradient-to-br from-white to-gray-50 rounded-2xl shadow-2xl border border-gray-200 p-8"
+      data-testid="rate-vendor-form"
+    >
       {/* Header */}
       <div className="text-center mb-6">
         <h2 className="text-2xl font-bold text-gray-800 mb-2">
@@ -182,7 +206,11 @@ const RateVendor = ({ vendorId, vendorName, onClose }) => {
 
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* Star Rating */}
-        <div className="text-center bg-white rounded-xl p-6 shadow-md border border-gray-100">
+        <div
+          className="text-center bg-white rounded-xl p-6 shadow-md border border-gray-100"
+          role="group"
+          aria-label="Vendor rating"
+        >
           <div className="flex justify-center space-x-2 mb-4">
             {renderStars()}
           </div>
@@ -192,9 +220,10 @@ const RateVendor = ({ vendorId, vendorName, onClose }) => {
               {ratingInfo.text}
             </p>
           </div>
-          {rating > 0 && (
-            <p className="text-sm text-gray-500 mt-2">
-              {rating} out of 5 stars
+          {/* ✅ FIXED: Always show rating text when there's a rating (selected or hovered) */}
+          {displayRating > 0 && (
+            <p className="text-sm text-gray-500 mt-2" aria-live="polite">
+              {displayRating} out of 5 stars
             </p>
           )}
         </div>
@@ -218,6 +247,7 @@ const RateVendor = ({ vendorId, vendorName, onClose }) => {
               className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 resize-none shadow-sm hover:border-gray-300"
               maxLength={500}
               disabled={isSubmitting}
+              data-testid="review-textarea"
             />
             <div className="absolute bottom-3 right-3 text-xs text-gray-400 bg-white px-2 py-1 rounded">
               {reviewText.length}/500
@@ -227,7 +257,11 @@ const RateVendor = ({ vendorId, vendorName, onClose }) => {
 
         {/* ✅ Error Message */}
         {hasError && (
-          <div className="bg-red-50 border-l-4 border-red-500 rounded-lg p-4 animate-shake">
+          <div
+            className="bg-red-50 border-l-4 border-red-500 rounded-lg p-4 animate-shake"
+            data-testid="error-message"
+            role="alert"
+          >
             <div className="flex items-start">
               <svg
                 className="w-5 h-5 text-red-500 mt-0.5 mr-3 flex-shrink-0"
@@ -252,7 +286,7 @@ const RateVendor = ({ vendorId, vendorName, onClose }) => {
           </div>
         )}
 
-        {/* Submit Button */}
+        {/* Submit Button - ✅ FIXED: Button is now properly controlled */}
         <button
           type="submit"
           disabled={isSubmitting || rating === 0}
@@ -265,6 +299,7 @@ const RateVendor = ({ vendorId, vendorName, onClose }) => {
                 : "bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 hover:from-blue-700 hover:via-indigo-700 hover:to-purple-700 shadow-lg hover:shadow-2xl transform hover:scale-[1.02] active:scale-[0.98]"
             }
           `}
+          data-testid="submit-button"
         >
           {isSubmitting ? (
             <div className="flex items-center justify-center">
