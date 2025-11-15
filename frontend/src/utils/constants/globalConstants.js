@@ -202,6 +202,8 @@ export const EVENT_DEFAULTS = {
     },
     status: STATUS.IDLE,
     analyticsStatus: STATUS.IDLE,
+    allEventsStatus: STATUS.IDLE,
+    allEvents: [],
     error: null,
   },
 };
@@ -214,7 +216,7 @@ export const ERROR_MESSAGES = {
   DELETE_EVENT_FAILED: "Failed to delete event",
   FETCH_EVENTS_FAILED: "Failed to fetch events",
   FETCH_EVENT_FAILED: "Failed to fetch event",
-  FETCH_ANALYTICS_FAILED: "Failed to fetch analytics",
+  FETCH_ANALYTICS_FAILED: "Analytics failed",
   // Vendor Operations (New)
   FETCH_VENDORS_FAILED: "Failed to fetch vendors list",
   FETCH_PROFILE_FAILED: "Failed to load vendor profile.",
