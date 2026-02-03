@@ -1,7 +1,7 @@
-// frontend/src/app/events/[id]/components/ticketSelector.js
+//frontend/src/events/[id]/components/ticketSelector.js
+
 "use client";
 import { ChevronDown } from "lucide-react";
-import { formatPrice } from "@/utils/currency";
 
 const TicketSelector = ({
   event,
@@ -11,6 +11,15 @@ const TicketSelector = ({
   handleTierSelect,
   selectedTierId,
 }) => {
+  // ✅ Helper to add Naira sign and commas
+  const formatPrice = (price) => {
+    return new Intl.NumberFormat("en-NG", {
+      style: "currency",
+      currency: "NGN",
+      minimumFractionDigits: 0, // Removes .00 if you don't want decimals
+    }).format(price);
+  };
+
   return (
     <div className="space-y-2">
       <label
@@ -35,6 +44,7 @@ const TicketSelector = ({
                   {selectedTier.tierName}
                 </span>
                 <span className="text-red-600 font-semibold whitespace-nowrap">
+                  {/* ✅ Applied Naira Formatting */}
                   {formatPrice(selectedTier.price)}
                 </span>
               </span>
@@ -84,6 +94,7 @@ const TicketSelector = ({
                       </div>
                       <div className="flex items-center gap-3 flex-shrink-0">
                         <span className="text-red-600 font-semibold whitespace-nowrap">
+                          {/* ✅ Applied Naira Formatting */}
                           {formatPrice(tier.price)}
                         </span>
                         <span
@@ -91,15 +102,15 @@ const TicketSelector = ({
                             isOutOfStock
                               ? "text-red-600 font-semibold"
                               : isLowStock
-                              ? "text-orange-600 font-medium"
-                              : "text-gray-500"
+                                ? "text-orange-600 font-medium"
+                                : "text-gray-500"
                           }`}
                         >
                           {isOutOfStock
                             ? "SOLD OUT"
                             : isLowStock
-                            ? `Only ${tier.quantity} left!`
-                            : `${tier.quantity} available`}
+                              ? `Only ${tier.quantity} left!`
+                              : `${tier.quantity} available`}
                         </span>
                       </div>
                     </div>

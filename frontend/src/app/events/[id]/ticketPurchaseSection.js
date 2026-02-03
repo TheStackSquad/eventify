@@ -26,12 +26,14 @@ const TicketPurchaseSection = ({ event }) => {
     handleTierSelect,
   } = useTicketPurchase({ event, addItem, router });
 
-  // 2. Lookup using UUID (Sync with our previous fix)
+  // Lookup using UUID - finds the selected ticket tier
+  // Note: event.tickets already has prices converted from kobo to naira (done in page.js)
   const selectedTier = useMemo(
     () => event.tickets.find((t) => t.id === selectedTierId),
     [event.tickets, selectedTierId],
   );
-  // 3. Logic for the Checkout Button state
+
+  // Logic for the Checkout Button state
   const hasItemsInCart = useMemo(() => items && items.length > 0, [items]);
 
   const isSoldOut = useMemo(
@@ -39,6 +41,7 @@ const TicketPurchaseSection = ({ event }) => {
     [selectedTier],
   );
 
+  // Calculate total price in Naira (price is already in Naira from server conversion)
   const totalPrice = useMemo(
     () => (selectedTier ? selectedTier.price * quantity : 0),
     [selectedTier, quantity],
@@ -94,7 +97,7 @@ const TicketPurchaseSection = ({ event }) => {
         <OrderSummary
           selectedTier={selectedTier}
           quantity={quantity}
-          totalPrice={selectedTier ? selectedTier.price * quantity : 0}
+          totalPrice={totalPrice}
         />
       </div>
 
@@ -107,6 +110,6 @@ const TicketPurchaseSection = ({ event }) => {
       />
     </section>
   );
-};;;;
+};
 
 export default TicketPurchaseSection;

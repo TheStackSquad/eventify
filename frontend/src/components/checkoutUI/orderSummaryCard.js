@@ -1,4 +1,3 @@
-// frontend/src/components/checkoutUI/orderSummaryCard.js
 "use client";
 
 import { memo, useState } from "react";
@@ -10,39 +9,24 @@ import {
   ChevronDown,
   ChevronUp,
 } from "lucide-react";
-import { koboToNaira } from "@/utils/currency";
 
-// Memoized order summary component for optimal performance
 const OrderSummaryCard = memo(
-  ({
-    customerInfo,
-    itemCount,
-    orderBreakdown,
-    items,
-  }) => {
+  ({ customerInfo, itemCount, orderBreakdown, items }) => {
     const [showFeeBreakdown, setShowFeeBreakdown] = useState(false);
 
-    // Format currency helper
-    const formatCurrency = (amount) => {
-      return `₦${amount.toLocaleString("en-NG", {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-      })}`;
+    const formatPrice = (amount) => {
+      return `₦${amount.toLocaleString("en-NG")}`;
     };
 
-    // Calculate item total
     const getItemTotal = (item) => {
-      const priceInNaira = koboToNaira(item.price);
-      return priceInNaira * item.quantity;
+      return Number(item.price) * item.quantity;
     };
 
-    // Determine if we should show VAT separately
     const hasVAT = orderBreakdown.vat > 0;
     const hasMixedTiers = orderBreakdown.hasMixedTiers;
 
     return (
       <div className="bg-gradient-to-br from-gray-50 to-white p-4 sm:p-6 rounded-xl shadow-xl border border-gray-200 lg:sticky lg:top-24">
-        {/* Header */}
         <div className="flex items-center mb-4 md:mb-6 pb-3 border-b border-gray-200">
           <Receipt
             className="mr-2 text-blue-600"
@@ -54,7 +38,6 @@ const OrderSummaryCard = memo(
           </h2>
         </div>
 
-        {/* Customer Info Preview */}
         {customerInfo.firstName && (
           <div className="mb-4 p-3 sm:p-4 bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg border border-green-200 animate-fadeIn">
             <div className="flex items-start">
@@ -78,9 +61,7 @@ const OrderSummaryCard = memo(
           </div>
         )}
 
-        {/* Price Breakdown */}
         <div className="space-y-3 text-gray-700 mb-4 md:mb-6">
-          {/* Subtotal */}
           <div className="flex justify-between items-center text-sm">
             <span className="flex items-center">
               <ShoppingBag
@@ -92,11 +73,10 @@ const OrderSummaryCard = memo(
               )
             </span>
             <span className="font-semibold">
-              {formatCurrency(orderBreakdown.subtotal)}
+              {formatPrice(orderBreakdown.subtotal)}
             </span>
           </div>
 
-          {/* Service Fee with Info */}
           <div className="flex justify-between items-start text-sm">
             <div className="flex items-start flex-1">
               <span>Service Fee</span>
@@ -111,11 +91,10 @@ const OrderSummaryCard = memo(
               )}
             </div>
             <span className="font-semibold">
-              {formatCurrency(orderBreakdown.serviceFee)}
+              {formatPrice(orderBreakdown.serviceFee)}
             </span>
           </div>
 
-          {/* Expandable Fee Breakdown for Mixed Tiers */}
           {hasMixedTiers && showFeeBreakdown && (
             <div className="ml-4 p-3 bg-blue-50 rounded-lg text-xs space-y-1.5 animate-slideDown">
               <p className="font-medium text-blue-900 mb-2">Fee Breakdown:</p>
@@ -125,13 +104,12 @@ const OrderSummaryCard = memo(
                     {item.eventTitle} (
                     {item.tier === "small" ? "10%" : "7% + ₦50"})
                   </span>
-                  <span>{formatCurrency(item.serviceFee)}</span>
+                  <span>{formatPrice(item.serviceFee)}</span>
                 </div>
               ))}
             </div>
           )}
 
-          {/* VAT - Only show if amount > 0 */}
           {hasVAT && (
             <div className="flex justify-between items-center text-sm">
               <div className="flex items-center">
@@ -145,12 +123,11 @@ const OrderSummaryCard = memo(
                 </div>
               </div>
               <span className="font-semibold">
-                {formatCurrency(orderBreakdown.vat)}
+                {formatPrice(orderBreakdown.vat)}
               </span>
             </div>
           )}
 
-          {/* Show info if NO VAT (all tickets ≤₦5k) */}
           {!hasVAT && itemCount > 0 && (
             <div className="flex items-start gap-2 p-2 bg-green-50 rounded text-xs text-green-800">
               <Info size={14} className="flex-shrink-0 mt-0.5 text-green-600" />
@@ -161,18 +138,16 @@ const OrderSummaryCard = memo(
             </div>
           )}
 
-          {/* Total */}
           <div className="border-t-2 border-gray-300 pt-3 flex justify-between items-center">
             <span className="text-base sm:text-lg font-bold text-gray-900">
               Total Due
             </span>
             <span className="text-lg sm:text-xl font-extrabold text-red-600">
-              {formatCurrency(orderBreakdown.finalTotal)}
+              {formatPrice(orderBreakdown.finalTotal)}
             </span>
           </div>
         </div>
 
-        {/* Order Items List */}
         <div className="pt-4 border-t border-gray-200">
           <button
             onClick={() => setShowFeeBreakdown(!showFeeBreakdown)}
@@ -215,11 +190,10 @@ const OrderSummaryCard = memo(
                       </p>
                     </div>
                     <span className="font-semibold text-gray-800 text-sm whitespace-nowrap">
-                      {formatCurrency(getItemTotal(item))}
+                      {formatPrice(getItemTotal(item))}
                     </span>
                   </div>
 
-                  {/* Show fee tier for this item */}
                   {itemBreakdown && (
                     <div className="text-xs text-gray-500 flex items-center gap-1">
                       <span
@@ -241,7 +215,6 @@ const OrderSummaryCard = memo(
           </div>
         </div>
 
-        {/* Security badge */}
         <div className="mt-4 pt-4 border-t border-gray-200">
           <div className="flex items-center justify-center text-xs text-gray-600">
             <CheckCircle
@@ -253,7 +226,6 @@ const OrderSummaryCard = memo(
           </div>
         </div>
 
-        {/* Styles */}
         <style jsx>{`
           .custom-scrollbar::-webkit-scrollbar {
             width: 6px;
@@ -298,7 +270,7 @@ const OrderSummaryCard = memo(
         `}</style>
       </div>
     );
-  }
+  },
 );
 
 OrderSummaryCard.displayName = "OrderSummaryCard";

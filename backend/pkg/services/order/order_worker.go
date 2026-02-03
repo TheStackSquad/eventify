@@ -14,6 +14,7 @@ import (
 // StartStockReleaseWorker begins a background loop to reclaim expired inventory.
 // interval: how often the worker checks for expired orders.
 // expiry: how old a pending order must be to be considered abandoned.
+
 func (s *OrderServiceImpl) StartStockReleaseWorker(ctx context.Context, interval time.Duration, expiry time.Duration) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
@@ -26,7 +27,8 @@ func (s *OrderServiceImpl) StartStockReleaseWorker(ctx context.Context, interval
 			log.Info().Msg("Stock Release Worker shutting down...")
 			return
 		case <-ticker.C:
-			s.CleanupExpiredOrders(ctx, expiry)
+			// Ensure this method name matches what is in your repository/service
+			s.ReleaseExpiredStock(ctx, expiry) 
 		}
 	}
 }
