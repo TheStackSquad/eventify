@@ -38,6 +38,7 @@ import (
 	servicepricing "github.com/eventify/backend/pkg/services/pricing"
 	servicereview "github.com/eventify/backend/pkg/services/review"
 	servicevendor "github.com/eventify/backend/pkg/services/vendor"
+	servicepaystack  "github.com/eventify/backend/pkg/services/paystack"
 
 	// Handlers (aliased)
 	handleranalytics "github.com/eventify/backend/pkg/handlers/analytics"
@@ -172,11 +173,10 @@ func main() {
 		vendorDataRepo,
 	)
 
-	paystackClient := &serviceorder.PaystackClientImpl{
-		SecretKey:  os.Getenv("PAYSTACK_SECRET_KEY"),
-		HTTPClient: &http.Client{Timeout: 30 * time.Second},
-		FrontendBaseURL: os.Getenv("FRONTEND_URL"),
-	}
+paystackClient := servicepaystack.NewClient(
+    os.Getenv("PAYSTACK_SECRET_KEY"),
+    &http.Client{Timeout: 30 * time.Second},
+)
 
 	pricingService := servicepricing.NewPricingService(eventRepo)
 	orderService := serviceorder.NewOrderService(

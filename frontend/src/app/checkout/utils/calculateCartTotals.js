@@ -1,10 +1,4 @@
-// frontend/src/app/checkout/utils/calculateCartTotals.js
-
-import {
-  calculateServiceFee,
-  koboToNaira,
-  nairaToKobo,
-} from "@/utils/currency";
+import { calculateServiceFee } from "@/utils/currency";
 
 export const calculateCartTotals = (cartItems) => {
   if (!Array.isArray(cartItems) || cartItems.length === 0) {
@@ -17,6 +11,7 @@ export const calculateCartTotals = (cartItems) => {
       finalTotalKobo: 0,
       itemsBreakdown: [],
       hasMixedTiers: false,
+      itemCount: 0,
     };
   }
 
@@ -26,45 +21,38 @@ export const calculateCartTotals = (cartItems) => {
   const itemsBreakdown = [];
   const tiers = new Set();
 
-  // Calculate fees for each item
   cartItems.forEach((item) => {
-    const pricePerTicketNaira = koboToNaira(item.price);
+    const pricePerTicket = Number(item.price);
     const itemQuantity = item.quantity || 1;
-    const itemSubtotal = pricePerTicketNaira * itemQuantity;
+    const itemSubtotal = pricePerTicket * itemQuantity;
 
-    // Calculate service fee for this ticket price
-    const feeCalc = calculateServiceFee(pricePerTicketNaira);
-
-    // Multiply by quantity
+    const feeCalc = calculateServiceFee(pricePerTicket);
     const itemServiceFee = feeCalc.serviceFee * itemQuantity;
     const itemVAT = feeCalc.vat * itemQuantity;
-    const itemTotalFees = feeCalc.totalFee * itemQuantity;
 
-    // Track tier
     tiers.add(feeCalc.tier);
 
-    // Accumulate totals
     totalSubtotal += itemSubtotal;
     totalServiceFee += itemServiceFee;
     totalVAT += itemVAT;
 
-    // Store breakdown for this item
     itemsBreakdown.push({
       cartId: item.cartId || item.id,
       eventTitle: item.eventTitle,
       tierName: item.tierName,
-      pricePerTicket: pricePerTicketNaira,
+      pricePerTicket: pricePerTicket,
       quantity: itemQuantity,
       subtotal: itemSubtotal,
       serviceFee: itemServiceFee,
       vat: itemVAT,
-      totalFees: itemTotalFees,
+      totalFees: itemServiceFee + itemVAT,
       tier: feeCalc.tier,
     });
   });
 
   const totalFees = totalServiceFee + totalVAT;
   const finalTotal = totalSubtotal + totalFees;
+  const finalTotalKobo = Math.round(finalTotal * 100);
 
   return {
     subtotal: totalSubtotal,
@@ -72,16 +60,13 @@ export const calculateCartTotals = (cartItems) => {
     vat: totalVAT,
     totalFees: totalFees,
     finalTotal: finalTotal,
-    finalTotalKobo: nairaToKobo(finalTotal),
+    finalTotalKobo: finalTotalKobo,
     itemsBreakdown: itemsBreakdown,
-    hasMixedTiers: tiers.size > 1, // True if cart has both small and premium tickets
+    hasMixedTiers: tiers.size > 1,
     itemCount: cartItems.reduce((sum, item) => sum + (item.quantity || 1), 0),
   };
 };
 
-/**
- * Format breakdown for metadata/API submission
- */
 export const formatOrderMetadata = (cartTotals, customerInfo, cartItems) => {
   return {
     customer_info: {
@@ -111,7 +96,6 @@ export const formatOrderMetadata = (cartTotals, customerInfo, cartItems) => {
       service_fee: item.serviceFee,
       vat: item.vat,
       tier: item.tier,
-      // Include original cart item data
       ...cartItems[index],
     })),
   };

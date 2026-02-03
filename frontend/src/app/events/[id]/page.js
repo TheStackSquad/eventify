@@ -3,6 +3,19 @@
 import { notFound } from "next/navigation";
 import EventDetailClient from "@/app/events/[id]/eventDetailClient";
 
+// ✅ Utility: Convert kobo to naira
+function koboToNaira(kobo) {
+  return Number(kobo) / 100;
+}
+
+// ✅ Utility: Format price for display
+function formatPrice(naira) {
+  return naira.toLocaleString("en-NG", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  });
+}
+
 // Fetch single event by ID
 async function fetchEventById(eventId) {
   const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8081";
@@ -40,6 +53,23 @@ async function fetchEventById(eventId) {
 
     const data = await res.json();
     console.log(`✅ Server fetched event: ${data.eventTitle}`);
+    console.log("RAW Price from API:", data.tickets?.[0]?.price);
+
+    // ✅ Convert ticket prices from kobo to naira
+    // ✅ Corrected: The backend is already sending Naira (5500)
+    if (data.tickets && Array.isArray(data.tickets)) {
+      data.tickets = data.tickets.map((ticket) => ({
+        ...ticket,
+        // Just ensure it's a Number, no division needed!
+        price: Number(ticket.price || 0),
+        // If you need kobo for a payment gateway (like Paystack) later:
+        priceKobo: Number(ticket.price || 0) * 100,
+      }));
+      console.log(
+        `💰 Verified ${data.tickets.length} ticket prices as Naira (no conversion needed)`,
+      );
+    }
+
     return data;
   } catch (error) {
     console.error(`❌ Error fetching event ${eventId}:`, error);
@@ -47,12 +77,14 @@ async function fetchEventById(eventId) {
   }
 }
 
-
 export async function generateStaticParams() {
   // Don't fetch during build if backend is down
   // Return empty array to let Next.js generate pages on-demand
-  if (process.env.NODE_ENV === 'production' && !process.env.NEXT_PUBLIC_API_URL) {
-    console.log('⚠️ Skipping static generation - API URL not available');
+  if (
+    process.env.NODE_ENV === "production" &&
+    !process.env.NEXT_PUBLIC_API_URL
+  ) {
+    console.log("⚠️ Skipping static generation - API URL not available");
     return [];
   }
 
@@ -67,7 +99,8 @@ export async function generateStaticParams() {
     if (!res.ok) return [];
 
     const data = await res.json();
-    const eventsArray = data.events || data.data || (Array.isArray(data) ? data : []);
+    const eventsArray =
+      data.events || data.data || (Array.isArray(data) ? data : []);
 
     if (!Array.isArray(eventsArray)) {
       console.warn("⚠️ API did not return an array in the expected format");
@@ -84,17 +117,15 @@ export async function generateStaticParams() {
   }
 }
 
-// PREMIUM SEO METADATA GENERATION - FIXED
+// ✅ ENHANCED SEO METADATA GENERATION
 export async function generateMetadata({ params }) {
-  // ✅ FIXED: params is already an object, don't await it
-  const { id } = params;
-
+  const { id } = await params;
   const event = await fetchEventById(id);
 
   // Handle 404 case
   if (!event) {
     return {
-      title: "Event Not Found",
+      title: "Event Not Found | Bandhit",
       description: "The event you are looking for could not be found.",
       robots: {
         index: false,
@@ -103,16 +134,23 @@ export async function generateMetadata({ params }) {
     };
   }
 
-  // ... rest of your metadata code remains the same ...
-  // Extract event details
+  // Extract event details with fallbacks
   const eventTitle = event.eventTitle || "Untitled Event";
   const eventDescription = event.eventDescription || "";
-  const eventImage = event.eventImage || "/default-event-image.jpg";
+  const eventImage =
+    event.eventImage || event.eventImageUrl || "/default-event-image.jpg";
   const eventCategory = event.category || "Event";
   const venueName = event.venueName || "Venue TBA";
   const city = event.city || "Location TBA";
+  const state = event.state || "";
+  const country = event.country || "Nigeria";
   const startDate = event.startDate ? new Date(event.startDate) : null;
-  const startingPrice = event.tickets?.[0]?.price || 0;
+  const endDate = event.endDate ? new Date(event.endDate) : null;
+
+  // Get starting price (tickets are already converted to naira)
+  const tickets = event.tickets || event.ticketTiers || [];
+  const startingPrice =
+    tickets.length > 0 ? Math.min(...tickets.map((t) => t.price || 0)) : 0;
 
   // Format date for display
   const formattedDate = startDate
@@ -124,34 +162,120 @@ export async function generateMetadata({ params }) {
       })
     : "Date TBA";
 
-  // Create rich description
-  const richDescription = `${eventDescription.slice(
-    0,
-    155,
-  )}... Join us at ${venueName} in ${city} on ${formattedDate}. ${
-    startingPrice === 0
-      ? "Free entry!"
-      : `Tickets from ₦${startingPrice.toLocaleString()}`
-  }`;
+  const formattedTime = startDate
+    ? startDate.toLocaleTimeString("en-US", {
+        hour: "numeric",
+        minute: "2-digit",
+        hour12: true,
+      })
+    : "";
+
+  // ✅ Create rich, descriptive metadata
+  const shortDescription =
+    eventDescription.length > 155
+      ? `${eventDescription.slice(0, 155)}...`
+      : eventDescription;
+
+  const richDescription = eventDescription
+    ? `${shortDescription} Join us at ${venueName} in ${city}${state ? `, ${state}` : ""} on ${formattedDate}${formattedTime ? ` at ${formattedTime}` : ""}. ${
+        startingPrice === 0
+          ? "Free entry!"
+          : `Tickets from ₦${formatPrice(startingPrice)}`
+      }`
+    : `${eventCategory} at ${venueName} in ${city} on ${formattedDate}. ${
+        startingPrice === 0
+          ? "Free entry!"
+          : `Tickets from ₦${formatPrice(startingPrice)}`
+      }`;
 
   // Get site URL from env or default
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
   const eventUrl = `${siteUrl}/events/${id}`;
 
+  // ✅ COMPLETE METADATA OBJECT
   return {
-    title: `${eventTitle} - ${formattedDate}`,
+    title: `${eventTitle} - ${formattedDate} | Bandhit`,
     description: richDescription,
-    // ... rest of metadata object ...
+
+    // Open Graph metadata for social sharing
+    openGraph: {
+      title: `${eventTitle} - ${formattedDate}`,
+      description: richDescription,
+      url: eventUrl,
+      siteName: "Bandhit",
+      images: [
+        {
+          url: eventImage,
+          width: 1200,
+          height: 630,
+          alt: eventTitle,
+        },
+      ],
+      locale: "en_NG",
+      type: "website",
+    },
+
+    // Twitter Card metadata
+    twitter: {
+      card: "summary_large_image",
+      title: `${eventTitle} - ${formattedDate}`,
+      description: richDescription,
+      images: [eventImage],
+      creator: "@bandhit",
+      site: "@bandhit",
+    },
+
+    // Additional metadata
+    keywords: [
+      eventTitle,
+      eventCategory,
+      city,
+      state,
+      country,
+      venueName,
+      "events",
+      "tickets",
+      "Nigeria events",
+      ...(event.tags || []),
+    ].filter(Boolean),
+
+    // Robots meta
+    robots: {
+      index: true,
+      follow: true,
+      googleBot: {
+        index: true,
+        follow: true,
+        "max-video-preview": -1,
+        "max-image-preview": "large",
+        "max-snippet": -1,
+      },
+    },
+
+    // Canonical URL
+    alternates: {
+      canonical: eventUrl,
+    },
+
+    // Authors
+    authors: [
+      {
+        name: event.organizerName || "Bandhit",
+      },
+    ],
+
+    // Category
+    category: eventCategory,
   };
 }
 
-// Main Server Component - FIXED
+// ✅ MAIN SERVER COMPONENT
 export default async function EventDetailPage({ params }) {
-  console.log("Component Mount 2");
-  // ✅ FIXED: params is already an object, don't await it
-  const { id } = params;
+  console.log("🎬 [EventDetailPage] Component Mount");
 
-  // Fetch event data on the server
+  const { id } = await params;
+
+  // Fetch event data on the server (already converted to naira)
   const event = await fetchEventById(id);
 
   // Handle 404 - event not found
@@ -159,60 +283,99 @@ export default async function EventDetailPage({ params }) {
     notFound();
   }
 
-  // Pass event data to client component
+  // Get site URL
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
+
+  // ✅ Prepare tickets for structured data (prices already in naira)
+  const tickets = event.tickets || event.ticketTiers || [];
+  const structuredOffers = tickets.map((ticket) => ({
+    "@type": "Offer",
+    name: ticket.tierName || ticket.name || "Ticket",
+    price: ticket.price.toFixed(2), // Already in naira
+    priceCurrency: "NGN",
+    availability:
+      (ticket.quantity || ticket.available || 0) > 0
+        ? "https://schema.org/InStock"
+        : "https://schema.org/SoldOut",
+    url: `${siteUrl}/events/${id}`,
+    validFrom: new Date().toISOString(),
+    ...(ticket.description && { description: ticket.description }),
+  }));
+
+  // ✅ ENHANCED JSON-LD STRUCTURED DATA
+  const structuredData = {
+    "@context": "https://schema.org",
+    "@type": "Event",
+    name: event.eventTitle,
+    description: event.eventDescription,
+    image: event.eventImage || event.eventImageUrl,
+    startDate: event.startDate,
+    endDate: event.endDate || event.startDate,
+    eventStatus: "https://schema.org/EventScheduled",
+    eventAttendanceMode:
+      event.eventType === "virtual"
+        ? "https://schema.org/OnlineEventAttendanceMode"
+        : "https://schema.org/OfflineEventAttendanceMode",
+
+    location:
+      event.eventType === "virtual"
+        ? {
+            "@type": "VirtualLocation",
+            url: event.meetingLink || `${siteUrl}/events/${id}`,
+          }
+        : {
+            "@type": "Place",
+            name: event.venueName,
+            address: {
+              "@type": "PostalAddress",
+              streetAddress: event.venueAddress || event.address || "",
+              addressLocality: event.city,
+              addressRegion: event.state || "",
+              addressCountry: event.country || "NG",
+            },
+          },
+
+    organizer: {
+      "@type": "Organization",
+      name: event.organizerName || "Bandhit",
+      url: siteUrl,
+    },
+
+    offers: structuredOffers.length > 0 ? structuredOffers : undefined,
+
+    performer: event.performerName
+      ? {
+          "@type": "Person",
+          name: event.performerName,
+        }
+      : undefined,
+
+    ...(event.maxAttendees && {
+      maximumAttendeeCapacity: event.maxAttendees,
+    }),
+
+    ...(event.category && {
+      genre: event.category,
+    }),
+
+    ...(event.tags &&
+      event.tags.length > 0 && {
+        keywords: event.tags.join(", "),
+      }),
+  };
+
+  console.log(`✅ [EventDetailPage] Rendering event: ${event.eventTitle}`);
+  console.log(
+    `💰 [EventDetailPage] Tickets: ${tickets.length} (prices in Naira)`,
+  );
+
   return (
     <>
       {/* 🎯 JSON-LD Structured Data for Google Rich Results */}
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{
-          __html: JSON.stringify({
-            "@context": "https://schema.org",
-            "@type": "Event",
-            name: event.eventTitle,
-            description: event.eventDescription,
-            image: event.eventImage,
-            startDate: event.startDate,
-            endDate: event.endDate || event.startDate,
-            eventStatus: "https://schema.org/EventScheduled",
-            eventAttendanceMode:
-              "https://schema.org/OfflineEventAttendanceMode",
-            location: {
-              "@type": "Place",
-              name: event.venueName,
-              address: {
-                "@type": "PostalAddress",
-                streetAddress: event.address || "",
-                addressLocality: event.city,
-                addressRegion: event.state || "",
-                addressCountry: "NG",
-              },
-            },
-            organizer: {
-              "@type": "Organization",
-              name: event.organizerName || "Bandhit",
-              url: process.env.NEXT_PUBLIC_SITE_URL || "https://bandhit.com",
-            },
-            offers:
-              event.tickets?.map((ticket) => ({
-                "@type": "Offer",
-                name: ticket.tierName,
-                price: ticket.price,
-                priceCurrency: "NGN",
-                availability:
-                  ticket.quantity > 0
-                    ? "https://schema.org/InStock"
-                    : "https://schema.org/SoldOut",
-                url: `${process.env.NEXT_PUBLIC_SITE_URL}/events/${id}`,
-                validFrom: new Date().toISOString(),
-              })) || [],
-            performer: event.performerName
-              ? {
-                  "@type": "Person",
-                  name: event.performerName,
-                }
-              : undefined,
-          }),
+          __html: JSON.stringify(structuredData),
         }}
       />
 
@@ -221,5 +384,6 @@ export default async function EventDetailPage({ params }) {
   );
 }
 
+// ✅ RUNTIME CONFIGURATION
 export const dynamic = "force-dynamic";
-export const revalidate = 300;
+export const revalidate = 300; // Revalidate every 5 minutes
