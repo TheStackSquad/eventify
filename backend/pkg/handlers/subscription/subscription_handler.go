@@ -9,6 +9,7 @@ import (
 
 	"github.com/eventify/backend/pkg/models"
 	repovendor "github.com/eventify/backend/pkg/repository/vendor"
+	 "github.com/eventify/backend/pkg/middleware"
 	servicesubscription "github.com/eventify/backend/pkg/services/subscription"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -40,7 +41,7 @@ func NewSubscriptionHandler(
 
 func (h *SubscriptionHandler) InitiateSubscription(c *gin.Context) {
 	// 1. Extract vendor ID from auth context
-	vendorID, err := extractVendorID(c)
+	vendorID, err := middleware.ExtractVendorID(c, h.VendorRepo)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"status": "error", "message": err.Error()})
 		return
@@ -135,7 +136,7 @@ func (h *SubscriptionHandler) GetMySubscription(c *gin.Context) {
 	}
 
 	// 2. Fetch vendor + subscription in one joined query
-	vendorWithSub, err := h.VendorRepo.GetVendorWithSubscription(c.Request.Context(), vendorID)
+	vendorWithSub, err := h.VendorRepo.GetVendorSubscription(c.Request.Context(), vendorID)
 	if err != nil {
 		log.Error().Err(err).Str("vendorID", vendorID.String()).Msg("Failed to fetch subscription")
 		c.JSON(http.StatusInternalServerError, gin.H{"status": "error", "message": "Failed to fetch subscription"})

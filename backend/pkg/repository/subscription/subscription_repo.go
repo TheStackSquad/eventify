@@ -11,30 +11,16 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
-// ---------------------------------------------------------------------------
-// Interface
-// ---------------------------------------------------------------------------
-
-// SubscriptionRepository defines the data-access contract for subscriptions.
-// This is a write-only repo. Reads are handled via the joined query in
-// VendorRepository.GetVendorWithSubscription so that vendor + subscription
-// data is fetched in a single pool hit.
+// SubscriptionRepository defines subscription data access
 type SubscriptionRepository interface {
-	// Create inserts a new subscription row and returns the generated ID.
 	Create(ctx context.Context, sub *models.Subscription) (uuid.UUID, error)
-
-	// UpdateStatus sets the status (and UpdatedAt) on a subscription.
 	UpdateStatus(ctx context.Context, id uuid.UUID, status models.SubscriptionStatus) error
-
-	// UpdateAfterPayment persists all fields that change once a payment is confirmed:
-	// status, payment_reference, payment_method, last_payment_date, next_payment_date, expires_at.
 	UpdateAfterPayment(ctx context.Context, id uuid.UUID, params PaymentUpdateParams) error
 }
 
-// PaymentUpdateParams groups every field that flips on successful payment,
-// so we update them atomically in one query.
+// PaymentUpdateParams groups payment update fields
 type PaymentUpdateParams struct {
-	Status          models.SubscriptionStatus
+	Status           models.SubscriptionStatus
 	PaymentReference string
 	PaymentMethod    string
 	LastPaymentDate  time.Time
@@ -42,37 +28,29 @@ type PaymentUpdateParams struct {
 	ExpiresAt        time.Time
 }
 
-// ---------------------------------------------------------------------------
-// Implementation
-// ---------------------------------------------------------------------------
-
 type subscriptionRepository struct {
 	db *sqlx.DB
 }
 
-// NewSubscriptionRepository constructs a concrete SubscriptionRepository.
+// NewSubscriptionRepository creates a subscription repository
 func NewSubscriptionRepository(db *sqlx.DB) SubscriptionRepository {
 	return &subscriptionRepository{db: db}
 }
 
-// ---------------------------------------------------------------------------
-// Create
-// ---------------------------------------------------------------------------
-
 const createSubscriptionQuery = `
-	INSERT INTO subscriptions (
-		id, vendor_id, tier, status, starts_at, expires_at,
-		auto_renew, price, currency,
-		payment_reference, payment_method,
-		last_payment_date, next_payment_date,
-		created_at, updated_at
-	) VALUES (
-		$1, $2, $3, $4, $5, $6,
-		$7, $8, $9,
-		$10, $11,
-		$12, $13,
-		$14, $15
-	)
+INSERT INTO subscriptions (
+	id, vendor_id, tier, status, starts_at, expires_at,
+	auto_renew, price, currency,
+	payment_reference, payment_method,
+	last_payment_date, next_payment_date,
+	created_at, updated_at
+) VALUES (
+	$1, $2, $3, $4, $5, $6,
+	$7, $8, $9,
+	$10, $11,
+	$12, $13,
+	$14, $15
+)
 `
 
 func (r *subscriptionRepository) Create(ctx context.Context, sub *models.Subscription) (uuid.UUID, error) {
@@ -112,14 +90,10 @@ func (r *subscriptionRepository) Create(ctx context.Context, sub *models.Subscri
 	return sub.ID, nil
 }
 
-// ---------------------------------------------------------------------------
-// UpdateStatus
-// ---------------------------------------------------------------------------
-
 const updateStatusQuery = `
-	UPDATE subscriptions
-	SET status = $1, updated_at = $2
-	WHERE id = $3
+UPDATE subscriptions
+SET status = $1, updated_at = $2
+WHERE id = $3
 `
 
 func (r *subscriptionRepository) UpdateStatus(ctx context.Context, id uuid.UUID, status models.SubscriptionStatus) error {
@@ -139,22 +113,17 @@ func (r *subscriptionRepository) UpdateStatus(ctx context.Context, id uuid.UUID,
 	return nil
 }
 
-// ---------------------------------------------------------------------------
-// UpdateAfterPayment — single atomic update for everything that changes
-// on a confirmed payment.
-// ---------------------------------------------------------------------------
-
 const updateAfterPaymentQuery = `
-	UPDATE subscriptions
-	SET
-		status             = $1,
-		payment_reference  = $2,
-		payment_method     = $3,
-		last_payment_date  = $4,
-		next_payment_date  = $5,
-		expires_at         = $6,
-		updated_at         = $7
-	WHERE id = $8
+UPDATE subscriptions
+SET
+	status             = $1,
+	payment_reference  = $2,
+	payment_method     = $3,
+	last_payment_date  = $4,
+	next_payment_date  = $5,
+	expires_at         = $6,
+	updated_at         = $7
+WHERE id = $8
 `
 
 func (r *subscriptionRepository) UpdateAfterPayment(ctx context.Context, id uuid.UUID, params PaymentUpdateParams) error {

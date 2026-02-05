@@ -3,7 +3,7 @@
 "use client";
 
 import React from "react";
-import { DollarSign, Info, Building2, ShieldCheck } from "lucide-react";
+import { Info, Building2, ShieldCheck } from "lucide-react";
 import VendorInputField from "@/components/vendorUI/components/form/vendorInputFields";
 import VNINVerificationField from "@/components/vendorUI/components/form/vNINVerificationField";
 import CACVerificationField from "@/components/vendorUI/components/form/CACVerificationField";
@@ -117,14 +117,14 @@ const VendorFormPricingVerification = ({
       <div className="bg-gradient-to-br from-gray-50 to-white p-6 rounded-2xl border border-gray-200 shadow-sm">
         <div className="flex items-center gap-3 mb-6 pb-4 border-b border-gray-200">
           <div className="p-2 bg-green-100 rounded-lg">
-            <DollarSign className="w-6 h-6 text-green-600" />
+            <span className="text-2xl font-bold text-green-600">₦</span>
           </div>
           <h3 className="text-xl font-bold text-gray-800">Service Pricing</h3>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <VendorInputField
-            icon={DollarSign}
+            icon={() => <span className="text-lg font-bold">₦</span>}
             label="Starting Price (₦)"
             type="number"
             name="minPrice"
@@ -138,7 +138,7 @@ const VendorFormPricingVerification = ({
             helperText="Minimum booking fee"
           />
           <VendorInputField
-            icon={DollarSign}
+            icon={() => <span className="text-lg font-bold">₦</span>}
             label="Maximum Price (₦)"
             type="number"
             name="maxPrice"

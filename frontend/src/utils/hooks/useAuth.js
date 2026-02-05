@@ -58,6 +58,24 @@ export function useAuthReady() {
   return isInitialized && isAuthenticated;
 }
 
+/**
+ * Grants access to manage events. 
+ * True if they own events, are a registered vendor, or an admin.
+ */
+export function useCanAccessEvents() {
+  const user = useCurrentUser();
+  return !!(user?.hasEvents || user?.isVendor || user?.is_admin);
+}
+
+/**
+ * Grants access to business-specific tools.
+ * True only if they completed the vNIN/Business registration.
+ */
+export function useCanAccessVendorTools() {
+  const user = useCurrentUser();
+  return !!(user?.isVendor || user?.is_admin);
+}
+
 // ================================================================
 // MUTATION HOOKS
 // ================================================================

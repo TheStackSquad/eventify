@@ -75,7 +75,7 @@ vendor := models.Vendor{
     OwnerID:     ownerID,
     Name:        input.Name,
     Category:    input.Category,
-    Status:      models.StatusActive,
+   Status:             models.VendorStatusActive,
     IsIdentityVerified: input.IsIdentityVerified,
     State:       input.State,
 

@@ -71,6 +71,7 @@ const navItems = [
   },
   { path: "/vendor", label: "Vendor" },
   { path: "/dashboard", label: "Dashboard" },
+  { path: "/for-you", label: "For-You" },
   { path: "/about-us", label: "About Us" },
 ];
 

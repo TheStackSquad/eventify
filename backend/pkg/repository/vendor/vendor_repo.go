@@ -24,6 +24,9 @@ type VendorRepository interface {
 	IncrementField(ctx context.Context, id uuid.UUID, field string, delta int) error
 	GetByID(ctx context.Context, id uuid.UUID) (models.Vendor, error)
 	FindPublicVendors(ctx context.Context, filters map[string]string) ([]models.Vendor, error)
+	GetVendorSubscription(ctx context.Context, id uuid.UUID) (*models.VendorWithSubscription, error)
+	// Check if the user has a business profile registered
+	IsRegisteredVendor(ctx context.Context, ownerID uuid.UUID) (bool, error)
 }
 
 type PostgresVendorRepository struct {
@@ -185,7 +188,7 @@ func (r *PostgresVendorRepository) GetByID(ctx context.Context, id uuid.UUID) (m
 func (r *PostgresVendorRepository) FindPublicVendors(ctx context.Context, filters map[string]string) ([]models.Vendor, error) {
 	var vendors []models.Vendor
 	whereClauses := []string{"status = $1"}
-	args := []interface{}{models.StatusActive}
+	args := []interface{}{models.VendorStatusActive}
 	argCounter := 2
 
 	for key, value := range filters {
@@ -284,4 +287,11 @@ func (r *PostgresVendorRepository) UpdatePVSScore(ctx context.Context, id uuid.U
 		return errors.New("vendor not found or score already set")
 	}
 	return nil
+}
+
+func (r *PostgresVendorRepository) IsRegisteredVendor(ctx context.Context, ownerID uuid.UUID) (bool, error) {
+    var exists bool
+    query := `SELECT EXISTS(SELECT 1 FROM vendors WHERE owner_id = $1)`
+    err := r.DB.GetContext(ctx, &exists, query, ownerID)
+    return exists, err
 }

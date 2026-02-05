@@ -1,3 +1,4 @@
+//frontend/src/components/vendorUI/handlers/useVendorFornHandler.js
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
@@ -233,88 +234,64 @@ export const useVendorFormHandler = ({ vendorId, userId, onSuccess }) => {
     [userId],
   );
 
-  const handleSubmit = async (e) => {
-    console.log(
-      "🚀 [useVendorFormHandler] Submit triggered at:",
-      new Date().toISOString(),
-    );
-    console.log("📊 [useVendorFormHandler] Submit data snapshot:", {
-      userId,
-      hasUserId: !!userId,
-      formData: {
-        name: formData.name,
-        category: formData.category,
-        phoneNumber: formData.phoneNumber,
-      },
-      imageFile: !!imageFile,
-      isEditMode,
-    });
+const handleSubmit = async (e) => {
+  if (e) e.preventDefault();
 
-    if (e) e.preventDefault();
+  console.log("🚀 [useVendorFormHandler] Submit triggered");
 
-    if (!userId) {
-      console.error(
-        "❌ [useVendorFormHandler] NO USER ID AVAILABLE for submission!",
-      );
-      console.warn("User should be logged in but userId is:", userId);
-      toastAlert.warn("Session loading. Please wait.");
-      return;
+  if (!userId) {
+    toastAlert.warn("Session loading. Please wait.");
+    return;
+  }
+
+  // 1. Run standard validation (passes raw file/state)
+  const errors = vendorRegistrationValidate(
+    { ...formData, imageURL: imageFile || formData.imageURL },
+    isEditMode,
+  );
+
+  // 2. Tamper Check: Ensure local vNIN matches verified snapshot
+  // We clean BOTH before comparing to ignore hyphens during the check
+  const currentCleanVnin = formData.vnin.replace(/[^A-Z0-9]/gi, "");
+  const verifiedCleanVnin = formData.verifiedVnin?.replace(/[^A-Z0-9]/gi, "");
+
+  if (formData.isIdentityVerified) {
+    if (currentCleanVnin !== verifiedCleanVnin) {
+      errors.vnin = "vNIN mismatch. Please re-verify your identity.";
+      console.warn("⚠️ vNIN mismatch detected");
     }
+  } else if (!isEditMode) {
+    errors.vnin = "Identity verification is mandatory.";
+  }
 
-    console.log("✅ [useVendorFormHandler] User ID validated:", userId);
+  setFormErrors(errors);
 
-    // 1. Run standard validation
-    const errors = vendorRegistrationValidate(
-      { ...formData, imageURL: imageFile || formData.imageURL },
-      isEditMode,
-    );
+  if (!hasValidationErrors(errors)) {
+    try {
+      // 3. SANITIZE PAYLOAD: Strip dashes before sending to Backend
+      // This prevents the "Identity verification mismatch" 403 error
+      const sanitizedPayload = {
+        ...formData,
+        ownerId: userId, // Ensure ownerId is explicitly mapped
+        vnin: currentCleanVnin, // Send "ZE123..." instead of "ZE-123..."
+        cacNumber: formData.cacNumber.replace(/[^A-Z0-9]/gi, ""),
+        verifiedVnin: verifiedCleanVnin, // Send clean snapshot
+      };
 
-    console.log("🔍 [useVendorFormHandler] Validation errors:", errors);
+      console.log("📤 Sending sanitized payload:", sanitizedPayload);
 
-    // 2. INDUSTRY STANDARD TAMPER CHECK
-    // Ensure the current input matches the verified snapshot
-    if (formData.isIdentityVerified) {
-      const currentVnin = formData.vnin.replace(/[^A-Z0-9]/gi, "");
-      if (currentVnin !== formData.verifiedVnin) {
-        errors.vnin = "vNIN mismatch. Please re-verify your identity.";
-        console.warn("⚠️ [useVendorFormHandler] vNIN mismatch detected");
-      }
-    } else {
-      // Force identity verification if your business rule requires it
-      errors.vnin = "Identity verification is mandatory.";
+      await submitToBackend(sanitizedPayload, imageFile);
+
+      console.log("🎉 [useVendorFormHandler] Submission successful");
+      toastAlert.success("Vendor registered successfully!");
+    } catch (err) {
+      console.error("❌ Submission error:", err);
+      toastAlert.error(err.message || "Submission failed");
     }
-
-    if (formData.isBusinessVerified) {
-      const currentCac = formData.cacNumber.replace(/[^A-Z0-9]/gi, "");
-      if (currentCac !== formData.verifiedCacNumber) {
-        errors.cacNumber = "CAC mismatch. Please re-verify business.";
-        console.warn("⚠️ [useVendorFormHandler] CAC mismatch detected");
-      }
-    }
-
-    setFormErrors(errors);
-
-    if (!hasValidationErrors(errors)) {
-      console.log(
-        "✅ [useVendorFormHandler] No validation errors, proceeding to submit",
-      );
-      try {
-        // Success: Proceed with the payload
-        await submitToBackend(formData, imageFile);
-        console.log("🎉 [useVendorFormHandler] Submission successful");
-      } catch (err) {
-        console.error("❌ [useVendorFormHandler] Submission error:", err);
-        toastAlert.error(err.message || "Submission failed");
-      }
-    } else {
-      console.log(
-        "❌ [useVendorFormHandler] Validation errors found, blocking submission",
-      );
-      toastAlert.error(
-        "Please correct the validation errors before submitting.",
-      );
-    }
-  };
+  } else {
+    toastAlert.error("Please fix the errors on the form.");
+  }
+};
 
   return {
     formData,

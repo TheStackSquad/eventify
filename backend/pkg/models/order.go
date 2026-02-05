@@ -30,7 +30,7 @@ const (
 	OrderStatusFailed     OrderStatus = "failed"
 	OrderStatusRefunded   OrderStatus = "refunded"
 	OrderStatusFraud      OrderStatus = "fraud"
-	OrderStatusExpired    OrderStatus = "expired"
+	OrderSubStatusExpired    OrderStatus = "expired"
 )
 
 type Order struct {

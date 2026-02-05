@@ -12,7 +12,7 @@ import (
 type TicketStatus string
 
 const (
-	TicketStatusActive   TicketStatus = "active"
+	TicketSubStatusActive   TicketStatus = "active"
 	TicketStatusUsed     TicketStatus = "used"
 	TicketStatusCanceled TicketStatus = "canceled"
 )

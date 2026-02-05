@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/eventify/backend/pkg/models"
@@ -14,91 +15,64 @@ import (
 	"github.com/google/uuid"
 )
 
-// ---------------------------------------------------------------------------
-// Request / Response DTOs
-// ---------------------------------------------------------------------------
-
-// InitiateRequest is what the handler binds from the client body.
+// InitiateRequest DTO for subscription initiation
 type InitiateRequest struct {
 	Tier      models.SubscriptionTier `json:"tier" binding:"required"`
 	AutoRenew bool                    `json:"autoRenew"`
 }
 
-// InitiateResponse is what the handler returns to the client after
-// Paystack initialization succeeds.
+// InitiateResponse DTO for subscription initiation response
 type InitiateResponse struct {
-	SubscriptionID   uuid.UUID `json:"subscriptionId"`
-	AuthorizationURL string    `json:"authorizationUrl"`
+	SubscriptionID   uuid.UUID               `json:"subscriptionId"`
+	AuthorizationURL string                  `json:"authorizationUrl"`
 	Tier             models.SubscriptionTier `json:"tier"`
-	AmountKobo       int64     `json:"amountKobo"`
+	AmountKobo       int64                   `json:"amountKobo"`
 }
 
-// ---------------------------------------------------------------------------
-// Webhook payload types — mirrors what Paystack POSTs to our endpoint.
-// ---------------------------------------------------------------------------
-
-// WebhookPayload is the top-level body Paystack sends.
+// WebhookPayload represents Paystack webhook data
 type WebhookPayload struct {
-	Event string          `json:"event"`  // e.g. "charge.success"
-	Data  WebhookData     `json:"data"`
+	Event string      `json:"event"`
+	Data  WebhookData `json:"data"`
 }
 
-// WebhookData contains the transaction details inside the webhook.
+// WebhookData contains payment details
 type WebhookData struct {
 	Reference string            `json:"reference"`
 	Status    string            `json:"status"`
 	Amount    int64             `json:"amount"`
-	Metadata  map[string]string `json:"metadata"` // subscription_id, vendor_id
+	Metadata  map[string]string `json:"metadata"`
 }
 
-// ---------------------------------------------------------------------------
-// Service interface
-// ---------------------------------------------------------------------------
-
-// SubscriptionService defines the contract for subscription operations.
+// SubscriptionService defines subscription business logic
 type SubscriptionService interface {
-	// InitiateSubscription validates the request, creates a pending subscription,
-	// and returns the Paystack authorization URL for the client to redirect to.
 	InitiateSubscription(ctx context.Context, vendorID uuid.UUID, req *InitiateRequest) (*InitiateResponse, error)
-
-	// HandleWebhook processes a Paystack webhook. It verifies the signature,
-	// checks idempotency, confirms the transaction, and activates the subscription.
-	// The raw body bytes are passed in so we can verify the signature before parsing.
 	HandleWebhook(ctx context.Context, body []byte, signature string) error
 }
 
-// ---------------------------------------------------------------------------
-// Implementation
-// ---------------------------------------------------------------------------
-
 type subscriptionServiceImpl struct {
-	VendorRepo     repovendor.VendorRepository
-	SubscriptionRepo reposub.SubscriptionRepository
-	PaystackClient paystack.Client
-	PaystackSecret string // used for webhook signature verification
+	vendorRepo       repovendor.VendorRepository
+	subscriptionRepo reposub.SubscriptionRepository
+	paystack         paystack.Client
+	webhookSecret    string
 }
 
-// NewSubscriptionService constructs the subscription service.
+// NewSubscriptionService creates subscription service instance
 func NewSubscriptionService(
-	vendorRepo repovendor.VendorRepository,
-	subscriptionRepo reposub.SubscriptionRepository,
-	paystackClient paystack.Client,
-	paystackSecret string,
+	vr repovendor.VendorRepository,
+	sr reposub.SubscriptionRepository,
+	pc paystack.Client,
+	secret string,
 ) SubscriptionService {
 	return &subscriptionServiceImpl{
-		VendorRepo:       vendorRepo,
-		SubscriptionRepo: subscriptionRepo,
-		PaystackClient:   paystackClient,
-		PaystackSecret:   paystackSecret,
+		vendorRepo:       vr,
+		subscriptionRepo: sr,
+		paystack:         pc,
+		webhookSecret:    secret,
 	}
 }
 
-// ---------------------------------------------------------------------------
-// InitiateSubscription
-// ---------------------------------------------------------------------------
-
+// InitiateSubscription handles pre-payment logic and Paystack integration
 func (s *subscriptionServiceImpl) InitiateSubscription(ctx context.Context, vendorID uuid.UUID, req *InitiateRequest) (*InitiateResponse, error) {
-	// 1. Validate tier — must not be Free, must exist in pricing table
 	if req.Tier == models.TierFree {
 		return nil, fmt.Errorf("cannot subscribe to the free tier")
 	}
@@ -107,66 +81,56 @@ func (s *subscriptionServiceImpl) InitiateSubscription(ctx context.Context, vend
 		return nil, fmt.Errorf("invalid subscription tier: %s", req.Tier)
 	}
 
-	// 2. Fetch vendor — we need the email for Paystack and to confirm the vendor exists
-	vendor, err := s.VendorRepo.GetByID(ctx, vendorID)
-	if err != nil {
-		return nil, fmt.Errorf("vendor not found: %w", err)
-	}
-
-	// 3. Check for an existing active subscription — reject if already subscribed
-	// at the same or higher tier
-	vendorWithSub, err := s.VendorRepo.GetVendorWithSubscription(ctx, vendorID)
+	vendorWithSub, err := s.vendorRepo.GetVendorSubscription(ctx, vendorID)
 	if err == nil && vendorWithSub.Subscription != nil {
-		existing := vendorWithSub.Subscription
-		if existing.Status == models.SubscriptionActive && existing.Tier.Rank() >= req.Tier.Rank() {
-			return nil, fmt.Errorf("vendor already has an active %s subscription", existing.Tier)
+		sub := vendorWithSub.Subscription
+		if sub.Status == models.SubStatusActive && sub.Tier.Rank() >= req.Tier.Rank() {
+			return nil, fmt.Errorf("vendor already has an active %s subscription", sub.Tier)
+		}
+		if sub.Status == models.SubStatusPending && time.Since(sub.CreatedAt) < 10*time.Minute {
+			return nil, fmt.Errorf("a payment is already pending; please try again in 10 minutes")
 		}
 	}
 
-	// 4. Resolve email — use the vendor's email field if set, otherwise fall back
-	// to the owner's email. Paystack requires an email to initialize.
+	vendor, err := s.vendorRepo.GetByID(ctx, vendorID)
+	if err != nil {
+		return nil, fmt.Errorf("vendor record not found: %w", err)
+	}
+
 	email := ""
-	if vendor.Email.Valid && vendor.Email.String != "" {
+	if vendor.Email.Valid {
 		email = vendor.Email.String
 	}
 	if email == "" {
-		return nil, fmt.Errorf("vendor has no email on file — cannot initialize payment")
+		return nil, fmt.Errorf("vendor lacks a valid email for payment processing")
 	}
 
-	// 5. Create the subscription row with status = pending.
-	// This happens before we call Paystack so that we have a subscription_id
-	// to embed in the metadata. If Paystack init fails, the row stays pending
-	// and can be cleaned up or retried.
-	now := time.Now().UTC()
 	sub := &models.Subscription{
 		ID:        uuid.New(),
 		VendorID:  vendorID,
 		Tier:      req.Tier,
-		Status:    models.SubscriptionPending,
-		StartsAt:  now,
+		Status:    models.SubStatusPending,
+		StartsAt:  time.Now().UTC(),
 		AutoRenew: req.AutoRenew,
 		Price:     pricing.MaxKobo,
 		Currency:  "NGN",
 	}
 
-	_, err = s.SubscriptionRepo.Create(ctx, sub)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create subscription: %w", err)
+	if _, err = s.subscriptionRepo.Create(ctx, sub); err != nil {
+		return nil, fmt.Errorf("failed to persist pending subscription: %w", err)
 	}
 
-	// 6. Initialize Paystack transaction.
-	// Reference is the subscription ID — unique, safe, ties back to our record.
-	// Metadata carries subscription_id and vendor_id so the webhook can look up
-	// the right rows without searching by reference.
-	authURL, err := s.PaystackClient.InitializeTransaction(ctx, email, pricing.MaxKobo, sub.ID.String(), map[string]string{
+	frontendURL := os.Getenv("FRONTEND_URL")
+	callback := fmt.Sprintf("%s/subscription/callback", frontendURL)
+	metadata := map[string]string{
 		"subscription_id": sub.ID.String(),
 		"vendor_id":       vendorID.String(),
-	})
+	}
+
+	authURL, err := s.paystack.InitializeTransaction(ctx, email, pricing.MaxKobo, sub.ID.String(), metadata, callback)
 	if err != nil {
-		// Paystack init failed — mark the subscription as canceled so it doesn't
-		// linger as pending indefinitely.
-		_ = s.SubscriptionRepo.UpdateStatus(ctx, sub.ID, models.SubscriptionCanceled)
-		return nil, fmt.Errorf("paystack initialization failed: %w", err)
+		_ = s.subscriptionRepo.UpdateStatus(ctx, sub.ID, models.SubStatusCancelled)
+		return nil, fmt.Errorf("gateway initialization failed: %w", err)
 	}
 
 	return &InitiateResponse{
@@ -177,95 +141,70 @@ func (s *subscriptionServiceImpl) InitiateSubscription(ctx context.Context, vend
 	}, nil
 }
 
-// ---------------------------------------------------------------------------
-// HandleWebhook
-// ---------------------------------------------------------------------------
-
+// HandleWebhook processes Paystack payment confirmations
 func (s *subscriptionServiceImpl) HandleWebhook(ctx context.Context, body []byte, signature string) error {
-	// 1. Verify the HMAC signature — reject anything that doesn't match.
-	// This runs before any parsing so we never process a forged payload.
-	if !paystack.VerifyWebhookSignature(body, signature, s.PaystackSecret) {
-		return fmt.Errorf("invalid webhook signature")
+	if !paystack.VerifyWebhookSignature(body, signature, s.webhookSecret) {
+		return fmt.Errorf("unauthorized: invalid webhook signature")
 	}
 
-	// 2. Parse the webhook body
-	var webhook WebhookPayload
-	if err := json.Unmarshal(body, &webhook); err != nil {
-		return fmt.Errorf("failed to parse webhook payload: %w", err)
+	var payload WebhookPayload
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return fmt.Errorf("failed to decode payload: %w", err)
 	}
 
-	// 3. Only process charge.success — return nil (200) for anything else.
-	// Paystack sends other events (charge.failed, transfer.success, etc.)
-	// and we don't want to error on them.
-	if webhook.Event != "charge.success" {
+	if payload.Event != "charge.success" {
 		return nil
 	}
 
-	// 4. Extract subscription_id and vendor_id from metadata
-	subscriptionIDStr, ok := webhook.Data.Metadata["subscription_id"]
-	if !ok || subscriptionIDStr == "" {
-		return fmt.Errorf("webhook metadata missing subscription_id")
-	}
-	subscriptionID, err := uuid.Parse(subscriptionIDStr)
+	subID, err := uuid.Parse(payload.Data.Metadata["subscription_id"])
 	if err != nil {
-		return fmt.Errorf("invalid subscription_id in webhook metadata: %w", err)
+		return fmt.Errorf("missing subscription_id in metadata")
+	}
+	vendorID, err := uuid.Parse(payload.Data.Metadata["vendor_id"])
+	if err != nil {
+		return fmt.Errorf("missing vendor_id in metadata")
 	}
 
-	vendorIDStr, ok := webhook.Data.Metadata["vendor_id"]
-	if !ok || vendorIDStr == "" {
-		return fmt.Errorf("webhook metadata missing vendor_id")
-	}
-	vendorID, err := uuid.Parse(vendorIDStr)
+	vendorWithSub, err := s.vendorRepo.GetVendorSubscription(ctx, vendorID)
 	if err != nil {
-		return fmt.Errorf("invalid vendor_id in webhook metadata: %w", err)
+		return fmt.Errorf("failed to verify vendor state: %w", err)
 	}
 
-	// 5. Idempotency check — fetch the vendor with subscription via the joined query.
-	// If the subscription's PaymentReference already matches this webhook's reference,
-	// this is a duplicate webhook call. Return nil (200) silently — do not process again.
-	vendorWithSub, err := s.VendorRepo.GetVendorWithSubscription(ctx, vendorID)
-	if err != nil {
-		return fmt.Errorf("failed to fetch vendor for webhook processing: %w", err)
-	}
-	if vendorWithSub.Subscription != nil &&
-		vendorWithSub.Subscription.ID == subscriptionID &&
-		vendorWithSub.Subscription.PaymentReference.Valid &&
-		vendorWithSub.Subscription.PaymentReference.String == webhook.Data.Reference {
-		// Already processed — duplicate webhook. Silent 200.
-		return nil
+	if vendorWithSub.Subscription != nil && 
+	   vendorWithSub.Subscription.PaymentReference.String == payload.Data.Reference {
+		return nil 
 	}
 
-	// 6. Double-confirm with Paystack — verify the transaction independently
-	// so we're not trusting the webhook payload alone.
-	_, err = s.PaystackClient.VerifyTransaction(ctx, webhook.Data.Reference)
-	if err != nil {
-		return fmt.Errorf("paystack transaction verification failed: %w", err)
+	if vendorWithSub.Subscription == nil || vendorWithSub.Subscription.ID != subID {
+		return fmt.Errorf("security alert: subscription mismatch for vendor %s", vendorID)
 	}
 
-	// 7. Activate the subscription — single atomic update for all payment fields.
+	if payload.Data.Amount != vendorWithSub.Subscription.Price {
+		return fmt.Errorf("price mismatch: expected %d, got %d", vendorWithSub.Subscription.Price, payload.Data.Amount)
+	}
+
+	if _, err = s.paystack.VerifyTransaction(ctx, payload.Data.Reference); err != nil {
+		return fmt.Errorf("gateway transaction verification failed: %w", err)
+	}
+
 	now := time.Now().UTC()
-	err = s.SubscriptionRepo.UpdateAfterPayment(ctx, subscriptionID, reposub.PaymentUpdateParams{
-		Status:           models.SubscriptionActive,
-		PaymentReference: webhook.Data.Reference,
-		PaymentMethod:    "card", // Paystack card payment
-		LastPaymentDate:  now,
-		NextPaymentDate:  now.AddDate(0, 1, 0), // 1 month billing cycle
-		ExpiresAt:        now.AddDate(0, 1, 0),
-	})
-	if err != nil {
-		return fmt.Errorf("failed to update subscription after payment: %w", err)
+	expiry := now.AddDate(0, 1, 0)
+	params := reposub.PaymentUpdateParams{
+		Status:            models.SubStatusActive,
+		PaymentReference:  payload.Data.Reference,
+		PaymentMethod:     "card",
+		LastPaymentDate:   now,
+		NextPaymentDate:   expiry,
+		ExpiresAt:         expiry,
 	}
 
-	// 8. Mirror the tier onto the vendor table — this lets ListVendors filter
-	// by tier without a JOIN, and keeps the vendor row as the single source
-	// of truth for display purposes.
-	err = s.VendorRepo.UpdateFields(ctx, vendorID, map[string]interface{}{
-		"subscription_tier": string(vendorWithSub.Subscription.Tier),
-	})
-	if err != nil {
-		// Non-fatal — the subscription is already active. The mirror is an
-		// optimisation, not a requirement. Log and continue.
-		fmt.Printf("Warning: failed to mirror subscription tier to vendor: %v\n", err)
+	if err = s.subscriptionRepo.UpdateAfterPayment(ctx, subID, params); err != nil {
+		return fmt.Errorf("critical: failed to activate subscription record: %w", err)
+	}
+
+	updateMap := map[string]interface{}{"subscription_tier": string(vendorWithSub.Subscription.Tier)}
+	if err = s.vendorRepo.UpdateFields(ctx, vendorID, updateMap); err != nil {
+		fmt.Printf("[Warning] Tier mirror failed for vendor %s: %v\n", vendorID, err)
 	}
 
 	return nil

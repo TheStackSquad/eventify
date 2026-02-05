@@ -16,6 +16,8 @@ import (
 	"github.com/eventify/backend/pkg/routes"
 	"github.com/eventify/backend/pkg/utils"
 
+
+
 	// Repositories (aliased)
 	repoauth "github.com/eventify/backend/pkg/repository/auth"
 	repoevent "github.com/eventify/backend/pkg/repository/event"
@@ -25,6 +27,7 @@ import (
 	repoorder "github.com/eventify/backend/pkg/repository/order"
 	reporeview "github.com/eventify/backend/pkg/repository/review"
 	repovendor "github.com/eventify/backend/pkg/repository/vendor"
+	reposubscription "github.com/eventify/backend/pkg/repository/subscription"
 
 	// Services (aliased)
 	serviceanalytics "github.com/eventify/backend/pkg/services/analytics"
@@ -39,6 +42,7 @@ import (
 	servicereview "github.com/eventify/backend/pkg/services/review"
 	servicevendor "github.com/eventify/backend/pkg/services/vendor"
 	servicepaystack  "github.com/eventify/backend/pkg/services/paystack"
+	servicesubscription "github.com/eventify/backend/pkg/services/subscription"
 
 	// Handlers (aliased)
 	handleranalytics "github.com/eventify/backend/pkg/handlers/analytics"
@@ -49,6 +53,7 @@ import (
 	handlerorder "github.com/eventify/backend/pkg/handlers/order"
 	handlerreview "github.com/eventify/backend/pkg/handlers/review"
 	handlervendor "github.com/eventify/backend/pkg/handlers/vendor"
+	handlersubscription "github.com/eventify/backend/pkg/handlers/subscription"
 
 	"github.com/gin-gonic/gin"
 	"github.com/rs/zerolog/log"
@@ -153,13 +158,19 @@ func main() {
 	vendorCoreMetricsRepo := repovendor.NewVendorCoreMetricsRepository(dbClient)
 	vendorMetricsRepo := repovendor.NewVendorMetricsRepository(dbClient)
 	vendorDataRepo := repovendor.NewVendorDataRepository(dbClient)
+	subscriptionRepo := reposubscription.NewSubscriptionRepository(dbClient)
 
 	utils.LogSuccess(serviceName, "repositories", "All repositories initialized")
 
-	// ============================================================================
-	// STEP 6: SERVICE INITIALIZATION
-	// ============================================================================
-	authService := serviceauth.NewAuthService(authRepo, refreshTokenRepo, jwtService) 
+// STEP 6: SERVICE INITIALIZATION
+
+authService := serviceauth.NewAuthService(
+    authRepo, 
+    refreshTokenRepo, 
+    vendorRepo,
+    eventRepo,
+    jwtService,
+)
 	eventService := serviceevent.NewEventService(dbClient, eventRepo)
 	likeService := servicelike.NewLikeService(likeRepo)
 	vendorService := servicevendor.NewVendorService(vendorRepo)
@@ -185,6 +196,12 @@ paystackClient := servicepaystack.NewClient(
 		pricingService,
 		paystackClient,
 	)
+		subscriptionService := servicesubscription.NewSubscriptionService(
+		vendorRepo,
+		subscriptionRepo,
+		paystackClient,
+		os.Getenv("PAYSTACK_SECRET_KEY"),
+	)
 
 	utils.LogSuccess(serviceName, "services", "All services initialized")
 
@@ -200,6 +217,7 @@ paystackClient := servicepaystack.NewClient(
 	orderHandler := handlerorder.NewOrderHandler(orderService)
 	analyticsHandler := handleranalytics.NewAnalyticsHandler(analyticsService)
 	vendorAnalyticsHandler := handlervendor.NewVendorAnalyticsHandler(vendorAnalyticsService)
+	subscriptionHandler := handlersubscription.NewSubscriptionHandler(subscriptionService, vendorRepo)
 
 	utils.LogSuccess(serviceName, "handlers", "All handlers initialized")
 
@@ -209,22 +227,22 @@ paystackClient := servicepaystack.NewClient(
 startTokenCleanup(refreshTokenRepo, authRepo) 
 go orderService.StartStockReleaseWorker(context.Background(), 1*time.Minute, 15*time.Minute)
 
-	// ============================================================================
 	// STEP 9: ROUTER CONFIGURATION
-	// ============================================================================
+
 	router := routes.ConfigureRouter(
-		authHandler,
-		eventHandler,
-		vendorHandler,
-		reviewHandler,
-		inquiryHandler,
-		feedbackHandler,
-		orderHandler,
-		authRepo,
-		analyticsHandler,
-		vendorAnalyticsHandler,
-		jwtService,
-		authService,
+		authHandler,            // 1
+		eventHandler,           // 2
+		vendorHandler,          // 3
+		reviewHandler,          // 4
+		inquiryHandler,         // 5
+		feedbackHandler,        // 6
+		orderHandler,           // 7
+		subscriptionHandler,    // 8 (Moved up from the bottom)
+		authRepo,               // 9 
+		analyticsHandler,       // 10
+		vendorAnalyticsHandler, // 11
+		jwtService,             // 12
+		authService,            // 13
 	)
 
 	utils.LogSuccess(serviceName, "router", "Router configured with all endpoints")

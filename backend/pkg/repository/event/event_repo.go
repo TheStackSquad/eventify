@@ -80,6 +80,8 @@ type EventRepository interface {
 
 	// Analytics
 	GetEventWithStats(ctx context.Context, eventID uuid.UUID) (*EventWithStats, error)
+	// Check if the user is an organizer of any event (even if not a "Vendor")
+	HasEventsByOrganizer(ctx context.Context, organizerID uuid.UUID) (bool, error)
 }
 
 // IMPLEMENTATION
@@ -116,4 +118,16 @@ func (r *postgresEventRepository) MarkTicketAsUsed(ctx context.Context, code str
         return fmt.Errorf("ticket cannot be used: either already scanned or not active")
     }
     return nil
+}
+
+func (r *postgresEventRepository) HasEventsByOrganizer(ctx context.Context, organizerID uuid.UUID) (bool, error) {
+    var exists bool
+    query := `SELECT EXISTS(SELECT 1 FROM events WHERE organizer_id = $1 AND is_deleted = false)`
+    
+    err := r.db.GetContext(ctx, &exists, query, organizerID)
+    // It's safer to return false if there's an error
+    if err != nil {
+        return false, err
+    }
+    return exists, nil
 }

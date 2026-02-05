@@ -19,7 +19,6 @@ export const API_ENDPOINTS = {
   EVENTS: {
     BASE: "/events",
     GET_BY_ID: "/events/:eventId",
-
     CREATE: "/api/events/create",
     UPDATE: "/api/events/:eventId",
     DELETE: "/api/events/:eventId",
@@ -35,8 +34,6 @@ export const API_ENDPOINTS = {
     GET_PROFILE: "/api/v1/vendors/:id",
     REGISTER: "/api/v1/vendors/register",
     UPDATE: "/api/v1/vendors/:id",
-
-    // Analytics endpoints
     ANALYTICS: {
       OVERVIEW: "/api/v1/vendors/:id/analytics/overview",
       HEALTH: "/api/v1/vendors/analytics/health",
@@ -93,11 +90,9 @@ export const API_ENDPOINTS = {
   },
 
   ORDERS: {
-    // New section for order-related operations
-    INITIALIZE: "/api/orders/initialize", // Endpoint for creating the PENDING order
+    INITIALIZE: "/api/orders/initialize",
   },
 
-  // NEW: Payment endpoints added for axios config compatibility
   PAYMENTS: {
     VERIFY: "/api/payments/verify",
     WEBHOOK: "/webhooks/paystack",
@@ -108,16 +103,10 @@ export const API_ENDPOINTS = {
 export const ROUTES = {
   LOGIN: "/account/auth/login",
   MY_EVENTS: "/events/my-events",
-  CREATE_EVENT: "/events/create-events", //possible endpoint mismatch here
-  // 🚨 Note: You have a duplicate 'LOGIN' key here. Using the first one.
-  // LOGIN: "/login",
+  CREATE_EVENT: "/events/create-events",
   DASHBOARD: "/dashboard",
-
-  // Vendor Routes (New)
   VENDOR_LISTING: "/vendors",
-  VENDOR_PROFILE: "/vendors/:slug", // We'll use a slug for the UI route
-
-  // Admin Routes (New)
+  VENDOR_PROFILE: "/vendors/:slug",
   ADMIN_VENDOR_MANAGEMENT: "/admin/vendors",
 };
 
@@ -127,6 +116,7 @@ export const REDIRECT_PATHS = {
   DASHBOARD: ROUTES.DASHBOARD,
 };
 
+// ========== STATUS ==========
 export const STATUS = {
   IDLE: "idle",
   LOADING: "loading",
@@ -134,65 +124,50 @@ export const STATUS = {
   FAILED: "failed",
 };
 
+// ========== VENDOR DEFAULTS ==========
 export const VENDOR_DEFAULTS = {
   INITIAL_STATE: {
-    // Public listing state
-    vendors: [], // List of vendors for the search page
-    selectedVendor: null, // Single vendor for the profile page
-    // 💡 FIX: STATUS is now defined above and accessible
+    vendors: [],
+    selectedVendor: null,
     status: STATUS.IDLE,
     error: null,
-
-    // Search/Filter state
     filters: {
       state: "",
       category: "",
       minPrice: 0,
-      // ... other filter parameters
     },
   },
 };
 
+// ========== EVENT DEFAULTS ==========
 export const EVENT_DEFAULTS = {
   INITIAL_STATE: {
     userEvents: [],
     selectedEvent: null,
     currentEvent: null,
-
-    // 🆕 NEW: Per-event analytics storage
-    // Structure: { [eventId]: { data, status, error, fetchedAt } }
     eventAnalytics: {},
-
-    // 🆕 NEW: Aggregated analytics for dashboard
     aggregatedAnalytics: {
-      // Calculated from ticket data (immediate)
       totalCapacity: 0,
       potentialRevenue: 0,
       averageTicketPrice: 0,
-
-      // Real analytics from API (when available)
       totalRevenue: 0,
       ticketsSold: 0,
       ticketsRemaining: 0,
       sellThroughRate: 0,
     },
-
-    // 🔄 MODIFIED: Keep for backward compatibility during migration
-    analytics: null, // Deprecated, use eventAnalytics instead
-
+    analytics: null,
     status: STATUS.IDLE,
-    analyticsStatus: STATUS.IDLE, // Deprecated
+    analyticsStatus: STATUS.IDLE,
     allEventsStatus: STATUS.IDLE,
     allEvents: [],
     error: null,
   },
 };
 
-// Analytics cache duration (5 minutes)
+// ========== ANALYTICS CONSTANTS ==========
 export const ANALYTICS_CACHE_DURATION_MS = 5 * 60 * 1000;
 
 export const ANALYTICS_CONSTANTS = {
-  // Insight types (for styling)
   INSIGHT_TYPES: {
     CRITICAL: "critical",
     WARNING: "warning",
@@ -200,7 +175,6 @@ export const ANALYTICS_CONSTANTS = {
     SUCCESS: "success",
   },
 
-  // Insight type colors (Tailwind classes)
   INSIGHT_COLORS: {
     critical: {
       bg: "bg-red-50",
@@ -228,14 +202,12 @@ export const ANALYTICS_CONSTANTS = {
     },
   },
 
-  // Account status
   ACCOUNT_STATUS: {
     NEW: "new",
     ACTIVE: "active",
     INACTIVE: "inactive",
   },
 
-  // Trend indicators
   TRENDS: {
     INCREASING: "increasing",
     STABLE: "stable",
@@ -244,20 +216,101 @@ export const ANALYTICS_CONSTANTS = {
     DECLINING: "declining",
   },
 
-  // Refresh intervals (milliseconds)
   REFRESH_INTERVALS: {
-    ANALYTICS_OVERVIEW: 60000, // 1 minute
-    REAL_TIME_METRICS: 30000, // 30 seconds
+    ANALYTICS_OVERVIEW: 60000,
+    REAL_TIME_METRICS: 30000,
   },
 
-  // Cache time (milliseconds)
   CACHE_TIME: {
-    ANALYTICS: 300000, // 5 minutes
-    STATIC_DATA: 600000, // 10 minutes
+    ANALYTICS: 300000,
+    STATIC_DATA: 600000,
   },
 };
 
+// ========== SUBSCRIPTION TIERS ==========
+export const SUBSCRIPTION_TIERS = {
+  FREE: {
+    id: "free",
+    name: "Free",
+    price: 0,
+    features: ["Basic Profile", "Standard Listing", "Community Support"],
+    color: "gray",
+  },
+  BASIC: {
+    id: "basic",
+    name: "Basic",
+    price: 3500,
+    features: ["Verified Badge", "Enhanced Analytics", "Priority Support"],
+    color: "blue",
+  },
+  PREMIUM: {
+    id: "premium",
+    name: "Premium",
+    price: 10000,
+    recommended: true,
+    features: ["Featured Placement", "Custom Branding", "Advanced Analytics"],
+    color: "indigo",
+  },
+  FEATURED: {
+    id: "featured",
+    name: "Featured",
+    price: 20000,
+    features: [
+      "Top of Search Results",
+      "Social Media Shoutout",
+      "Dedicated Manager",
+    ],
+    color: "purple",
+  },
+};
 
+// ========== COMPARISON FEATURES ==========
+export const COMPARISON_FEATURES = [
+  {
+    label: "Profile Badge",
+    free: true,
+    basic: true,
+    premium: true,
+    featured: true,
+  },
+  {
+    label: "Basic Analytics",
+    free: true,
+    basic: true,
+    premium: true,
+    featured: true,
+  },
+  {
+    label: "Advanced Analytics",
+    free: false,
+    basic: true,
+    premium: true,
+    featured: true,
+  },
+  {
+    label: "Search Priority",
+    free: "Standard",
+    basic: "Medium",
+    premium: "High",
+    featured: "Ultra",
+  },
+  {
+    label: "Direct Messaging",
+    free: false,
+    basic: true,
+    premium: true,
+    featured: true,
+  },
+  {
+    label: "Homepage Feature",
+    free: false,
+    basic: false,
+    premium: true,
+    featured: true,
+  },
+];
+
+// ========== UTILITY FUNCTION ==========
 export const replaceUrlParams = (url, params) => {
   if (!url) return "";
   if (!params || typeof params !== "object") return url;
@@ -266,19 +319,25 @@ export const replaceUrlParams = (url, params) => {
 
   Object.keys(params).forEach((key) => {
     const value = params[key];
-    // Replace :key with value
     replacedUrl = replacedUrl.replace(`:${key}`, value);
   });
 
   return replacedUrl;
 };
-// Named export for the entire constants object
+
+// ========== DEFAULT EXPORT ==========
 const globalConstants = {
   API_ENDPOINTS,
   STATUS,
   ROUTES,
+  REDIRECT_PATHS,
   EVENT_DEFAULTS,
-  VENDOR_DEFAULTS, // 💡 NEW: Ensure VENDOR_DEFAULTS is included here
+  VENDOR_DEFAULTS,
+  ANALYTICS_CACHE_DURATION_MS,
+  ANALYTICS_CONSTANTS,
+  SUBSCRIPTION_TIERS,
+  COMPARISON_FEATURES,
+  replaceUrlParams,
 };
 
 export default globalConstants;

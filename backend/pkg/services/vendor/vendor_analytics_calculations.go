@@ -1,10 +1,9 @@
-// backend/pkg/services/vendor/vendor_analytics_calculations.go
-
+//backend/pkg/services/vendor/vendor_analytics_calculations.go
 package vendor
 
 import (
-	"fmt"
-//	"math"
+	//"fmt"
+	"math"
 	"time"
 
 	"github.com/eventify/backend/pkg/models"
@@ -15,18 +14,14 @@ func (s *vendorAnalyticsServiceImpl) calculateOverview(
 	vendorInfo *models.VendorBasicInfo,
 	trustScore *models.VendorTrustScore,
 ) models.VendorOverview {
-	// Logic simplified: Verification is now binary based on vNIN (Identity)
-	isVerified := vendorInfo.IsIdentityVerified
-
 	return models.VendorOverview{
 		CurrentPVSScore:   int(trustScore.TotalTrustWeight),
 		TotalInquiries:    vendorInfo.InquiryCount,
-		TotalResponded:    vendorInfo.RespondedCount,
-		ResponseRate:      s.calculateResponseRate(vendorInfo.InquiryCount, vendorInfo.RespondedCount),
+		TotalViews:        vendorInfo.ViewsTotal,
 		ProfileCompletion: roundToTwoDecimals(float64(vendorInfo.ProfileCompletion)),
-		AverageRating:     0.0, // Populated later by calculateReviews if needed
+		AverageRating:     0.0, // Usually updated by reviews calculation
 		TotalReviews:      int(trustScore.ReviewCount),
-		IsVerified:        isVerified,
+		IsVerified:        vendorInfo.IsIdentityVerified,
 	}
 }
 
@@ -39,7 +34,7 @@ func (s *vendorAnalyticsServiceImpl) calculateInquiries(
 	trend := "stable"
 	if inquiries30d > 0 {
 		weeklyAvg := float64(inquiries7d)
-		monthlyAvg := float64(inquiries30d) / 4.3
+		monthlyAvg := float64(inquiries30d) / 4.3 // Avg weeks in a month
 		if weeklyAvg > monthlyAvg*1.2 {
 			trend = "increasing"
 		} else if weeklyAvg < monthlyAvg*0.8 {
@@ -142,66 +137,9 @@ func (s *vendorAnalyticsServiceImpl) calculatePerformance(
 	}
 }
 
-// generateActionableInsights creates insights relevant to the vNIN model
-func (s *vendorAnalyticsServiceImpl) generateActionableInsights(
-	vendorInfo *models.VendorBasicInfo,
-	reviewMetrics *models.ReviewMetricsRaw,
-	overview models.VendorOverview,
-) []models.ActionableInsight {
-	var insights []models.ActionableInsight
+// --- Internal Helper Utilities ---
 
-	// 1. Identity Verification (vNIN) Insight
-	if !vendorInfo.IsIdentityVerified {
-		insights = append(insights, models.ActionableInsight{
-			Type:        "critical",
-			Title:       "Verify your Identity",
-			Description: "Your vNIN verification is missing. Verified vendors build more trust.",
-			Action:      "Complete vNIN Check",
-			Priority:    1,
-		})
-	}
 
-	// 2. Profile completion insights
-	if vendorInfo.ProfileCompletion < 80 {
-		insights = append(insights, models.ActionableInsight{
-			Type:        "tip",
-			Title:       fmt.Sprintf("Profile is %0.0f%% complete", vendorInfo.ProfileCompletion),
-			Description: "Profiles with photos and descriptions receive more inquiries.",
-			Action:      "Update Profile",
-			Priority:    2,
-		})
-	}
-
-	// 3. Positive rating insights
-	if reviewMetrics.AverageRating >= 4.5 && reviewMetrics.TotalReviews >= 5 {
-		insights = append(insights, models.ActionableInsight{
-			Type:        "success",
-			Title:       fmt.Sprintf("Top Rated: %0.1f Stars", reviewMetrics.AverageRating),
-			Description: "Excellent service! Your high rating is boosting visibility.",
-			Action:      "View Reviews",
-			Priority:    3,
-		})
-	}
-
-	// 4. Response Rate Insight
-	if overview.ResponseRate < 70 && overview.TotalInquiries > 5 {
-		insights = append(insights, models.ActionableInsight{
-			Type:        "warning",
-			Title:       "Improve Response Rate",
-			Description: "Fast responses lead to more bookings.",
-			Action:      "Review Inquiries",
-			Priority:    1,
-		})
-	}
-
-	return insights
+func roundToTwoDecimals(value float64) float64 {
+	return math.Round(value*100) / 100
 }
-
-// Helper: Calculate response rate percentage
-func (s *vendorAnalyticsServiceImpl) calculateResponseRate(total, responded int) float64 {
-	if total == 0 {
-		return 0.0
-	}
-	return roundToTwoDecimals((float64(responded) / float64(total)) * 100)
-}
-

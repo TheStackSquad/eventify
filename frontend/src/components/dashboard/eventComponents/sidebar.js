@@ -1,7 +1,10 @@
+// frontend/src/components/dashboard/sidebar.
+
 // frontend/src/components/dashboard/sidebar.js
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import {
   ChevronLeft,
   ChevronRight,
@@ -12,8 +15,10 @@ import {
   LogOut,
   UserPlus,
   UserX,
+  CreditCard,
 } from "lucide-react";
 import DeleteAccountModal from "@/components/modal/deleteAccountModal";
+import { useAuth } from "@/utils/hooks/useAuth";
 
 export default function Sidebar({
   activeView,
@@ -21,34 +26,57 @@ export default function Sidebar({
   onLogout,
   userName,
 }) {
+  const router = useRouter();
+  const { user } = useAuth();
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [expandedMenus, setExpandedMenus] = useState({});
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isModalRendered, setIsModalRendered] = useState(false);
 
-  const menuItems = [
-    { id: "events", label: "My Events", icon: Calendar },
-    {
+  // ================================================================
+  // DYNAMIC MENU FILTERING
+  // ================================================================
+  const menuItems = useMemo(() => {
+    const items = [];
+
+    // Access for Creators (Constellar), existing Vendors, or Admins
+    if (user?.hasEvents || user?.isVendor || user?.is_admin) {
+      items.push({ id: "events", label: "My Events", icon: Calendar });
+    }
+
+    // "Loosened" Logic: Always show the Vendor group so users can register
+    // We only gate the specific sub-items that require "active" vendor status
+    const vendorSubItems = [
+      { id: "vendor-register", label: "Register as Vendor", icon: UserPlus },
+    ];
+
+    // Only add Analytics to the sub-menu if they are already a vendor or admin
+    if (user?.isVendor || user?.is_admin) {
+      vendorSubItems.unshift({
+        id: "vendor",
+        label: "Vendor Analytics",
+        icon: Package,
+      });
+    }
+
+    items.push({
       id: "vendor-group",
-      label: "Vendor",
-      subItems: [
-        { id: "vendor", label: "Vendor Analytics", icon: Package },
-        { id: "vendor-register", label: "Register", icon: UserPlus },
-      ],
-    },
-  ];
+      label: "Vendor Portal",
+      subItems: vendorSubItems,
+    });
+
+    return items;
+  }, [user]);
 
   // Manage modal portal rendering
   useEffect(() => {
     if (isDeleteModalOpen) {
-      // Prevent body scroll when modal is open
       document.body.style.overflow = "hidden";
       setIsModalRendered(true);
     } else {
       document.body.style.overflow = "unset";
     }
-
     return () => {
       document.body.style.overflow = "unset";
     };
@@ -64,9 +92,7 @@ export default function Sidebar({
   const handleMenuClick = (item) => {
     if (item.subItems) {
       toggleMenu(item.id);
-      if (isCollapsed) {
-        setIsCollapsed(false);
-      }
+      if (isCollapsed) setIsCollapsed(false);
     } else {
       onViewChange(item.id);
     }
@@ -82,17 +108,15 @@ export default function Sidebar({
 
   const handleDeleteAccount = async () => {
     setIsDeleting(true);
-    // API call logic would go here
     console.log("Deleting account...");
     // await api.deleteAccount();
     setIsDeleting(false);
     setIsDeleteModalOpen(false);
-    onLogout(); // Log them out after triggering deletion
+    onLogout();
   };
 
   return (
     <>
-      {/* Sidebar Component */}
       <div
         className={`
           bg-white border-r border-gray-200 transition-all duration-300 ease-in-out
@@ -132,7 +156,6 @@ export default function Sidebar({
 
               return (
                 <li key={item.id}>
-                  {/* Main Menu Item */}
                   <button
                     onClick={() => handleMenuClick(item)}
                     className={`
@@ -154,14 +177,6 @@ export default function Sidebar({
                         }`}
                       />
                     )}
-                    {!Icon && isCollapsed && (
-                      <span
-                        className={`w-5 h-5 flex-shrink-0 text-gray-500 text-lg font-semibold`}
-                      >
-                        {item.label[0]}
-                      </span>
-                    )}
-
                     {!isCollapsed && (
                       <>
                         <span className="truncate flex-1 text-left">
@@ -169,21 +184,19 @@ export default function Sidebar({
                         </span>
                         {hasSubItems &&
                           (isExpanded ? (
-                            <ChevronUp className="w-4 h-4 flex-shrink-0" />
+                            <ChevronUp className="w-4 h-4" />
                           ) : (
-                            <ChevronDown className="w-4 h-4 flex-shrink-0" />
+                            <ChevronDown className="w-4 h-4" />
                           ))}
                       </>
                     )}
                   </button>
 
-                  {/* Submenu Items */}
                   {!isCollapsed && hasSubItems && isExpanded && (
                     <ul className="mt-1 ml-4 space-y-1">
                       {item.subItems.map((subItem) => {
                         const SubIcon = subItem.icon;
                         const isSubActive = activeView === subItem.id;
-
                         return (
                           <li key={subItem.id}>
                             <button
@@ -199,7 +212,7 @@ export default function Sidebar({
                               `}
                             >
                               <SubIcon
-                                className={`w-4 h-4 flex-shrink-0 ${
+                                className={`w-4 h-4 ${
                                   isSubActive
                                     ? "text-indigo-600"
                                     : "text-gray-400"
@@ -218,57 +231,60 @@ export default function Sidebar({
           </ul>
 
           {/* Action Buttons Container */}
-          <div className="mt-6 space-y-2 p-3">
+          <div className="mt-6 pt-6 border-t border-gray-100 space-y-2">
+            {/* Subscription Redirect */}
+            <button
+              onClick={() => router.push("/subscription")}
+              className={`
+                w-full flex items-center gap-3 px-3 py-2.5 rounded-lg
+                bg-indigo-600 text-white font-medium
+                transition-all duration-200 hover:bg-indigo-700 hover:shadow-md
+                active:scale-95
+                ${isCollapsed ? "justify-center" : ""}
+              `}
+              title={isCollapsed ? "Subscription" : ""}
+            >
+              <CreditCard className="w-5 h-5 flex-shrink-0" />
+              {!isCollapsed && <span>Subscription</span>}
+            </button>
+
             {/* Logout Button */}
             <button
               onClick={onLogout}
               className={`
                 w-full flex items-center gap-3 px-3 py-2.5 rounded-lg
-                text-red-600 font-medium
-                transition-all duration-200 ease-in-out
-                hover:bg-red-50 hover:scale-105 hover:shadow-md
-                focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2
-                active:scale-95
-                ${isCollapsed ? "justify-center" : ""}
+                text-red-600 font-medium transition-all duration-200
+                hover:bg-red-50 ${isCollapsed ? "justify-center" : ""}
               `}
               title={isCollapsed ? "Logout" : ""}
-              aria-label="Logout from account"
             >
               <LogOut className="w-5 h-5 flex-shrink-0" />
               {!isCollapsed && <span>Logout</span>}
             </button>
 
-            {/* Delete Account Button with Subtle Animation */}
+            {/* Delete Account */}
             <button
               onClick={() => setIsDeleteModalOpen(true)}
               className={`
                 w-full flex items-center gap-3 px-3 py-2.5 rounded-lg
-                text-red-600 font-medium
-                transition-all duration-200 ease-in-out
-                hover:bg-red-50
-                hover:scale-105
-                hover:shadow-sm
-                focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2
-                active:scale-95
-                ${isCollapsed ? "justify-center" : ""}
+                text-gray-400 font-medium transition-all duration-200
+                hover:text-red-600 ${isCollapsed ? "justify-center" : ""}
               `}
               title={isCollapsed ? "Delete Account" : ""}
-              aria-label="Delete my account"
             >
               <UserX className="w-5 h-5 flex-shrink-0" />
-              {!isCollapsed && <span>Delete Account</span>}
+              {!isCollapsed && <span className="text-xs">Delete Account</span>}
             </button>
           </div>
         </nav>
       </div>
 
-      {/* Modal rendered outside sidebar in portal position */}
       {isModalRendered && (
         <DeleteAccountModal
           isOpen={isDeleteModalOpen}
           onClose={() => {
             setIsDeleteModalOpen(false);
-            setTimeout(() => setIsModalRendered(false), 300); // Wait for animation
+            setTimeout(() => setIsModalRendered(false), 300);
           }}
           onConfirm={handleDeleteAccount}
           isDeleting={isDeleting}

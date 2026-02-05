@@ -32,7 +32,12 @@ export default function DashboardContent() {
   // ================================================================
   // LOCAL STATE
   // ================================================================
-  const [activeView, setActiveView] = useState("events");
+  // const [activeView, setActiveView] = useState("events");
+  const [activeView, setActiveView] = useState(() => {
+    if (user.hasEvents) return "events";
+    if (user.isVendor) return "vendor";
+    return "events";
+  });
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState({ id: null, title: "" });
   const [isAnalyticsModalOpen, setIsAnalyticsModalOpen] = useState(false);
@@ -117,6 +122,8 @@ export default function DashboardContent() {
         userName={user.name}
         activeView={activeView}
         onViewChange={setActiveView}
+        isVendor={user.isVendor}
+        hasEvents={user.hasEvents}
         onLogout={handleLogout}
       >
         {activeView === "events" && (

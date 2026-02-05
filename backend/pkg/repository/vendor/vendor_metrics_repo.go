@@ -1,5 +1,7 @@
 // backend/pkg/repository/ vendor/vendor_metrics_repo.go
+
 package vendor
+
 import (
 	"context"
 	"fmt"
@@ -47,19 +49,29 @@ func (r *PostgresVendorCoreMetricsRepository) GetVendorTrustScore(ctx context.Co
 }
 
 func (r *PostgresVendorCoreMetricsRepository) GetVendorBasicInfo(ctx context.Context, vendorID uuid.UUID) (*models.VendorBasicInfo, error) {
-
+	// The Enriched Query: Joins vendors, subscriptions (active only), and stats
 	query := `
-        SELECT 
-            id, name, category, pvs_score, review_count, 
-            is_identity_verified, cac_number, is_business_verified, -- Added new columns
-            profile_completion, inquiry_count, responded_count, 
-            created_at, updated_at 
-        FROM vendors WHERE id = $1`
+		SELECT 
+			v.id, v.name, v.category, v.pvs_score, v.review_count, 
+			v.is_identity_verified, v.cac_number, v.is_business_verified,
+			v.profile_completion, v.inquiry_count, v.responded_count, 
+			v.created_at, v.updated_at,
+			COALESCE(s.tier, 'free') as tier,
+			COALESCE(s.status, 'inactive') as subscription_status,
+			COALESCE(st.views_total, 0) as views_total,
+			COALESCE(st.views_30d, 0) as views_30d
+		FROM vendors v
+		LEFT JOIN subscriptions s ON v.id = s.vendor_id 
+			AND s.status = 'active' 
+			AND (s.expires_at IS NULL OR s.expires_at > NOW())
+		LEFT JOIN vendor_stats st ON v.id = st.vendor_id
+		WHERE v.id = $1
+		LIMIT 1`
 
 	var info models.VendorBasicInfo
 	err := r.DB.GetContext(ctx, &info, query, vendorID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch vendor basic info: %w", err)
+		return nil, fmt.Errorf("failed to fetch enriched vendor basic info: %w", err)
 	}
 
 	return &info, nil
