@@ -19,7 +19,6 @@ type VendorAnalyticsResponse struct {
 	Reviews     VendorReviews       `json:"reviews"`
 	Trends      VendorTrends        `json:"trends"`
 	Performance VendorPerformance   `json:"performance"`
-	Insights    []ActionableInsight `json:"insights"` // Key recommendations
 }
 
 // ============================================================================
@@ -30,12 +29,11 @@ type VendorAnalyticsResponse struct {
 type VendorOverview struct {
 	CurrentPVSScore      int     `json:"currentPvsScore"`
 	TotalInquiries       int     `json:"totalInquiries"`
-	TotalResponded       int     `json:"totalResponded"`
-	ResponseRate         float64 `json:"responseRate"`         // %
-	TotalBookings        int     `json:"totalBookings"`
 	ProfileCompletion    float64 `json:"profileCompletion"`    // %
 	AverageRating        float64 `json:"averageRating"`        // 0-5 scale
 	TotalReviews         int     `json:"totalReviews"`
+	TotalViews   int `json:"totalViews"` 
+    Views30d     int `json:"views30d"`
 	IsVerified           bool    `json:"isVerified"`           // Identity OR Business
 	IsIdentityVerified bool    `json:"isIdentityVerified"`
     IsBusinessVerified bool    `json:"isBusinessVerified"` 
@@ -116,11 +114,8 @@ type VendorTrends struct {
 // PeriodMetrics represents metrics for a specific time period
 type PeriodMetrics struct {
 	InquiryCount      int     `json:"inquiryCount"`
-	RespondedCount    int     `json:"respondedCount"`
-	ResponseRate      float64 `json:"responseRate"`      // %
 	NewReviews        int     `json:"newReviews"`
 	AverageRating     float64 `json:"averageRating"`     // 0-5 scale
-//	BookingsCompleted int     `json:"bookingsCompleted"` // If tracked separately
 }
 
 // ============================================================================
@@ -139,40 +134,13 @@ type VendorPerformance struct {
     PVSScoreTrend        string    `json:"pvsScoreTrend"`
 }
 
-// ============================================================================
-// ACTIONABLE INSIGHTS (AI-like Recommendations)
-// ============================================================================
-
-// ActionableInsight provides specific recommendations to vendors
-type ActionableInsight struct {
-	Type        string `json:"type"`        // "critical", "warning", "tip", "success"
-	Title       string `json:"title"`       // "Respond to 3 pending inquiries"
-	Description string `json:"description"` // Detailed explanation
-	Action      string `json:"action"`      // "Go to inquiries page"
-	Priority    int    `json:"priority"`    // 1=high, 2=medium, 3=low
-}
 
 // ============================================================================
 // INTERNAL DATA TRANSFER OBJECTS (Repository → Service)
 // These are NOT returned to the client, only used internally
 // ============================================================================
 
-// VendorBasicInfo contains vendor details from vendors collection
-type VendorBasicInfo struct {
-    ID                 string    `db:"id"`
-    Name               string    `db:"name"`
-    Category           string    `db:"category"`
-    PVSScore           int       `db:"pvs_score"`
-    ReviewCount        int       `db:"review_count"`
-    IsIdentityVerified bool      `db:"is_identity_verified"`
-    CACNumber          string    `db:"cac_number"`           // NEW
-    IsBusinessVerified bool      `db:"is_business_verified"` // NEW
-    ProfileCompletion  float32   `db:"profile_completion"`
-    InquiryCount       int       `db:"inquiry_count"`
-    RespondedCount     int       `db:"responded_count"`
-    CreatedAt          time.Time `db:"created_at"`
-    UpdatedAt          time.Time `db:"updated_at"`
-}
+
 // InquiryMetricsRaw contains raw inquiry data from inquiries collection
 type InquiryMetricsRaw struct {
 	Total           int
@@ -185,8 +153,6 @@ type InquiryMetricsRaw struct {
 // ReviewMetricsRaw contains raw review data from reviews collection
 type ReviewMetricsRaw struct {
 	TotalReviews    int
-	ApprovedReviews int
-	PendingReviews  int
 	AverageRating   float64
 	RatingCounts    map[int]int // Map of rating -> count
 	RecentReviews   []RecentReview
@@ -204,15 +170,6 @@ type PeriodReviewData struct {
 	AverageRating float64
 }
 
-// ============================================================================
-// QUERY PARAMETERS (for filtering)
-// ============================================================================
-
-// VendorAnalyticsQuery represents optional query parameters
-type VendorAnalyticsQuery struct {
-	IncludeInsights bool // Whether to generate actionable insights
-	Period          string // "7d", "30d", "90d" for trend analysis
-}
 
 // ============================================================================
 // ERROR RESPONSES

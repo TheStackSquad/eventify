@@ -52,7 +52,7 @@ func (s *OrderServiceImpl) CleanupExpiredOrders(ctx context.Context, expiry time
 		// 2. Atomic cleanup transaction
 		err := s.OrderRepo.RunInTransaction(ctx, func(tx *sqlx.Tx) error {
 			// Update status to EXPIRED (This blocks any late Paystack callbacks)
-			if err := s.OrderRepo.UpdateOrderStatusTx(ctx, tx, order.ID, models.OrderStatusExpired); err != nil {
+			if err := s.OrderRepo.UpdateOrderStatusTx(ctx, tx, order.ID, models.OrderSubStatusExpired); err != nil {
 				return err
 			}
 

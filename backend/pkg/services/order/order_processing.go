@@ -389,7 +389,7 @@ func (s *OrderServiceImpl) generateTicketsForOrder(
 				OrderID:      order.ID,
 				EventID:      item.EventID,
 				TicketTierID: item.TicketTierID,
-				Status:       models.TicketStatusActive,
+				Status:       models.TicketSubStatusActive,
 				IsUsed:       false,
 				CreatedAt:    now,
 				UpdatedAt:    now,

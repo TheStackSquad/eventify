@@ -12,146 +12,117 @@ import (
 	"github.com/google/uuid"
 )
 
-// VendorAnalyticsService defines the contract for fetching aggregated profile data.
 type VendorAnalyticsService interface {
 	GetVendorAnalytics(ctx context.Context, vendorID uuid.UUID) (*models.VendorAnalyticsResponse, error)
 }
 
 type vendorAnalyticsServiceImpl struct {
-	CoreRepo    repovendor.VendorCoreMetricsRepository
-	MetricsRepo repovendor.VendorMetricsRepository
-	DataRepo    repovendor.VendorDataRepository
+	coreRepo    repovendor.VendorCoreMetricsRepository
+	metricsRepo repovendor.VendorMetricsRepository
+	dataRepo    repovendor.VendorDataRepository
 }
 
 func NewVendorAnalyticsService(
-	coreRepo repovendor.VendorCoreMetricsRepository,
-	metricsRepo repovendor.VendorMetricsRepository,
-	dataRepo repovendor.VendorDataRepository,
+	cr repovendor.VendorCoreMetricsRepository,
+	mr repovendor.VendorMetricsRepository,
+	dr repovendor.VendorDataRepository,
 ) VendorAnalyticsService {
 	return &vendorAnalyticsServiceImpl{
-		CoreRepo:    coreRepo,
-		MetricsRepo: metricsRepo,
-		DataRepo:    dataRepo,
+		coreRepo:    cr,
+		metricsRepo: mr,
+		dataRepo:    dr,
 	}
 }
 
-func (s *vendorAnalyticsServiceImpl) GetVendorAnalytics(
-	ctx context.Context,
-	vendorID uuid.UUID,
-) (*models.VendorAnalyticsResponse, error) {
-
-	// --- PHASE 1: Fetching Core Info (Synchronous) ---
-	// Basic Info provides the Name, ID, Category, and vNIN status needed for the calculation methods
-	vendorInfo, err := s.CoreRepo.GetVendorBasicInfo(ctx, vendorID)
+func (s *vendorAnalyticsServiceImpl) GetVendorAnalytics(ctx context.Context, vendorID uuid.UUID) (*models.VendorAnalyticsResponse, error) {
+	// PHASE 1: Synchronous Core Data
+	// Basic Info is required for all subsequent calculations
+	vendorInfo, err := s.coreRepo.GetVendorBasicInfo(ctx, vendorID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get vendor basic info: %w", err)
+		return nil, fmt.Errorf("failed to retrieve vendor profile: %w", err)
 	}
 
-	// Trust Score (PVS)
-	trustScore, err := s.CoreRepo.GetVendorTrustScore(ctx, vendorID)
+	trustScore, err := s.coreRepo.GetVendorTrustScore(ctx, vendorID)
 	if err != nil {
-		// We don't fail the whole request if trust score is missing, just default it
-		trustScore = &models.VendorTrustScore{TotalTrustWeight: 0} 
+		trustScore = &models.VendorTrustScore{TotalTrustWeight: 0}
 	}
 
-	// --- PHASE 2: Concurrent Metric/Data Fetching ---
-	var wg sync.WaitGroup
-	var reviewMetrics *models.ReviewMetricsRaw
-	var recentReviews []models.RecentReview
-	var recentInquiries []models.RecentInquiry
+	// PHASE 2: Concurrent Data Acquisition
+	var (
+		wg              sync.WaitGroup
+		reviewMetrics   *models.ReviewMetricsRaw
+		recentReviews   []models.RecentReview
+		recentInquiries []models.RecentInquiry
+		
+		// Metric Windows
+		in7, rev7, in30, rev30 int
+		avg7, avg30            float64
+	)
 
-	var inquiries7d, reviews7d int
-	var avgRating7d float64
-	var inquiries30d, reviews30d int
-	var avgRating30d float64
+	errCh := make(chan error, 5)
 
-	errCh := make(chan error, 5) // Reduced buffer to actual concurrent task count
-
-	// 1. Review Metrics
+	// Task 1: Comprehensive Review Stats
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		var e error
-		reviewMetrics, e = s.MetricsRepo.GetReviewMetrics(ctx, vendorID)
-		if e != nil {
-			errCh <- fmt.Errorf("reviews: %w", e)
-		}
+		reviewMetrics, e = s.metricsRepo.GetReviewMetrics(ctx, vendorID)
+		if e != nil { errCh <- fmt.Errorf("review_metrics: %w", e) }
 	}()
 
-	// 2. Recent Reviews
+	// Task 2: Recent Activity (Reviews)
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		var e error
-		recentReviews, e = s.DataRepo.GetRecentReviews(ctx, vendorID, 5)
-		if e != nil {
-			errCh <- fmt.Errorf("recent reviews: %w", e)
-		}
+		recentReviews, e = s.dataRepo.GetRecentReviews(ctx, vendorID, 5)
+		if e != nil { errCh <- fmt.Errorf("recent_reviews: %w", e) }
 	}()
 
-	// 3. Recent Inquiries
+	// Task 3: Recent Activity (Inquiries)
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		var e error
-		recentInquiries, e = s.DataRepo.GetRecentInquiries(ctx, vendorID, 5)
-		if e != nil {
-			errCh <- fmt.Errorf("recent inquiries: %w", e)
-		}
+		recentInquiries, e = s.dataRepo.GetRecentInquiries(ctx, vendorID, 5)
+		if e != nil { errCh <- fmt.Errorf("recent_inquiries: %w", e) }
 	}()
 
-	// 4. 7-Day Window
+	// Task 4: 7-Day Performance Window
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-	//	var e error
-		inquiries7d, _ = s.MetricsRepo.GetInquiryCountByPeriod(ctx, vendorID, 7)
-		reviews7d, _ = s.MetricsRepo.GetReviewCountByPeriod(ctx, vendorID, 7)
-		avgRating7d, _ = s.MetricsRepo.GetAverageRatingByPeriod(ctx, vendorID, 7)
+		in7, _ = s.metricsRepo.GetInquiryCountByPeriod(ctx, vendorID, 7)
+		rev7, _ = s.metricsRepo.GetReviewCountByPeriod(ctx, vendorID, 7)
+		avg7, _ = s.metricsRepo.GetAverageRatingByPeriod(ctx, vendorID, 7)
 	}()
 
-	// 5. 30-Day Window
+	// Task 5: 30-Day Performance Window
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-	//	var e error
-		inquiries30d, _ = s.MetricsRepo.GetInquiryCountByPeriod(ctx, vendorID, 30)
-		reviews30d, _ = s.MetricsRepo.GetReviewCountByPeriod(ctx, vendorID, 30)
-		avgRating30d, _ = s.MetricsRepo.GetAverageRatingByPeriod(ctx, vendorID, 30)
+		in30, _ = s.metricsRepo.GetInquiryCountByPeriod(ctx, vendorID, 30)
+		rev30, _ = s.metricsRepo.GetReviewCountByPeriod(ctx, vendorID, 30)
+		avg30, _ = s.metricsRepo.GetAverageRatingByPeriod(ctx, vendorID, 30)
 	}()
 
 	wg.Wait()
 	close(errCh)
 
-	// Log or handle non-critical errors here if desired
-	for e := range errCh {
-		// Log error but continue if possible, or return error for critical failures
-		fmt.Printf("Warning: background fetch error: %v\n", e)
-	}
-
-	// Null safety for metrics mapping
+	// PHASE 3: Safety & Aggregation
 	if reviewMetrics == nil {
 		reviewMetrics = &models.ReviewMetricsRaw{RatingCounts: make(map[int]int)}
 	}
 
-	// --- PHASE 3: Data Aggregation (Using our cleaned-up logic) ---
-	overview := s.calculateOverview(vendorInfo, trustScore)
-	inquiries := s.calculateInquiries(recentInquiries, inquiries7d, inquiries30d)
-	reviews := s.calculateReviews(reviewMetrics, recentReviews)
-	trends := s.calculateTrends(inquiries7d, reviews7d, avgRating7d, inquiries30d, reviews30d, avgRating30d)
-	performance := s.calculatePerformance(vendorInfo, trustScore)
-	insights := s.generateActionableInsights(vendorInfo, reviewMetrics, overview)
-
-	// --- PHASE 4: Final Response ---
+	// Final Data Mapping (Using internal helper methods)
 	return &models.VendorAnalyticsResponse{
-		VendorID:    vendorInfo.ID,
+		VendorID:    vendorInfo.ID.String(),
 		VendorName:  vendorInfo.Name,
 		Category:    vendorInfo.Category,
-		Overview:    overview,
-		Inquiries:   inquiries,
-		Reviews:     reviews,
-		Trends:      trends,
-		Performance: performance,
-		Insights:    insights,
+		Overview:    s.calculateOverview(vendorInfo, trustScore),
+		Inquiries:   s.calculateInquiries(recentInquiries, in7, in30),
+		Reviews:     s.calculateReviews(reviewMetrics, recentReviews),
+		Trends:      s.calculateTrends(in7, rev7, avg7, in30, rev30, avg30),
+		Performance: s.calculatePerformance(vendorInfo, trustScore),
 	}, nil
 }

@@ -1,4 +1,4 @@
-// backend/pkg/repository/ vendor/vendor_analytics_repo.go
+// backend/pkg/repository/vendor/vendor_analytics_repo.go
 
 package vendor
 
@@ -9,35 +9,33 @@ import (
 	"github.com/google/uuid"
 )
 
-// VendorCoreMetricsRepository handles fetching pre-calculated PVS and essential vendor information.
+// VendorCoreMetricsRepository handles fetching pre-calculated metrics.
 type VendorCoreMetricsRepository interface {
-	// GetVendorTrustScore fetches the calculated PVS score and review count from vendor_trust_score.
 	GetVendorTrustScore(ctx context.Context, vendorID uuid.UUID) (*models.VendorTrustScore, error)
-	
-	// GetVendorBasicInfo fetches essential vendor info and increments the profile_views counter.
 	GetVendorBasicInfo(ctx context.Context, vendorID uuid.UUID) (*models.VendorBasicInfo, error)
 }
 
-// VendorMetricsRepository handles aggregated analytics calculated at runtime.
+// VendorMetricsRepository handles aggregated analytics.
 type VendorMetricsRepository interface {
-	// GetInquiryCountByPeriod returns the count of inquiries for a vendor within the specified days.
 	GetInquiryCountByPeriod(ctx context.Context, vendorID uuid.UUID, days int) (int, error)
-	
-	// GetReviewMetrics returns comprehensive review metrics for a vendor.
 	GetReviewMetrics(ctx context.Context, vendorID uuid.UUID) (*models.ReviewMetricsRaw, error)
-	
-	// GetReviewCountByPeriod returns the count of reviews for a vendor within the specified days.
 	GetReviewCountByPeriod(ctx context.Context, vendorID uuid.UUID, days int) (int, error)
-	
-	// GetAverageRatingByPeriod returns the average rating for a vendor within the specified days.
 	GetAverageRatingByPeriod(ctx context.Context, vendorID uuid.UUID, days int) (float64, error)
 }
 
-// VendorDataRepository handles fetching detailed lists of customer activity.
+// VendorDataRepository handles detailed lists.
 type VendorDataRepository interface {
-	// GetRecentInquiries fetches the most recent inquiries for a vendor.
 	GetRecentInquiries(ctx context.Context, vendorID uuid.UUID, limit int) ([]models.RecentInquiry, error)
-	
-	// GetRecentReviews fetches the most recent reviews for a vendor.
 	GetRecentReviews(ctx context.Context, vendorID uuid.UUID, limit int) ([]models.RecentReview, error)
+}
+
+// VendorPublicStatsRepository handles tracking and subscription details.
+type VendorPublicStatsRepository interface {
+	RecordProfileView(ctx context.Context, vendorID uuid.UUID, viewerID *uuid.UUID, viewerIP string, sessionID string, userAgent string) (bool, error)
+	GetProfileViewCount30d(ctx context.Context, vendorID uuid.UUID) (int, error)
+	GetCategoryRank(ctx context.Context, vendorID uuid.UUID) (rank int, total int, category string, err error)
+	GetLocationRank(ctx context.Context, vendorID uuid.UUID) (rank int, total int, location string, err error)
+	GetVendorTier(ctx context.Context, vendorID uuid.UUID) (models.SubscriptionTier, error)
+	// Updated to match your implementation type
+	GetVendorSubscription(ctx context.Context, vendorID uuid.UUID) (*models.VendorWithSubscription, error)
 }

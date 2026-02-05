@@ -25,10 +25,10 @@ const (
 type SubscriptionStatus string
 
 const (
-	SubStatusActive    SubscriptionStatus = "active"
-	SubStatusExpired   SubscriptionStatus = "expired"
-	SubStatusCancelled SubscriptionStatus = "cancelled" 
-	SubStatusPending   SubscriptionStatus = "pending"
+	SubscriptionActive   SubscriptionStatus = "active"
+	SubscriptionExpired  SubscriptionStatus = "expired"
+	SubscriptionCanceled SubscriptionStatus = "canceled"
+	SubscriptionPending  SubscriptionStatus = "pending"
 )
 
 // ---------------------------------------------------------------------------
@@ -43,6 +43,7 @@ var tierOrder = map[SubscriptionTier]int{
 }
 
 // Rank returns the ordinal value of a tier.
+// Usage: subscription.Tier.Rank() >= TierPremium.Rank()
 func (t SubscriptionTier) Rank() int {
 	if r, ok := tierOrder[t]; ok {
 		return r
@@ -51,24 +52,27 @@ func (t SubscriptionTier) Rank() int {
 }
 
 // ---------------------------------------------------------------------------
-// Subscription Features
+// Subscription Features — explicit struct instead of raw JSON
 // ---------------------------------------------------------------------------
 
+// SubscriptionFeatures defines the boolean feature flags a tier unlocks.
 type SubscriptionFeatures struct {
-	EnhancedProfile       bool `json:"enhancedProfile"`
-	BasicAnalytics        bool `json:"basicAnalytics"`
-	RecentInquiries       bool `json:"recentInquiries"`
-	PriorityListing       bool `json:"priorityListing"`
-	DetailedAnalytics     bool `json:"detailedAnalytics"`
-	RecentReviews         bool `json:"recentReviews"`
-	DirectMessagePriority bool `json:"directMessagePriority"`
-	VerifiedBadge         bool `json:"verifiedBadge"`
-	FeaturedPlacement     bool `json:"featuredPlacement"`
-	GoldBadge             bool `json:"goldBadge"`
-	CategoryBoost         bool `json:"categoryBoost"`
-	HomepageRotation      bool `json:"homepageRotation"`
+	EnhancedProfile      bool `json:"enhancedProfile"`      // Basic+  — description, images, contact details surfaced
+	BasicAnalytics       bool `json:"basicAnalytics"`       // Basic+  — profile views, inquiry count (30 days)
+	RecentInquiries      bool `json:"recentInquiries"`      // Basic+  — list of recent inquiries
+	PriorityListing      bool `json:"priorityListing"`      // Premium+ — boosted search ranking
+	DetailedAnalytics    bool `json:"detailedAnalytics"`    // Premium+ — conversion rates, response time, avg rating
+	RecentReviews        bool `json:"recentReviews"`        // Premium+ — list of recent reviews
+	DirectMessagePriority bool `json:"directMessagePriority"` // Premium+ — receive inquiries first
+	VerifiedBadge        bool `json:"verifiedBadge"`        // Premium+ — visible badge on listing
+	FeaturedPlacement    bool `json:"featuredPlacement"`    // Featured — hero banner / sponsored section
+	GoldBadge            bool `json:"goldBadge"`            // Featured — gold badge on listing
+	CategoryBoost        bool `json:"categoryBoost"`        // Featured — boosted in category filters
+	HomepageRotation     bool `json:"homepageRotation"`     // Featured — periodic homepage rotation
 }
 
+// tierFeatures maps each tier to its full feature set.
+// Each tier includes everything below it.
 var tierFeatures = map[SubscriptionTier]SubscriptionFeatures{
 	TierFree: {},
 	TierBasic: {
@@ -102,6 +106,8 @@ var tierFeatures = map[SubscriptionTier]SubscriptionFeatures{
 	},
 }
 
+// GetFeatures returns the feature set for a given tier.
+// Falls back to Free if the tier is unrecognised.
 func GetFeatures(tier SubscriptionTier) SubscriptionFeatures {
 	if f, ok := tierFeatures[tier]; ok {
 		return f
@@ -110,9 +116,10 @@ func GetFeatures(tier SubscriptionTier) SubscriptionFeatures {
 }
 
 // ---------------------------------------------------------------------------
-// Tier pricing (in Kobo)
+// Tier pricing (in Kobo) — single source of truth
 // ---------------------------------------------------------------------------
 
+// TierPricing holds the min and max monthly price range for a tier in Kobo.
 type TierPricing struct {
 	MinKobo int64 `json:"minKobo"`
 	MaxKobo int64 `json:"maxKobo"`
@@ -120,11 +127,12 @@ type TierPricing struct {
 
 var tierPrices = map[SubscriptionTier]TierPricing{
 	TierFree:     {MinKobo: 0, MaxKobo: 0},
-	TierBasic:    {MinKobo: 200_000, MaxKobo: 350_000},
-	TierPremium:  {MinKobo: 700_000, MaxKobo: 1_000_000},
-	TierFeatured: {MinKobo: 1_800_000, MaxKobo: 2_500_000},
+	TierBasic:    {MinKobo: 200_000, MaxKobo: 350_000},   // ₦2,000 – ₦3,500
+	TierPremium:  {MinKobo: 700_000, MaxKobo: 1_200_000}, // ₦7,000 – ₦12,000
+	TierFeatured: {MinKobo: 1_800_000, MaxKobo: 2_500_000}, // ₦18,000 – ₦25,000
 }
 
+// GetPricing returns the price range for a given tier.
 func GetPricing(tier SubscriptionTier) TierPricing {
 	if p, ok := tierPrices[tier]; ok {
 		return p
@@ -133,7 +141,7 @@ func GetPricing(tier SubscriptionTier) TierPricing {
 }
 
 // ---------------------------------------------------------------------------
-// Subscription model
+// Subscription model — maps to the `subscriptions` table
 // ---------------------------------------------------------------------------
 
 type Subscription struct {
@@ -144,7 +152,7 @@ type Subscription struct {
 	StartsAt         time.Time          `json:"startsAt" db:"starts_at"`
 	ExpiresAt        sql.NullTime       `json:"expiresAt" db:"expires_at"`
 	AutoRenew        bool               `json:"autoRenew" db:"auto_renew"`
-	Price            int64              `json:"price" db:"price"`
+	Price            int64              `json:"price" db:"price"` // in Kobo
 	Currency         string             `json:"currency" db:"currency"`
 	PaymentReference sql.NullString     `json:"paymentReference" db:"payment_reference"`
 	PaymentMethod    sql.NullString     `json:"paymentMethod" db:"payment_method"`
@@ -154,6 +162,8 @@ type Subscription struct {
 	UpdatedAt        time.Time          `json:"updatedAt" db:"updated_at"`
 }
 
+// MarshalJSON cleans up sql.Null* fields to return simple values or null,
+// consistent with the pattern used in vendor.go.
 func (s Subscription) MarshalJSON() ([]byte, error) {
 	type Alias Subscription
 
@@ -188,32 +198,32 @@ func (s Subscription) MarshalJSON() ([]byte, error) {
 }
 
 // ---------------------------------------------------------------------------
-// Joined response structs
+// VendorWithSubscription — response struct that joins vendor + subscription
 // ---------------------------------------------------------------------------
 
 type VendorWithSubscription struct {
-	Vendor       Vendor               `json:"vendor"`
-	Subscription *Subscription        `json:"subscription,omitempty"`
+	Vendor       Vendor        `json:"vendor"`
+	Subscription *Subscription `json:"subscription,omitempty"`
 	Features     SubscriptionFeatures `json:"features"`
-	IsFeatured   bool                 `json:"isFeatured"`
-	BadgeColor   string               `json:"badgeColor,omitempty"`
+	IsFeatured   bool          `json:"isFeatured"`
+	BadgeColor   string        `json:"badgeColor,omitempty"` // "gold", "silver", etc.
 }
 
+// ---------------------------------------------------------------------------
+// VendorAnalyticsResponse — the single response struct returned by
+// GetVendorAnalytics. Fields are pointers/slices so locked tiers return null.
+// ---------------------------------------------------------------------------
 
-func (v *VendorWithSubscription) ResolveBadgeColor() string {
-    // 1. Changed SubscriptionActive -> SubStatusActive to match your const
-    if v.Subscription == nil || v.Subscription.Status != SubStatusActive {
-        return ""
-    }
+// type VendorAnalyticsResponse struct {
+// 	Tier         SubscriptionTier `json:"tier"`
+// 	ProfileViews int              `json:"profileViews"`
 
-    switch v.Subscription.Tier {
-    case TierFeatured:
-        return "gold"
-    case TierPremium:
-        return "silver"
-    case TierBasic:
-        return "bronze"
-    default:
-        return ""
-    }
-}
+// 	// Basic+
+// 	InquiryCount    *int            `json:"inquiryCount"`    // nil if < Basic
+// 	RecentInquiries []RecentInquiry `json:"recentInquiries"` // nil if < Basic
+
+// 	// Premium+
+// 	ReviewMetrics *ReviewMetricsRaw `json:"reviewMetrics"` // nil if < Premium
+// 	AverageRating *float64          `json:"averageRating"` // nil if < Premium
+// 	RecentReviews []RecentReview    `json:"recentReviews"` // nil if < Premium
+// }

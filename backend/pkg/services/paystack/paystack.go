@@ -1,4 +1,4 @@
-//backend/pkg/services/paystack/paystack.go
+// backend/pkg/services/paystack/paystack.go
 package paystack
 
 import (
@@ -16,16 +16,28 @@ import (
 	"github.com/eventify/backend/pkg/models"
 )
 
+// ---------------------------------------------------------------------------
+// Client interface — both order and subscription inject this
+// ---------------------------------------------------------------------------
+
+// Client handles all external Paystack API communications.
 type Client interface {
 	InitializeTransaction(ctx context.Context, email string, amountKobo int64, reference string, metadata map[string]string, callbackURL string) (string, error)
 	VerifyTransaction(ctx context.Context, reference string) (*models.PaystackVerificationResponse, error)
 }
 
+// ---------------------------------------------------------------------------
+// Client implementation
+// ---------------------------------------------------------------------------
+
+// ClientImpl is the concrete HTTP client that talks to Paystack.
 type ClientImpl struct {
 	SecretKey  string
 	HTTPClient *http.Client
 }
 
+// NewClient constructs a PaystackClient with the provided secret key.
+// Pass nil for httpClient to use http.DefaultClient.
 func NewClient(secretKey string, httpClient *http.Client) Client {
 	if httpClient == nil {
 		httpClient = http.DefaultClient
@@ -36,6 +48,11 @@ func NewClient(secretKey string, httpClient *http.Client) Client {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// InitializeTransaction
+// ---------------------------------------------------------------------------
+
+// initializeRequest is the body we POST to Paystack /transaction/initialize.
 type initializeRequest struct {
 	Email       string            `json:"email"`
 	Amount      int64             `json:"amount"`
@@ -44,6 +61,7 @@ type initializeRequest struct {
 	CallbackURL string            `json:"callback_url,omitempty"`
 }
 
+// initializeResponse is what Paystack returns from /transaction/initialize.
 type initializeResponse struct {
 	Status  bool   `json:"status"`
 	Message string `json:"message"`
@@ -100,6 +118,10 @@ func (c *ClientImpl) InitializeTransaction(ctx context.Context, email string, am
 	return paystackResp.Data.AuthorizationURL, nil
 }
 
+// ---------------------------------------------------------------------------
+// VerifyTransaction
+// ---------------------------------------------------------------------------
+
 func (c *ClientImpl) VerifyTransaction(ctx context.Context, reference string) (*models.PaystackVerificationResponse, error) {
 	url := fmt.Sprintf("https://api.paystack.co/transaction/verify/%s", reference)
 
@@ -134,6 +156,13 @@ func (c *ClientImpl) VerifyTransaction(ctx context.Context, reference string) (*
 	return &paystackResponse, nil
 }
 
+// ---------------------------------------------------------------------------
+// VerifyWebhookSignature — standalone function, no struct dependency.
+// Both order and subscription call this directly.
+// ---------------------------------------------------------------------------
+
+// VerifyWebhookSignature validates the HMAC SHA512 signature Paystack
+// attaches to webhook POST requests. secretKey is your Paystack secret key.
 func VerifyWebhookSignature(payload []byte, signature string, secretKey string) bool {
 	if secretKey == "" {
 		return false
@@ -141,7 +170,7 @@ func VerifyWebhookSignature(payload []byte, signature string, secretKey string) 
 
 	h := hmac.New(sha512.New, []byte(secretKey))
 	h.Write(payload)
-	computedSignature := hex.EncodeToString(h.Sum(nil))
+	computedSignature := strings.ToLower(hex.EncodeToString(h.Sum(nil)))
 
-	return hmac.Equal([]byte(strings.ToLower(computedSignature)), []byte(strings.ToLower(signature)))
+	return hmac.Equal([]byte(computedSignature), []byte(strings.ToLower(signature)))
 }

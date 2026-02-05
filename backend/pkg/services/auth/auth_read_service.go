@@ -8,6 +8,8 @@ import (
 	"github.com/eventify/backend/pkg/models"
 	servicejwt "github.com/eventify/backend/pkg/services/jwt"
 	repoauth "github.com/eventify/backend/pkg/repository/auth"
+	repovendor "github.com/eventify/backend/pkg/repository/vendor"
+	repoevent "github.com/eventify/backend/pkg/repository/event"
 	"github.com/google/uuid"
 )
 
@@ -15,16 +17,23 @@ import (
 type authReadService struct {
 	authRepo repoauth.AuthRepository
 	jwtService *servicejwt.JWTService
+	vendorRepo repovendor.VendorRepository // <-- Add this
+    eventRepo  repoevent.EventRepository
 }
 
 
 func (s *authReadService) GetUserProfile(ctx context.Context, userID uuid.UUID) (*models.UserProfile, error) {
-	user, err := s.authRepo.GetUserByID(ctx, userID)
-	if err != nil || user == nil {
-		return nil, ErrUserNotFound
-	}
-	// Return profile without vendor/event flags for now
-	return user.ToUserProfile(false, false), nil
+    user, err := s.authRepo.GetUserByID(ctx, userID)
+    if err != nil { return nil, ErrUserNotFound }
+
+    // 1. Check if they have a business profile
+    isVendor, _ := s.vendorRepo.IsRegisteredVendor(ctx, userID)
+
+    // 2. Check if they are an organizer (Handles the Constellar case)
+    hasEvents, _ := s.eventRepo.HasEventsByOrganizer(ctx, userID)
+
+    // 3. ToUserProfile handles the rest (including Admin overrides)
+    return user.ToUserProfile(isVendor, hasEvents), nil
 }
 
 // VerifyResetToken checks if a password reset token is valid and unexpired

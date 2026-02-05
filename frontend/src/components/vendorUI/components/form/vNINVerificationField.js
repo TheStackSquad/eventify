@@ -1,8 +1,8 @@
-// frontend/src/components/vendorUI/components/form/vNINVerificationField.jsx
+// frontend/src/components/vendorUI/components/form/vNINVerificationField.js
 
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   ShieldCheck,
   CheckCircle,
@@ -87,24 +87,25 @@ const VNINVerificationField = ({
   ); // Dependencies for useCallback
 
   // 2. Updated useEffect with full dependency array
+  // --- Inside vNINVerificationField.js ---
+
   useEffect(() => {
-    const cleanedVnin = formData.vnin?.replace(/[^A-Z0-9]/gi, "") || "";
+    // 1. Extract ONLY the alphanumeric characters
+    const rawVnin = formData.vnin?.replace(/[^A-Z0-9]/gi, "") || "";
 
     if (
       formData.isIdentityVerified ||
-      cleanedVnin === lastVerifiedVnin ||
+      rawVnin === lastVerifiedVnin || // Compare against raw, not formatted
       verificationInProgress.current
     ) {
       return;
     }
 
-    if (cleanedVnin.length < 16 && vninError) {
-      setVninError("");
-    }
-
-    if (cleanedVnin.length === 16) {
+    // 2. Only trigger if we have exactly 16 characters
+    if (rawVnin.length === 16) {
       const timeoutId = setTimeout(() => {
-        performVerification(cleanedVnin);
+        // ✅ PASS THE RAW 16 CHARACTERS, NOT THE FORMATTED STRING
+        performVerification(rawVnin);
       }, 600);
 
       return () => clearTimeout(timeoutId);
@@ -113,23 +114,33 @@ const VNINVerificationField = ({
     formData.vnin,
     formData.isIdentityVerified,
     lastVerifiedVnin,
-    performVerification, // Now stable thanks to useCallback
-    vninError, // Added to satisfy linter
+    performVerification,
   ]);
-  // --- Helper: Format vNIN Display ---
+  // --- Helper: Format vNIN Display (NIMC Standard: 16 Alphanumeric) ---
   const handleVninChange = (e) => {
-    const val = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "");
-    let formatted = val;
+    // 1. Extract only valid characters and FORCE a 16-character limit
+    const rawVal = e.target.value
+      .toUpperCase()
+      .replace(/[^A-Z0-9]/g, "")
+      .slice(0, 16);
 
-    if (val.length > 2 && val.length <= 14) {
-      formatted = `${val.slice(0, 2)}-${val.slice(2)}`;
-    } else if (val.length > 14) {
-      formatted = `${val.slice(0, 2)}-${val.slice(2, 14)}-${val.slice(14, 16)}`;
+    let formatted = rawVal;
+
+    // 2. Apply NIMC visual grouping: XX-XXXXXXXXXXXX-XX
+    if (rawVal.length > 2 && rawVal.length <= 14) {
+      formatted = `${rawVal.slice(0, 2)}-${rawVal.slice(2)}`;
+    } else if (rawVal.length > 14) {
+      formatted = `${rawVal.slice(0, 2)}-${rawVal.slice(2, 14)}-${rawVal.slice(14)}`;
     }
 
-    handleChange({ target: { name: "vnin", value: formatted } });
+    // 3. Update the form state with the formatted version for the UI
+    handleChange({
+      target: {
+        name: "vnin",
+        value: formatted,
+      },
+    });
   };
-
   const isComplete = formData.vnin?.replace(/-/g, "").length === 16;
   const isVerified = formData.isIdentityVerified;
 
@@ -295,6 +306,6 @@ const VNINVerificationField = ({
       )}
     </>
   );
-};;
+};;;;
 
 export default VNINVerificationField;

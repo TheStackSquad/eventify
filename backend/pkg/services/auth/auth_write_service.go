@@ -12,16 +12,21 @@ import (
 	"github.com/eventify/backend/pkg/models"
 	repoauth "github.com/eventify/backend/pkg/repository/auth"
 	servicejwt "github.com/eventify/backend/pkg/services/jwt"
+    repoevent "github.com/eventify/backend/pkg/repository/event"
+    repovendor "github.com/eventify/backend/pkg/repository/vendor"
 	"github.com/google/uuid"
 	"github.com/rs/zerolog/log"
 	"golang.org/x/crypto/bcrypt"
 )
+
 
 type authWriteService struct {
 	authReadService
 	authRepo         repoauth.AuthRepository
 	refreshTokenRepo repoauth.RefreshTokenRepository
 	jwtService       *servicejwt.JWTService
+	vendorRepo repovendor.VendorRepository
+    eventRepo  repoevent.EventRepository
 }
 
 const (
@@ -30,16 +35,31 @@ const (
 )
 
 // NewAuthService initializes the complete auth service
-func NewAuthService(auth repoauth.AuthRepository, token repoauth.RefreshTokenRepository, jwt *servicejwt.JWTService) AuthService {
-	return &authWriteService{
-		authReadService: authReadService{
-			authRepo:   auth,
-			jwtService: jwt,
-		},
-		authRepo:         auth,
-		refreshTokenRepo: token,
-		jwtService:       jwt,
-	}
+// NewAuthService initializes the complete auth service
+func NewAuthService(
+    auth repoauth.AuthRepository, 
+    token repoauth.RefreshTokenRepository, 
+    vendor repovendor.VendorRepository, // Added
+    event repoevent.EventRepository,    // Added
+    jwt *servicejwt.JWTService,
+) AuthService {
+    // 1. Initialize the Read portion
+    readService := authReadService{
+        authRepo:   auth,
+        vendorRepo: vendor,
+        eventRepo:  event,
+        jwtService: jwt,
+    }
+
+    // 2. Initialize the Write portion (which embeds Read)
+    return &authWriteService{
+        authReadService:  readService,
+        authRepo:         auth,
+        refreshTokenRepo: token,
+        vendorRepo:       vendor,
+        eventRepo:        event,
+        jwtService:       jwt,
+    }
 }
 
 

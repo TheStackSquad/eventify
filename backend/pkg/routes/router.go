@@ -13,6 +13,8 @@ import (
 	handlerorder "github.com/eventify/backend/pkg/handlers/order"
 	handlerreview "github.com/eventify/backend/pkg/handlers/review"
 	handlervendor "github.com/eventify/backend/pkg/handlers/vendor"
+	handlersubscription "github.com/eventify/backend/pkg/handlers/subscription"
+	
 
 	"github.com/eventify/backend/pkg/services/auth"
 
@@ -38,6 +40,7 @@ func ConfigureRouter(
 	inquiryHandler *handlerinquiries.InquiryHandler,
 	feedbackHandler *handlerfeedback.FeedbackHandler,
 	orderHandler *handlerorder.OrderHandler,
+	subscriptionHandler *handlersubscription.SubscriptionHandler,
 	authRepo repoauth.AuthRepository,
 	analyticsHandler *handleranalytics.AnalyticsHandler,
 	vendorAnalyticsHandler *handlervendor.VendorAnalyticsHandler,
@@ -160,6 +163,18 @@ func ConfigureRouter(
         // Body: { "code": "REF-001-SIGNATURE" }
         gateRoutes.POST("/check-in", eventHandler.CheckIn) 
     }
+// Protected subscription routes - vendor initiates subscription and checks status
+protectedSubscription := router.Group("/api/v1/subscription")
+protectedSubscription.Use(middleware.AuthMiddleware(authService))
+{
+	protectedSubscription.POST("/initiate", middleware.RateLimit(utils.WriteLimiter), subscriptionHandler.InitiateSubscription)
+	protectedSubscription.GET("/me", subscriptionHandler.GetMySubscription)
+}
+
+// Public webhook route - Paystack hits this after payment (no auth required)
+router.POST("/subscription/webhook", subscriptionHandler.HandleWebhook)
+
+
 
 setupAdminRoutes(router, authHandler, eventHandler, vendorHandler, reviewHandler, inquiryHandler, feedbackHandler, authRepo, authService)
 	utils.LogSuccess(serviceName, "configure", "Router configuration completed")

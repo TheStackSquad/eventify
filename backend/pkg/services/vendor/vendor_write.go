@@ -21,7 +21,7 @@ func (s *VendorServiceImpl) CreateVendor(ctx context.Context, vendor *models.Ven
 
 	// 2. Business Rules: Set default status if empty
 	if vendor.Status == "" {
-		vendor.Status = models.StatusActive
+		vendor.Status = models.VendorStatusActive
 	}
 
 	// 3. Auto-verify identity since vNIN is now guaranteed present
