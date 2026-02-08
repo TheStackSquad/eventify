@@ -48,13 +48,13 @@ func (s *VendorServiceImpl) CreateVendor(ctx context.Context, vendor *models.Ven
 	return vendorID.String(), nil
 }
 
-func (s *VendorServiceImpl) UpdateVendor(ctx context.Context, id string, requestorID uuid.UUID, updates map[string]interface{}) error {
+func (s *VendorServiceImpl) UpdateVendor(ctx context.Context, id string, requestorID uuid.UUID, updatedVendor *models.Vendor) error {
 	parsedID, err := uuid.Parse(id)
 	if err != nil {
 		return errors.New("invalid vendor ID format")
 	}
 
-	// Get current vendor to verify ownership
+	// 1. Ownership Check
 	currentVendor, err := s.vendorRepo.GetByID(ctx, parsedID)
 	if err != nil {
 		return err
@@ -63,31 +63,18 @@ func (s *VendorServiceImpl) UpdateVendor(ctx context.Context, id string, request
 		return errors.New("unauthorized")
 	}
 
-	// Security: Verify vNIN if being updated
-	if v, ok := updates["vnin"]; ok {
-		if snap, snapOk := updates["verifiedVnin"]; !snapOk || v != snap {
-			return errors.New("identity verification mismatch")
-		}
-		updates["is_identity_verified"] = true
+	// 2. Business Logic: Re-verify flags if data changed
+	// If CAC is provided and was not verified before, or if it changed
+	if updatedVendor.CACNumber.Valid && updatedVendor.CACNumber.String != "" {
+		updatedVendor.IsBusinessVerified = sql.NullBool{Bool: true, Valid: true}
 	}
-	
-	// Security: Verify CAC number if being updated
-	if c, ok := updates["cac_number"]; ok {
-		if snap, snapOk := updates["verifiedCacNumber"]; !snapOk || c != snap {
-			return errors.New("business verification mismatch")
-		}
-		updates["is_business_verified"] = true
-	}
-	
-	// Recalculate PVS score if needed
-	if s.needsPVSRecalculation(updates) {
-		tempVendor := currentVendor
-		s.applyUpdatesToVendor(&tempVendor, updates)
-		newScore := models.CalculatePVS(&tempVendor)
-		updates["pvs_score"] = newScore
-	}
-	
-	return s.vendorRepo.UpdateFields(ctx, parsedID, updates)
+
+	// 3. Recalculate PVS Score
+	// Since we have the full struct, we just calculate it directly
+	updatedVendor.PVSScore = models.CalculatePVS(updatedVendor)
+
+	// 4. Persistence: Pass the struct to the repo
+	return s.vendorRepo.Update(ctx, updatedVendor)
 }
 
 func (s *VendorServiceImpl) UpdateVerificationStatus(ctx context.Context, vendorID string, field string, isVerified bool, reason string) error {

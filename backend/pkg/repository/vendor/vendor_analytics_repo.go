@@ -9,10 +9,12 @@ import (
 	"github.com/google/uuid"
 )
 
+
 // VendorCoreMetricsRepository handles fetching pre-calculated metrics.
 type VendorCoreMetricsRepository interface {
 	GetVendorTrustScore(ctx context.Context, vendorID uuid.UUID) (*models.VendorTrustScore, error)
 	GetVendorBasicInfo(ctx context.Context, vendorID uuid.UUID) (*models.VendorBasicInfo, error)
+	GetVendorTier(ctx context.Context, vendorID uuid.UUID) (models.SubscriptionTier, error) // ← ADD THIS
 }
 
 // VendorMetricsRepository handles aggregated analytics.

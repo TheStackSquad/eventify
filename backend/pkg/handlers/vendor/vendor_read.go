@@ -5,6 +5,8 @@ package handlers
 
 import (
 	"net/http"
+	"context"
+	"time"  
 
 	"github.com/gin-gonic/gin"
 	"github.com/eventify/backend/pkg/models"
@@ -66,4 +68,53 @@ func (h *VendorHandler) GetVendorProfile(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, vendor)
+}
+
+// TrackProfileView middleware records vendor profile views
+func (h *VendorHandler) TrackProfileView(c *gin.Context) {
+	vendorID := c.Param("id")
+	
+	parsedID, err := uuid.Parse(vendorID)
+	if err != nil {
+		c.Next() // Continue to handler even if tracking fails
+		return
+	}
+	
+	// Extract viewer info
+	var viewerID *uuid.UUID
+	if uid, exists := c.Get("user_id"); exists {
+		if parsed, ok := uid.(uuid.UUID); ok {
+			viewerID = &parsed
+		}
+	}
+	
+	// Generate session ID from client fingerprint
+	sessionID := c.GetHeader("X-Session-ID")
+	if sessionID == "" {
+		// Fallback: IP + Date-based session
+		sessionID = c.ClientIP() + "-" + time.Now().Format("20060102")
+	}
+	
+	// Track asynchronously to not block response
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		
+		recorded, err := h.StatsRepo.RecordProfileView(
+			ctx,
+			parsedID,
+			viewerID,
+			c.ClientIP(),
+			sessionID,
+			c.Request.UserAgent(),
+		)
+		
+		if err != nil {
+			log.Warn().Err(err).Str("vendor_id", vendorID).Msg("Profile view tracking failed")
+		} else if recorded {
+			log.Debug().Str("vendor_id", vendorID).Msg("Profile view recorded")
+		}
+	}()
+	
+	c.Next()
 }

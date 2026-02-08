@@ -12,12 +12,10 @@ import (
 	handlerinquiries "github.com/eventify/backend/pkg/handlers/inquiries"
 	handlerorder "github.com/eventify/backend/pkg/handlers/order"
 	handlerreview "github.com/eventify/backend/pkg/handlers/review"
-	handlervendor "github.com/eventify/backend/pkg/handlers/vendor"
 	handlersubscription "github.com/eventify/backend/pkg/handlers/subscription"
-	
+	handlervendor "github.com/eventify/backend/pkg/handlers/vendor"
 
 	"github.com/eventify/backend/pkg/services/auth"
-
 	repoauth "github.com/eventify/backend/pkg/repository/auth"
 	servicejwt "github.com/eventify/backend/pkg/services/jwt"
 
@@ -44,10 +42,10 @@ func ConfigureRouter(
 	authRepo repoauth.AuthRepository,
 	analyticsHandler *handleranalytics.AnalyticsHandler,
 	vendorAnalyticsHandler *handlervendor.VendorAnalyticsHandler,
+	vendorLeaderboardHandler *handlervendor.VendorLeaderboardHandler,
 	jwtService *servicejwt.JWTService,
 	authService auth.AuthService,
 ) *gin.Engine {
-
 	utils.LogInfo(serviceName, "configure", "Initializing router configuration")
 
 	router := gin.New()
@@ -111,7 +109,11 @@ func ConfigureRouter(
 	vendorPublic := router.Group("/api/v1/vendors")
 	{
 		vendorPublic.GET("", vendorHandler.ListVendors)
-		vendorPublic.GET("/:id", vendorHandler.GetVendorProfile)
+		vendorPublic.GET("/:id", 
+    vendorHandler.TrackProfileView,
+    vendorHandler.GetVendorProfile,
+	
+)
 	}
 
 	vendorProtected := router.Group("/api/v1/vendors")
@@ -126,6 +128,20 @@ func ConfigureRouter(
 	{
 		vendorAnalytics.GET("/overview", vendorAnalyticsHandler.GetVendorAnalytics)
 	}
+
+// Leaderboard routes (public)
+leaderboard := router.Group("/api/v1/leaderboard")
+{
+    // 1. Aggregator/Bulk routes (Used by the Landing Page)
+    leaderboard.GET("/top-by-categories", vendorLeaderboardHandler.GetTopByCategories)
+    leaderboard.GET("/top-by-locations", vendorLeaderboardHandler.GetTopByLocations)
+
+    // 2. Specific ranking routes
+    leaderboard.GET("/vendor-of-month", vendorLeaderboardHandler.GetVendorOfTheMonth)
+    leaderboard.GET("/category/:category", vendorLeaderboardHandler.GetTopVendorsByCategory)
+    leaderboard.GET("/location/:state", vendorLeaderboardHandler.GetTopVendorsByLocation)
+}
+
 
 	RegisterReviewRoutes(router, reviewHandler, jwtService)
 	RegisterInquiryRoutes(router, inquiryHandler, jwtService)
@@ -142,7 +158,7 @@ func ConfigureRouter(
 			eventHandler.ToggleLike,
 		)
 	}
-//router.PUT("/api/events/:eventId", eventHandler.UpdateEvent)
+
 	protectedEvents := router.Group("/api/events")
 	protectedEvents.Use(middleware.AuthMiddleware(authService))
 	{
@@ -154,55 +170,45 @@ func ConfigureRouter(
 		protectedEvents.GET("/:eventId/analytics", analyticsHandler.FetchEventAnalytics)
 	}
 
-	// --- TICKET GATE ROUTES ---
-    // Protected routes for event staff/organizers to check in attendees
-    gateRoutes := router.Group("/api/v1/gate")
-    gateRoutes.Use(middleware.AuthMiddleware(authService), middleware.RateLimit(utils.WriteLimiter))
-    {
-        // POST /api/v1/gate/check-in
-        // Body: { "code": "REF-001-SIGNATURE" }
-        gateRoutes.POST("/check-in", eventHandler.CheckIn) 
-    }
-// Protected subscription routes - vendor initiates subscription and checks status
-protectedSubscription := router.Group("/api/v1/subscription")
-protectedSubscription.Use(middleware.AuthMiddleware(authService))
-{
-	protectedSubscription.POST("/initiate", middleware.RateLimit(utils.WriteLimiter), subscriptionHandler.InitiateSubscription)
-	protectedSubscription.GET("/me", subscriptionHandler.GetMySubscription)
-}
+	gateRoutes := router.Group("/api/v1/gate") // Ticket gate routes
+	gateRoutes.Use(middleware.AuthMiddleware(authService), middleware.RateLimit(utils.WriteLimiter))
+	{
+		gateRoutes.POST("/check-in", eventHandler.CheckIn) // Check-in attendees
+	}
 
-// Public webhook route - Paystack hits this after payment (no auth required)
-router.POST("/subscription/webhook", subscriptionHandler.HandleWebhook)
+	protectedSubscription := router.Group("/api/v1/subscription")
+	protectedSubscription.Use(middleware.AuthMiddleware(authService))
+	{
+		protectedSubscription.POST("/initiate", middleware.RateLimit(utils.WriteLimiter), subscriptionHandler.InitiateSubscription)
+		protectedSubscription.GET("/me", subscriptionHandler.GetMySubscription)
+		protectedSubscription.GET("/verify/:reference", subscriptionHandler.VerifySubscription) 
+	}
 
-
-
-setupAdminRoutes(router, authHandler, eventHandler, vendorHandler, reviewHandler, inquiryHandler, feedbackHandler, authRepo, authService)
+	setupAdminRoutes(router, authHandler, eventHandler, vendorHandler, reviewHandler, inquiryHandler, feedbackHandler, authRepo, authService)
 	utils.LogSuccess(serviceName, "configure", "Router configuration completed")
 	printRegisteredRoutes(router)
-	
+
 	return router
 }
 
 func setupAdminRoutes(
-    r *gin.Engine,
-    ah *handlerauth.AuthHandler,
-    eh *handlerevent.EventHandler,
-    vh *handlervendor.VendorHandler,
-    rh *handlerreview.ReviewHandler,
-    ih *handlerinquiries.InquiryHandler,
-    fh *handlerfeedback.FeedbackHandler,
-    repo repoauth.AuthRepository,
-    // Change this line:
-    authService auth.AuthService, 
+	r *gin.Engine,
+	ah *handlerauth.AuthHandler,
+	eh *handlerevent.EventHandler,
+	vh *handlervendor.VendorHandler,
+	rh *handlerreview.ReviewHandler,
+	ih *handlerinquiries.InquiryHandler,
+	fh *handlerfeedback.FeedbackHandler,
+	repo repoauth.AuthRepository,
+	authService auth.AuthService,
 ) {
-    admin := r.Group("/api/v1/admin")
-    // Now this line will work:
-    admin.Use(middleware.AuthMiddleware(authService), middleware.AdminMiddleware(repo))
-    {
-        admin.PUT("/vendors/:id/verify/identity", vh.ToggleIdentityVerification)
-        admin.GET("/feedback", fh.GetAllFeedback)
-        admin.DELETE("/feedback/:id", fh.DeleteFeedback)
-    }
+	admin := r.Group("/api/v1/admin")
+	admin.Use(middleware.AuthMiddleware(authService), middleware.AdminMiddleware(repo))
+	{
+		admin.PUT("/vendors/:id/verify/identity", vh.ToggleIdentityVerification)
+		admin.GET("/feedback", fh.GetAllFeedback)
+		admin.DELETE("/feedback/:id", fh.DeleteFeedback)
+	}
 }
 
 func RegisterReviewRoutes(r *gin.Engine, reviewHandler *handlerreview.ReviewHandler, jwtService *servicejwt.JWTService) {

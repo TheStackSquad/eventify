@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"errors"
 	"strings"
+    "database/sql"
 	"github.com/eventify/backend/pkg/models"
 	"github.com/eventify/backend/pkg/repository/review"
 	 servicereview "github.com/eventify/backend/pkg/services/review"
@@ -26,76 +27,89 @@ func NewReviewHandler(reviewService servicereview.ReviewService) *ReviewHandler 
 }
 
 func (h *ReviewHandler) CreateReview(c *gin.Context) {
-    idParam := c.Param("id")
-    vendorID, err := uuid.Parse(idParam)
-    if err != nil {
-        c.JSON(http.StatusBadRequest, gin.H{"message": "Invalid vendor ID format."})
-        return
-    }
+	idParam := c.Param("id")
+	vendorID, err := uuid.Parse(idParam)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"message": "Invalid vendor ID format."})
+		return
+	}
 
-    var reviewModel models.Review
-    if err := c.ShouldBindJSON(&reviewModel); err != nil {
-        log.Error().Err(err).Msg("Failed to bind review JSON payload")
-        c.JSON(http.StatusBadRequest, gin.H{"message": "Invalid request data."})
-        return
-    }
+	// 1. DTO to capture raw JSON strings (sql.NullString won't bind directly from strings)
+	type CreateReviewRequest struct {
+		UserName string `json:"userName" binding:"required"`
+		Email    string `json:"email" binding:"required,email"`
+		Rating   int32  `json:"rating" binding:"required,min=1,max=5"`
+		Comment  string `json:"comment" binding:"required"`
+	}
 
-    reviewModel.VendorID = vendorID
+	var req CreateReviewRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		log.Error().Err(err).Msg("Failed to bind review JSON payload")
+		c.JSON(http.StatusBadRequest, gin.H{"message": "Please provide all required fields correctly."})
+		return
+	}
 
-    // Set reviewer identity logic
-    if val, exists := c.Get("user_id"); exists {
-        if u, ok := val.(uuid.UUID); ok {
-            userIDCopy := u
-            reviewModel.UserID = &userIDCopy
-            reviewModel.IsVerified = true
-        }
-    }
+	// 2. Map DTO to the robust model (Fixes the Scan/NULL error)
+	reviewModel := models.Review{
+		ID:       uuid.New(),
+		VendorID: vendorID,
+		UserName: sql.NullString{String: req.UserName, Valid: req.UserName != ""},
+		Email:    sql.NullString{String: req.Email, Valid: req.Email != ""},
+		Rating:   req.Rating,
+		Comment:  req.Comment,
+	}
 
-    // Guest user handling
-    if reviewModel.UserID == nil {
-        if gIDVal, exists := c.Get("guest_id"); exists {
-            if gID, ok := gIDVal.(string); ok {
-                reviewModel.IPAddress = models.ToNullString(gID)
-            }
-        } else {
-            reviewModel.IPAddress = models.ToNullString(c.ClientIP())
-        }
-        reviewModel.IsVerified = false
-    }
+	// 3. Set reviewer identity logic from Auth Middleware
+	if val, exists := c.Get("user_id"); exists {
+		if u, ok := val.(uuid.UUID); ok {
+			userIDCopy := u
+			reviewModel.UserID = &userIDCopy
+			reviewModel.IsVerified = true
+		}
+	}
 
-    log.Info().
-        Str("vendor_id", vendorID.String()).
-        Str("email", reviewModel.Email).
-        Bool("is_verified", reviewModel.IsVerified).
-        Msg("Creating review")
+	// 4. Guest user handling (Identity by IP/GuestID)
+	if reviewModel.UserID == nil {
+		if gIDVal, exists := c.Get("guest_id"); exists {
+			if gID, ok := gIDVal.(string); ok {
+				reviewModel.IPAddress = models.ToNullString(gID)
+			}
+		} else {
+			reviewModel.IPAddress = models.ToNullString(c.ClientIP())
+		}
+		reviewModel.IsVerified = false
+	}
 
-    // 🚀 EXECUTE the service call and capture the error
-    err = h.reviewService.CreateReview(c.Request.Context(), &reviewModel)
+	log.Info().
+		Str("vendor_id", vendorID.String()).
+		Str("email", reviewModel.Email.String). // Fixed: Access .String property
+		Bool("is_verified", reviewModel.IsVerified).
+		Msg("Creating review")
 
-    if err != nil {
-        // 🛠️ THE FIX: Improved Error Handling using the captured 'err'
-        // We check for the specific Duplicate Error OR the SQL State code
-        if errors.Is(err, review.ErrDuplicateReview) || 
-           strings.Contains(err.Error(), "23505") || 
-           strings.Contains(err.Error(), "idx_reviews_one_per_user_vendor") {
-            
-            c.JSON(http.StatusConflict, gin.H{
-                "message": "You've already reviewed this vendor",
-                "errorCode": "REVIEW_DUPLICATE",
-            })
-            return
-        }
+	// 5. Execute Service Call
+	err = h.reviewService.CreateReview(c.Request.Context(), &reviewModel)
 
-        // 2. Fallback for other unexpected errors (500)
-        log.Error().Err(err).Msg("Review creation failed")
-        c.JSON(http.StatusInternalServerError, gin.H{
-            "message": "An unexpected error occurred while saving your review.",
-        })
-        return
-    }
+	if err != nil {
+		// Handle Duplicate Constraint Violations
+		if errors.Is(err, review.ErrDuplicateReview) || 
+		   strings.Contains(err.Error(), "23505") || 
+		   strings.Contains(err.Error(), "idx_reviews_one_per_user_vendor") {
+			
+			c.JSON(http.StatusConflict, gin.H{
+				"message": "You've already reviewed this vendor",
+				"errorCode": "REVIEW_DUPLICATE",
+			})
+			return
+		}
 
-    // 3. Success Response
-    c.JSON(http.StatusCreated, gin.H{"message": "Review submitted successfully!"})
+		log.Error().Err(err).Msg("Review creation failed")
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"message": "An unexpected error occurred while saving your review.",
+		})
+		return
+	}
+
+	c.JSON(http.StatusCreated, gin.H{"message": "Review submitted successfully!"})
 }
 
 func (h *ReviewHandler) GetVendorReviews(c *gin.Context) {

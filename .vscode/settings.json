@@ -1,3 +1,24 @@
 {
-    "thunder-client.httpLibrary": "axios"
+  "thunder-client.httpLibrary": "axios",
+
+  "go.useLanguageServer": true,
+  "go.toolsManagement.autoUpdate": true,
+
+  "gopls": {
+    "ui.semanticTokens": true,
+    "build.directoryFilters": ["-node_modules", "-vendor"]
+  },
+
+  "[go]": {
+    "editor.formatOnSave": true,
+    "editor.defaultFormatter": "golang.go",
+    "editor.codeActionsOnSave": {
+      "source.organizeImports": "explicit"
+    }
+  },
+
+  "[go.mod]": {
+    "editor.formatOnSave": true,
+    "editor.defaultFormatter": "golang.go"
+  }
 }

@@ -1,112 +1,69 @@
-// frontend/src/components/common/loading/loadingSpinner.jsx (Fixed & Simplified)
+// frontend/src/components/common/loading/loadingSpinner.js
+
 import React from "react";
 
 const LoadingSpinner = ({
-  message = "Loading...",
-  subMessage = "Please wait...",
+  message = "Loading events...",
+  subMessage = "Please wait while we fetch the latest updates",
   size = "md",
-  color = "white", // Default to white for better visibility on blur
+  color = "white",
   className = "",
   showText = true,
 }) => {
-  // Size configurations - simpler approach
   const sizeClasses = {
-    sm: {
-      spinner: "w-12 h-12 border-3",
-      text: "text-sm",
-      subText: "text-xs",
-    },
-    md: {
-      spinner: "w-16 h-16 border-3",
-      text: "text-base",
-      subText: "text-sm",
-    },
-    lg: {
-      spinner: "w-20 h-20 border-4",
-      text: "text-lg",
-      subText: "text-base",
-    },
-    xl: {
-      spinner: "w-24 h-24 border-4",
-      text: "text-xl",
-      subText: "text-lg",
-    },
+    sm: { spinner: "w-8 h-8 border-2", text: "text-sm" },
+    md: { spinner: "w-12 h-12 border-4", text: "text-base" },
+    lg: { spinner: "w-16 h-16 border-4", text: "text-lg" },
+    xl: { spinner: "w-20 h-20 border-8", text: "text-xl" },
   };
 
-  // Color configurations optimized for blur backgrounds
   const colorClasses = {
     white: {
-      bg: "border-white/20",
-      spinner: "border-t-white",
+      border: "border-white/20",
+      top: "border-t-white",
       text: "text-white",
-      subtext: "text-white/80",
-    },
-    indigo: {
-      bg: "border-indigo-500/20",
-      spinner: "border-t-indigo-400",
-      text: "text-indigo-100",
-      subtext: "text-indigo-200",
     },
     blue: {
-      bg: "border-blue-500/20",
-      spinner: "border-t-blue-400",
-      text: "text-blue-100",
-      subtext: "text-blue-200",
+      border: "border-blue-500/20",
+      top: "border-t-blue-500",
+      text: "text-blue-500",
     },
-    green: {
-      bg: "border-green-500/20",
-      spinner: "border-t-green-400",
-      text: "text-green-100",
-      subtext: "text-green-200",
-    },
-    purple: {
-      bg: "border-purple-500/20",
-      spinner: "border-t-purple-400",
-      text: "text-purple-100",
-      subtext: "text-purple-200",
-    },
-    gray: {
-      bg: "border-gray-500/20",
-      spinner: "border-t-gray-300",
-      text: "text-gray-200",
-      subtext: "text-gray-300",
-    },
+    // ... add others as needed
   };
 
-  const {
-    spinner: spinnerSize,
-    text: textSize,
-    subText: subTextSize,
-  } = sizeClasses[size] || sizeClasses.md;
-
-  const {
-    bg,
-    spinner: spinnerColor,
-    text: textColor,
-    subtext: subtextColor,
-  } = colorClasses[color] || colorClasses.white;
+  const selectedSize = sizeClasses[size] || sizeClasses.md;
+  const selectedColor = colorClasses[color] || colorClasses.white;
 
   return (
-    <div className={`text-center ${className}`}>
-      {/* Animated Spinner - NO background container */}
-      <div className={`relative ${spinnerSize} mx-auto mb-4`}>
-        {/* Background circle - transparent for blur bg */}
-        <div className={`absolute inset-0 rounded-full ${bg}`}></div>
-        {/* Animated spinner */}
+    /* This wrapper ensures it's centered in the middle of the screen */
+    <div
+      className={`fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/50 backdrop-blur-sm ${className}`}
+    >
+      <div className="relative flex flex-col items-center">
+        {/* The Actual Spinner */}
         <div
-          className={`absolute inset-0 rounded-full ${spinnerColor} animate-spin`}
+          className={`
+            ${selectedSize.spinner} 
+            ${selectedColor.border} 
+            ${selectedColor.top} 
+            rounded-full animate-spin mb-4
+          `}
         ></div>
-      </div>
 
-      {/* Loading Text */}
-      {showText && (
-        <>
-          <h2 className={`font-bold ${textColor} mb-2 ${textSize}`}>
-            {message}
-          </h2>
-          <p className={`${subtextColor} ${subTextSize}`}>{subMessage}</p>
-        </>
-      )}
+        {/* Loading Text */}
+        {showText && (
+          <div className="text-center">
+            <h2
+              className={`font-semibold ${selectedColor.text} ${selectedSize.text}`}
+            >
+              {message}
+            </h2>
+            {subMessage && (
+              <p className="text-gray-400 text-sm mt-1">{subMessage}</p>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 };

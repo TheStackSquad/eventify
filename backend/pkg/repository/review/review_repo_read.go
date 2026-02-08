@@ -12,7 +12,17 @@ import (
 
 func (r *PostgresReviewRepository) GetByVendorID(ctx context.Context, id uuid.UUID) ([]models.Review, error) {
 	var reviews []models.Review
-	err := r.DB.SelectContext(ctx, &reviews, "SELECT * FROM reviews WHERE vendor_id = $1 ORDER BY created_at DESC", id)
+	// Explicitly select columns and COALESCE strings to avoid any NULL during scan
+	query := `
+		SELECT id, vendor_id, user_id, rating, comment, 
+		       COALESCE(user_name, 'Annonymos') as user_name, 
+		       COALESCE(email, '') as email, 
+		       ip_address, is_verified, trust_weight, created_at, updated_at 
+		FROM reviews 
+		WHERE vendor_id = $1 
+		ORDER BY created_at DESC`
+	
+	err := r.DB.SelectContext(ctx, &reviews, query, id)
 	return reviews, err
 }
 

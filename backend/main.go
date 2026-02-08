@@ -145,6 +145,7 @@ func main() {
 	// STEP 5: REPOSITORY INITIALIZATION
 	// ============================================================================
 	vendorRepo := repovendor.NewPostgresVendorRepository(dbClient)
+	vendorStatsRepo := repovendor.NewPostgresVendorStatsRepo(dbClient)
 	authRepo := repoauth.NewPostgresAuthRepository(dbClient)
 	refreshTokenRepo := repoauth.NewPostgresRefreshTokenRepository(dbClient)
 	likeRepo := repolike.NewPostgresLikeRepository(dbClient)
@@ -158,6 +159,7 @@ func main() {
 	vendorCoreMetricsRepo := repovendor.NewVendorCoreMetricsRepository(dbClient)
 	vendorMetricsRepo := repovendor.NewVendorMetricsRepository(dbClient)
 	vendorDataRepo := repovendor.NewVendorDataRepository(dbClient)
+	vendorLeaderboardRepo := repovendor.NewVendorLeaderboardRepo(dbClient)
 	subscriptionRepo := reposubscription.NewSubscriptionRepository(dbClient)
 
 	utils.LogSuccess(serviceName, "repositories", "All repositories initialized")
@@ -183,6 +185,7 @@ authService := serviceauth.NewAuthService(
 		vendorMetricsRepo,
 		vendorDataRepo,
 	)
+	vendorLeaderboardService := servicevendor.NewVendorLeaderboardService(vendorLeaderboardRepo)
 
 paystackClient := servicepaystack.NewClient(
     os.Getenv("PAYSTACK_SECRET_KEY"),
@@ -199,6 +202,7 @@ paystackClient := servicepaystack.NewClient(
 		subscriptionService := servicesubscription.NewSubscriptionService(
 		vendorRepo,
 		subscriptionRepo,
+		authRepo,
 		paystackClient,
 		os.Getenv("PAYSTACK_SECRET_KEY"),
 	)
@@ -209,8 +213,9 @@ paystackClient := servicepaystack.NewClient(
 	// STEP 7: HANDLER INITIALIZATION
 	// ============================================================================
 	authHandler := handlerauth.NewAuthHandler(authService)
+	vendorLeaderboardHandler := handlervendor.NewVendorLeaderboardHandler(vendorLeaderboardService)
 	eventHandler := handlerevent.NewEventHandler(eventService, likeService)
-	vendorHandler := handlervendor.NewVendorHandler(vendorService)
+	vendorHandler := handlervendor.NewVendorHandler(vendorService, vendorStatsRepo)
 	reviewHandler := handlerreview.NewReviewHandler(reviewService)
 	inquiryHandler := handlerinquiries.NewInquiryHandler(inquiryService)
 	feedbackHandler := handlerfeedback.NewFeedbackHandler(feedbackService)
@@ -226,23 +231,24 @@ paystackClient := servicepaystack.NewClient(
 // ============================================================================
 startTokenCleanup(refreshTokenRepo, authRepo) 
 go orderService.StartStockReleaseWorker(context.Background(), 1*time.Minute, 15*time.Minute)
-
+go subscriptionService.StartExpiryWorker(context.Background(), 1*time.Hour)
+go servicevendor.StartLeaderboardRefreshWorker(context.Background(), dbClient, 1*time.Hour)
 	// STEP 9: ROUTER CONFIGURATION
-
-	router := routes.ConfigureRouter(
-		authHandler,            // 1
-		eventHandler,           // 2
-		vendorHandler,          // 3
-		reviewHandler,          // 4
-		inquiryHandler,         // 5
-		feedbackHandler,        // 6
-		orderHandler,           // 7
-		subscriptionHandler,    // 8 (Moved up from the bottom)
-		authRepo,               // 9 
-		analyticsHandler,       // 10
-		vendorAnalyticsHandler, // 11
-		jwtService,             // 12
-		authService,            // 13
+router := routes.ConfigureRouter(
+		authHandler,              // 1
+		eventHandler,             // 2
+		vendorHandler,            // 3
+		reviewHandler,            // 4
+		inquiryHandler,           // 5
+		feedbackHandler,          // 6
+		orderHandler,             // 7
+		subscriptionHandler,      // 8
+		authRepo,                 // 9 
+		analyticsHandler,         // 10
+		vendorAnalyticsHandler,   // 11
+		vendorLeaderboardHandler, // 12
+		jwtService,               // 13
+		authService,              // 14
 	)
 
 	utils.LogSuccess(serviceName, "router", "Router configured with all endpoints")

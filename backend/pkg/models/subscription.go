@@ -22,6 +22,28 @@ const (
 	TierFeatured SubscriptionTier = "featured"
 )
 
+// allowedTransitions defines valid status changes to prevent invalid state transitions
+var allowedTransitions = map[SubscriptionStatus][]SubscriptionStatus{
+	SubStatusPending:   {SubStatusActive, SubStatusCancelled},
+	SubStatusActive:    {SubStatusExpired, SubStatusCancelled},
+	SubStatusExpired:   {SubStatusActive},
+	SubStatusCancelled: {},
+}
+
+// CanTransitionTo validates if a subscription can move to the target status
+func (s *Subscription) CanTransitionTo(newStatus SubscriptionStatus) bool {
+	allowed, exists := allowedTransitions[s.Status]
+	if !exists {
+		return false
+	}
+	for _, a := range allowed {
+		if a == newStatus {
+			return true
+		}
+	}
+	return false
+}
+
 type SubscriptionStatus string
 
 const (
@@ -30,6 +52,24 @@ const (
 	SubStatusCancelled SubscriptionStatus = "cancelled" 
 	SubStatusPending   SubscriptionStatus = "pending"
 )
+
+// InitiateSubRequest is the payload from frontend to start a subscription
+type InitiateSubRequest struct {
+	Tier   SubscriptionTier `json:"tier" binding:"required"`
+	Email  string           `json:"email"`
+	AutoRenew bool          `json:"autoRenew"`
+}
+
+// PaystackResponse represents the response from Paystack's initialize endpoint
+type PaystackResponse struct {
+	Status  bool   `json:"status"`
+	Message string `json:"message"`
+	Data    struct {
+		AuthorizationURL string `json:"authorization_url"`
+		AccessCode       string `json:"access_code"`
+		Reference        string `json:"reference"`
+	} `json:"data"`
+}
 
 // ---------------------------------------------------------------------------
 // Tier ordinal ranking — lets us do simple tier comparisons
@@ -137,21 +177,24 @@ func GetPricing(tier SubscriptionTier) TierPricing {
 // ---------------------------------------------------------------------------
 
 type Subscription struct {
-	ID               uuid.UUID          `json:"id" db:"id"`
-	VendorID         uuid.UUID          `json:"vendorId" db:"vendor_id"`
-	Tier             SubscriptionTier   `json:"tier" db:"tier"`
-	Status           SubscriptionStatus `json:"status" db:"status"`
-	StartsAt         time.Time          `json:"startsAt" db:"starts_at"`
-	ExpiresAt        sql.NullTime       `json:"expiresAt" db:"expires_at"`
-	AutoRenew        bool               `json:"autoRenew" db:"auto_renew"`
-	Price            int64              `json:"price" db:"price"`
-	Currency         string             `json:"currency" db:"currency"`
-	PaymentReference sql.NullString     `json:"paymentReference" db:"payment_reference"`
-	PaymentMethod    sql.NullString     `json:"paymentMethod" db:"payment_method"`
-	LastPaymentDate  sql.NullTime       `json:"lastPaymentDate" db:"last_payment_date"`
-	NextPaymentDate  sql.NullTime       `json:"nextPaymentDate" db:"next_payment_date"`
-	CreatedAt        time.Time          `json:"createdAt" db:"created_at"`
-	UpdatedAt        time.Time          `json:"updatedAt" db:"updated_at"`
+    ID                uuid.UUID          `json:"id" db:"id"`
+    VendorID          uuid.UUID          `json:"vendorId" db:"vendor_id"`
+    Tier              SubscriptionTier   `json:"tier" db:"tier"`
+    Status            SubscriptionStatus `json:"status" db:"status"`
+    StartsAt          time.Time          `json:"startsAt" db:"starts_at"`
+    ExpiresAt         sql.NullTime       `json:"expiresAt" db:"expires_at"`
+    AutoRenew         bool               `json:"autoRenew" db:"auto_renew"`
+    Price             int64              `json:"price" db:"price"`
+    Currency          string             `json:"currency" db:"currency"`
+    PaymentReference  sql.NullString     `json:"paymentReference" db:"payment_reference"`
+    PaymentMethod     sql.NullString     `json:"paymentMethod" db:"payment_method"`
+    LastPaymentDate   sql.NullTime       `json:"lastPaymentDate" db:"last_payment_date"`
+    NextPaymentDate   sql.NullTime       `json:"nextPaymentDate" db:"next_payment_date"`
+
+    WebhookAttempts   int                `json:"webhookAttempts" db:"webhook_attempts"`
+    
+    CreatedAt         time.Time          `json:"createdAt" db:"created_at"`
+    UpdatedAt         time.Time          `json:"updatedAt" db:"updated_at"`
 }
 
 func (s Subscription) MarshalJSON() ([]byte, error) {

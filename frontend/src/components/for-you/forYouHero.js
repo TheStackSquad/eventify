@@ -1,4 +1,4 @@
-// frontend/src/components/for-you/ForYouHero.jsx
+// frontend/src/components/for-you/ForYouHero.js
 "use client";
 
 import {
