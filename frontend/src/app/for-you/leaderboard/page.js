@@ -246,7 +246,7 @@ export default async function LeaderboardPage() {
             leaderboard.
           </p>
           <Link
-            href="/vendor/dashboard/subscription"
+            href="/subscription"
             className="inline-flex items-center gap-2 px-8 py-4 bg-white text-orange-600 font-bold rounded-xl hover:bg-gray-100 transition-all shadow-lg hover:shadow-xl transform hover:-translate-y-1"
           >
             <TrendingUp className="w-5 h-5" />

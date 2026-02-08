@@ -4,7 +4,7 @@ import { MapPin, Star, Wallet } from "lucide-react";
 import { formatNumber } from "@/utils/currency";
 
 const KeyMetricsSection = ({ vendor }) => {
-  // console.log('vendor:', vendor);
+   console.log('vendor HERE:', vendor);
   
   const minPrice = vendor.initialData?.minPrice?.Valid
     ? vendor.initialData.minPrice.Int32
@@ -52,9 +52,9 @@ const KeyMetricsSection = ({ vendor }) => {
           </div>
           <span
             className="font-bold text-green-700 text-xl"
-            aria-label={`Starting price: ₦${formatNumber(minPrice)}`}
+            aria-label={`Starting price: ₦${formatNumber(vendor.initialData.minPrice)}`}
           >
-            {formatNumber(minPrice)}
+            ₦{formatNumber(vendor.initialData.minPrice)}
           </span>
         </li>
         <li
@@ -75,7 +75,7 @@ const KeyMetricsSection = ({ vendor }) => {
               {
                 month: "short",
                 year: "numeric",
-              }
+              },
             )}
           </span>
         </li>

@@ -25,6 +25,7 @@ const VendorProfileDetail = ({ vendor, onRequestQuote }) => {
   }
 
   const vendorData = getVendorData(vendor);
+  console.log('Show:', vendorData);
   const isMobile = isMobileDevice();
 
   const handleCallNow = () => {
@@ -47,7 +48,7 @@ const VendorProfileDetail = ({ vendor, onRequestQuote }) => {
       
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 mb-8">
         <VerificationSection vendor={vendor} />
-        <KeyMetricsSection vendor={vendor} minPrice={vendorData.minPrice} />
+        <KeyMetricsSection vendor={vendor} minPrice={vendorData?.minPrice} />
       </div>
 
       <AboutSection vendor={vendor} />
