@@ -34,10 +34,7 @@ export default function SubscriptionPage() {
               onClick={() => openModal("premium")}
               className="px-8 py-4 bg-indigo-600 text-white rounded-xl font-bold shadow-lg hover:bg-indigo-700 transition-all hover:translate-y-[-2px]"
             >
-              Start Free Trial
-            </button>
-            <button className="px-8 py-4 bg-white text-gray-700 border border-gray-200 rounded-xl font-bold hover:bg-gray-50 transition-all">
-              View All Features
+              Choose Your Plan
             </button>
           </div>
         </div>

@@ -2,36 +2,36 @@
 
 // ========== SUBSCRIPTION TIERS ==========
 export const SUBSCRIPTION_TIERS = {
-  FREE: {
-    id: "free",
-    name: "Free",
-    price: 0,
-    priceKobo: 0,
-    priceDisplay: "₦0",
-    billingCycle: "forever",
-    recommended: false,
-    badge: { show: false, text: "", color: "gray", icon: "" },
-    tagline: "Get started with basic listing",
-    color: "gray",
-    // Grouped features to match component logic
-    features: {
-      visibility: [
-        { name: "Basic profile listing", included: true },
-        { name: "Lowest search priority", included: true },
-        { name: "Featured on For-You page", included: false },
-      ],
-      analytics: [
-        { name: "Profile view tracking", included: false },
-        { name: "Inquiry analytics", included: false },
-      ],
-      profile: [
-        { name: "Photo gallery (up to 3)", included: true },
-        { name: "Video showcase", included: false },
-      ],
-    },
-    benefits: ["Basic online presence", "Review collection"],
-    valueProp: { roi: "Limited", metric: "Basic Listing" },
-  },
+  // FREE: {
+  //   id: "free",
+  //   name: "Free",
+  //   price: 0,
+  //   priceKobo: 0,
+  //   priceDisplay: "₦0",
+  //   billingCycle: "forever",
+  //   recommended: false,
+  //   badge: { show: false, text: "", color: "gray", icon: "" },
+  //   tagline: "Get started with basic listing",
+  //   color: "gray",
+  //   // Grouped features to match component logic
+  //   features: {
+  //     visibility: [
+  //       { name: "Basic profile listing", included: true },
+  //       { name: "Lowest search priority", included: true },
+  //       { name: "Featured on For-You page", included: false },
+  //     ],
+  //     analytics: [
+  //       { name: "Profile view tracking", included: false },
+  //       { name: "Inquiry analytics", included: false },
+  //     ],
+  //     profile: [
+  //       { name: "Photo gallery (up to 3)", included: true },
+  //       { name: "Video showcase", included: false },
+  //     ],
+  //   },
+  //   benefits: ["Basic online presence", "Review collection"],
+  //   valueProp: { roi: "Limited", metric: "Basic Listing" },
+  // },
 
   BASIC: {
     id: "basic",
