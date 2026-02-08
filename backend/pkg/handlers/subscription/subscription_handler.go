@@ -2,27 +2,23 @@
 package handlers
 
 import (
-	"fmt"
 	"io"
 	"net/http"
 	"strings"
 
+	"github.com/eventify/backend/pkg/middleware"
 	"github.com/eventify/backend/pkg/models"
 	repovendor "github.com/eventify/backend/pkg/repository/vendor"
-	 "github.com/eventify/backend/pkg/middleware"
 	servicesubscription "github.com/eventify/backend/pkg/services/subscription"
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 	"github.com/rs/zerolog/log"
 )
 
-// SubscriptionHandler handles HTTP requests for subscription operations.
 type SubscriptionHandler struct {
 	Service    servicesubscription.SubscriptionService
-	VendorRepo repovendor.VendorRepository // for GetMySubscription reads
+	VendorRepo repovendor.VendorRepository
 }
 
-// NewSubscriptionHandler constructs the handler.
 func NewSubscriptionHandler(
 	service servicesubscription.SubscriptionService,
 	vendorRepo repovendor.VendorRepository,
@@ -33,109 +29,125 @@ func NewSubscriptionHandler(
 	}
 }
 
-// ---------------------------------------------------------------------------
 // InitiateSubscription — POST /api/subscription/initiate
-// Auth-only. Validates the tier, creates a pending subscription, and returns
-// the Paystack authorization URL for the client to redirect to.
-// ---------------------------------------------------------------------------
-
 func (h *SubscriptionHandler) InitiateSubscription(c *gin.Context) {
-	// 1. Extract vendor ID from auth context
 	vendorID, err := middleware.ExtractVendorID(c, h.VendorRepo)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"status": "error", "message": err.Error()})
+		log.Error().Err(err).Str("endpoint", "InitiateSubscription").Msg("Failed to extract vendor ID")
+		c.JSON(http.StatusUnauthorized, gin.H{"status": "error", "message": "Unauthorized"})
 		return
 	}
 
-	// 2. Bind request body
-	var req servicesubscription.InitiateRequest
+	var req models.InitiateSubRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"status": "error", "message": "Invalid request: " + err.Error()})
+		log.Warn().Err(err).Str("vendorID", vendorID.String()).Msg("Invalid request body")
+		c.JSON(http.StatusBadRequest, gin.H{"status": "error", "message": "Invalid request body"})
 		return
 	}
 
-	// 3. Call service
-	resp, err := h.Service.InitiateSubscription(c.Request.Context(), vendorID, &req)
+	log.Info().
+		Str("vendorID", vendorID.String()).
+		Str("tier", string(req.Tier)).
+		Bool("autoRenew", req.AutoRenew).
+		Msg("Subscription initiation requested")
+
+	resp, err := h.Service.InitiateSubscription(c.Request.Context(), vendorID, req)
 	if err != nil {
-		log.Error().Err(err).Str("vendorID", vendorID.String()).Str("tier", string(req.Tier)).Msg("Subscription initiation failed")
-
-		// Surface known validation errors as 400/409, everything else as 500
-		msg := err.Error()
-		switch {
-		case msg == "cannot subscribe to the free tier",
-			strings.HasPrefix(msg, "invalid subscription tier"):
-			c.JSON(http.StatusBadRequest, gin.H{"status": "error", "message": msg})
-		case strings.Contains(msg, "already has an active"):
-			c.JSON(http.StatusConflict, gin.H{"status": "error", "message": msg})
-		case strings.Contains(msg, "no email on file"):
-			c.JSON(http.StatusBadRequest, gin.H{"status": "error", "message": msg})
-		default:
-			c.JSON(http.StatusInternalServerError, gin.H{"status": "error", "message": "Failed to initiate subscription"})
-		}
+		handleServiceError(c, err, vendorID.String())
 		return
 	}
 
-	c.JSON(http.StatusCreated, gin.H{
-		"status": "success",
-		"data":   resp,
-	})
+	log.Info().
+		Str("vendorID", vendorID.String()).
+		Str("tier", string(req.Tier)).
+		Str("subscriptionID", resp.SubscriptionID.String()).
+		Msg("Subscription initiated successfully")
+
+	c.JSON(http.StatusCreated, gin.H{"status": "success", "data": resp})
 }
 
-// ---------------------------------------------------------------------------
-// HandleWebhook — POST /subscription/webhook
-// Public route — no auth. Paystack POSTs here after payment.
-// Signature verification happens inside the service before any payload is parsed.
-// We read the raw body here and pass it to the service so the signature check
-// runs against the exact bytes Paystack sent (not a re-serialised struct).
-// ---------------------------------------------------------------------------
+// VerifySubscription — GET /api/subscription/verify/:reference
+func (h *SubscriptionHandler) VerifySubscription(c *gin.Context) {
+	reference := c.Param("reference")
+	if reference == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Transaction reference is required"})
+		return
+	}
 
+	vendorID, err := middleware.ExtractVendorID(c, h.VendorRepo)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+		return
+	}
+
+	log.Info().
+		Str("vendorID", vendorID.String()).
+		Str("reference", reference).
+		Msg("Verifying subscription payment")
+
+	if err := h.Service.VerifyAndFinalize(c.Request.Context(), reference, vendorID); err != nil {
+		log.Error().Err(err).Str("reference", reference).Msg("Verification failed")
+		c.JSON(http.StatusInternalServerError, gin.H{"status": "error", "message": err.Error()})
+		return
+	}
+
+	log.Info().
+		Str("vendorID", vendorID.String()).
+		Str("reference", reference).
+		Msg("Subscription verified and activated")
+
+	c.JSON(http.StatusOK, gin.H{"status": "success", "message": "Subscription activated"})
+}
+
+// HandleWebhook — POST /subscription/webhook
 func (h *SubscriptionHandler) HandleWebhook(c *gin.Context) {
-	// 1. Read raw body — must happen before any binding or parsing
+	log.Info().
+		Str("method", c.Request.Method).
+		Str("path", c.Request.URL.Path).
+		Str("source_ip", c.ClientIP()).
+		Msg("Webhook received")
+
+	signature := c.GetHeader("X-Paystack-Signature")
+	if signature == "" {
+		log.Warn().Msg("Webhook rejected: missing signature")
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Missing signature"})
+		return
+	}
+
 	body, err := io.ReadAll(c.Request.Body)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to read webhook body")
-		c.JSON(http.StatusBadRequest, gin.H{"status": "error", "message": "Failed to read request body"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to read body"})
 		return
 	}
 
-	// 2. Pull the signature header Paystack attaches
-	signature := c.GetHeader("X-Paystack-Signature")
-
-	// 3. Hand everything to the service — it verifies, checks idempotency,
-	// confirms with Paystack, and activates the subscription if all checks pass.
-	err = h.Service.HandleWebhook(c.Request.Context(), body, signature)
-	if err != nil {
-		// Signature failures and parse errors are the only things we want to
-		// surface as non-200. Everything else (duplicate webhook, non-charge event)
-		// returns nil from the service and we respond 200 here.
+	if err := h.Service.HandleWebhook(c.Request.Context(), body, signature); err != nil {
+		status := http.StatusInternalServerError
 		if err.Error() == "invalid webhook signature" {
+			status = http.StatusUnauthorized
 			log.Warn().Msg("Webhook rejected: invalid signature")
-			c.JSON(http.StatusUnauthorized, gin.H{"status": "error", "message": "Invalid signature"})
-			return
+		} else {
+			log.Error().Err(err).Msg("Webhook processing failed")
 		}
-		log.Error().Err(err).Msg("Webhook processing failed")
-		c.JSON(http.StatusInternalServerError, gin.H{"status": "error", "message": "Webhook processing failed"})
+		c.JSON(status, gin.H{"error": err.Error()})
 		return
 	}
 
-	// Always return 200 to Paystack — if we don't, they retry.
-	c.JSON(http.StatusOK, gin.H{"status": "success"})
+	log.Info().Msg("Webhook processed successfully")
+	c.Status(http.StatusOK)
 }
 
-// ---------------------------------------------------------------------------
 // GetMySubscription — GET /api/subscription/me
-// Auth-only. Returns the vendor's current subscription and resolved features.
-// ---------------------------------------------------------------------------
-
 func (h *SubscriptionHandler) GetMySubscription(c *gin.Context) {
-	// 1. Extract vendor ID from auth context
-	vendorID, err := extractVendorID(c)
+	vendorID, err := middleware.ExtractVendorID(c, h.VendorRepo)
 	if err != nil {
+		log.Error().Err(err).Str("endpoint", "GetMySubscription").Msg("Failed to extract vendor ID")
 		c.JSON(http.StatusUnauthorized, gin.H{"status": "error", "message": err.Error()})
 		return
 	}
 
-	// 2. Fetch vendor + subscription in one joined query
+	log.Info().Str("vendorID", vendorID.String()).Msg("Fetching subscription")
+
 	vendorWithSub, err := h.VendorRepo.GetVendorSubscription(c.Request.Context(), vendorID)
 	if err != nil {
 		log.Error().Err(err).Str("vendorID", vendorID.String()).Msg("Failed to fetch subscription")
@@ -143,13 +155,18 @@ func (h *SubscriptionHandler) GetMySubscription(c *gin.Context) {
 		return
 	}
 
-	// 3. Build response — if no subscription exists, return Free tier with features
+	subscriptionFound := vendorWithSub.Subscription != nil
+	log.Debug().
+		Str("vendorID", vendorID.String()).
+		Bool("subscription_found", subscriptionFound).
+		Msg("Subscription lookup completed")
+
 	response := gin.H{
 		"tier":     models.TierFree,
 		"features": models.GetFeatures(models.TierFree),
 	}
 
-	if vendorWithSub.Subscription != nil {
+	if subscriptionFound {
 		response = gin.H{
 			"subscription": vendorWithSub.Subscription,
 			"tier":         vendorWithSub.Subscription.Tier,
@@ -157,28 +174,32 @@ func (h *SubscriptionHandler) GetMySubscription(c *gin.Context) {
 			"isFeatured":   vendorWithSub.IsFeatured,
 			"badgeColor":   vendorWithSub.BadgeColor,
 		}
+
+		log.Info().
+			Str("vendorID", vendorID.String()).
+			Str("tier", string(vendorWithSub.Subscription.Tier)).
+			Bool("is_featured", vendorWithSub.IsFeatured).
+			Msg("Active subscription found")
+	} else {
+		log.Info().Str("vendorID", vendorID.String()).Msg("No subscription - using free tier")
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"status": "success",
-		"data":   response,
-	})
+	c.JSON(http.StatusOK, gin.H{"status": "success", "data": response})
 }
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
+// handleServiceError processes service layer errors
+func handleServiceError(c *gin.Context, err error, vID string) {
+	msg := err.Error()
+	log.Error().Err(err).Str("vendorID", vID).Msg("Service Error")
 
-// extractVendorID pulls the vendor_id from the gin auth context.
-// The auth middleware sets this after validating the JWT.
-func extractVendorID(c *gin.Context) (uuid.UUID, error) {
-	val, exists := c.Get("vendor_id")
-	if !exists {
-		return uuid.Nil, fmt.Errorf("vendor identity not found — authentication required")
+	switch {
+	case strings.Contains(msg, "already has"):
+		c.JSON(http.StatusConflict, gin.H{"error": msg})
+	case msg == "cannot subscribe to the free tier",
+		strings.HasPrefix(msg, "invalid subscription tier"),
+		strings.Contains(msg, "no email on file"):
+		c.JSON(http.StatusBadRequest, gin.H{"error": msg})
+	default:
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal server error"})
 	}
-	vendorID, ok := val.(uuid.UUID)
-	if !ok {
-		return uuid.Nil, fmt.Errorf("invalid vendor_id in auth context")
-	}
-	return vendorID, nil
 }

@@ -59,7 +59,7 @@ func (s *vendorAnalyticsServiceImpl) GetVendorAnalytics(ctx context.Context, ven
 		avg7, avg30            float64
 	)
 
-	errCh := make(chan error, 5)
+	errCh := make(chan error, 10) // Increased buffer for 5 concurrent tasks
 
 	// Task 1: Comprehensive Review Stats
 	wg.Add(1)
@@ -115,7 +115,7 @@ func (s *vendorAnalyticsServiceImpl) GetVendorAnalytics(ctx context.Context, ven
 	}
 
 	// Final Data Mapping (Using internal helper methods)
-	return &models.VendorAnalyticsResponse{
+	fullAnalytics := &models.VendorAnalyticsResponse{
 		VendorID:    vendorInfo.ID.String(),
 		VendorName:  vendorInfo.Name,
 		Category:    vendorInfo.Category,
@@ -124,5 +124,7 @@ func (s *vendorAnalyticsServiceImpl) GetVendorAnalytics(ctx context.Context, ven
 		Reviews:     s.calculateReviews(reviewMetrics, recentReviews),
 		Trends:      s.calculateTrends(in7, rev7, avg7, in30, rev30, avg30),
 		Performance: s.calculatePerformance(vendorInfo, trustScore),
-	}, nil
+	}
+
+	return s.ApplyTierRestrictions(ctx, vendorID, fullAnalytics)
 }

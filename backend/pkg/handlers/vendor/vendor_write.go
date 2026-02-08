@@ -121,30 +121,59 @@ vendor := models.Vendor{
 }
 
 func (h *VendorHandler) UpdateVendor(c *gin.Context) {
-	vendorID := c.Param("id")
+    vendorID := c.Param("id")
 
-	// 1. Auth: Ensure the person updating IS the owner
-	userIDVal, _ := c.Get("user_id")
-	requestorID := userIDVal.(uuid.UUID)
+    // 1. Auth: Get requestor ID
+    userIDVal, _ := c.Get("user_id")
+    requestorID := userIDVal.(uuid.UUID)
 
-	var updates map[string]interface{}
-	if err := c.ShouldBindJSON(&updates); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid update data"})
-		return
-	}
+    // 2. Use the DTO instead of map[string]interface{}
+    var input VendorBinding 
+    if err := c.ShouldBindJSON(&input); err != nil {
+        log.Error().Err(err).Msg("Vendor update binding failed")
+        c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid update data"})
+        return
+    }
 
-	// 2. Logic: Pass the requestorID to service to verify ownership before update
-	err := h.VendorService.UpdateVendor(c.Request.Context(), vendorID, requestorID, updates)
-	if err != nil {
-		if err.Error() == "unauthorized" {
-			c.JSON(http.StatusForbidden, gin.H{"error": "You do not own this profile"})
-			return
-		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
+    // 3. Map the DTO to the Model (reusing your robust NullString logic)
+    updatedVendor := models.Vendor{
+        // Name, Category, State are NOT NULL in DB
+        Name:     input.Name,
+        Category: input.Category,
+        State:    input.State,
 
-	c.JSON(http.StatusOK, gin.H{"message": "Profile updated successfully"})
+        // Use helpers for all nullable fields to ensure NULLs are handled
+        Description:        models.ToNullString(input.Description),
+        ImageURL:           models.ToNullString(input.ImageURL),
+        City:               models.ToNullString(input.City),
+        PhoneNumber:        models.ToNullString(input.PhoneNumber),
+        Email:              models.ToNullString(input.Email),
+        VNIN:               models.ToNullString(input.VNIN),
+        FirstName:          models.ToNullString(input.FirstName),
+        MiddleName:         models.ToNullString(input.MiddleName),
+        LastName:           models.ToNullString(input.LastName),
+        Gender:             models.ToNullString(input.Gender),
+        CACNumber:          models.ToNullString(input.CACNumber),
+        DateOfBirth:        models.ToNullTimeFromString(input.DateOfBirth),
+        MinPrice:           models.ToNullInt32(input.MinPrice),
+        IsBusinessVerified: sql.NullBool{Bool: input.IsBusinessVerified, Valid: true},
+        IsIdentityVerified: input.IsIdentityVerified,
+    }
+
+    // 4. Pass the structured Model to the service
+    err := h.VendorService.UpdateVendor(c.Request.Context(), vendorID, requestorID, &updatedVendor)
+    
+    if err != nil {
+        if err.Error() == "unauthorized" {
+            c.JSON(http.StatusForbidden, gin.H{"error": "You do not own this profile"})
+            return
+        }
+        log.Error().Err(err).Msg("Update execution failed")
+        c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update profile"})
+        return
+    }
+
+    c.JSON(http.StatusOK, gin.H{"message": "Profile updated successfully"})
 }
 
 func (h *VendorHandler) ToggleIdentityVerification(c *gin.Context) {

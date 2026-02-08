@@ -1,4 +1,4 @@
-// Recommended location: pkg/middleware/context_helpers.go or inside your handler utils
+// backend/pkg/middleware/context_helpers.go
 package middleware
 
 import (

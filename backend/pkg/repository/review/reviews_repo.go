@@ -10,17 +10,13 @@ import (
 )
 
 type ReviewRepository interface {
-	// Write Operations
 	Create(ctx context.Context, review *models.Review) error
-	
-	// Trust/Verification Operations
 	CheckInteraction(ctx context.Context, vendorID uuid.UUID, userID *uuid.UUID, emailOrIP string) (bool, error)
-	
-	// Read Operations
 	FindByID(ctx context.Context, id uuid.UUID) (*models.Review, error)
 	GetByVendorID(ctx context.Context, vendorID uuid.UUID) ([]models.Review, error)
 	GetApprovedByVendorID(ctx context.Context, vendorID uuid.UUID) ([]models.Review, error)
 	GetAverageRating(ctx context.Context, vendorID uuid.UUID) (float64, int64, error)
+	GetApprovedAverageRating(ctx context.Context, vendorID uuid.UUID) (float64, int64, error) // Added this
 }
 
 type PostgresReviewRepository struct {
@@ -28,5 +24,5 @@ type PostgresReviewRepository struct {
 }
 
 func NewPostgresReviewRepository(db *sqlx.DB) ReviewRepository {
-	return &PostgresReviewRepository{DB: db} //this line throws an error 
+	return &PostgresReviewRepository{DB: db}
 }

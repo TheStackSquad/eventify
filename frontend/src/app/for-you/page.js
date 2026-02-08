@@ -1,6 +1,6 @@
 // frontend/src/app/for-you/page.js
 
-import { Sparkles, TrendingUp, Award } from "lucide-react";
+import { Sparkles, TrendingUp, Award, Trophy } from "lucide-react";
 import ForYouHero from "@/components/for-you/forYouHero";
 import FeaturedVendorsCarousel from "@/components/for-you/featuredVendorCarousel";
 import TopRatedVendorsGrid from "@/components/for-you/topRatedVendorsGrid";
@@ -155,6 +155,33 @@ export default async function ForYouPage() {
             </section>
           );
         })}
+
+        {/* Leaderboard Teaser - Add before bottom CTA */}
+        <section>
+          <div className="bg-gradient-to-r from-amber-100 to-orange-100 rounded-3xl p-8 sm:p-12 border-2 border-amber-300">
+            <div className="flex items-center justify-between flex-wrap gap-6">
+              <div>
+                <div className="flex items-center gap-2 mb-3">
+                  <Trophy className="w-8 h-8 text-amber-600" />
+                  <h3 className="text-2xl sm:text-3xl font-bold text-gray-900">
+                    Vendor Leaderboard
+                  </h3>
+                </div>
+                <p className="text-gray-700 text-lg">
+                  Check out this month&apos;s top-performing vendors across
+                  categories and locations
+                </p>
+              </div>
+              <Link
+                href="/for-you/leaderboard"
+                className="inline-flex items-center gap-2 px-8 py-4 bg-gradient-to-r from-amber-600 to-orange-600 text-white font-bold rounded-xl hover:from-amber-700 hover:to-orange-700 transition-all shadow-lg hover:shadow-xl"
+              >
+                View Rankings
+                <TrendingUp className="w-5 h-5" />
+              </Link>
+            </div>
+          </div>
+        </section>
 
         {/* Bottom CTA Section for Non-Vendors */}
         <section className="bg-gradient-to-r from-indigo-600 to-purple-600 rounded-3xl p-8 sm:p-12 text-center text-white shadow-xl">

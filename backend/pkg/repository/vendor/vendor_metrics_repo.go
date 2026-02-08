@@ -9,6 +9,7 @@ import (
 
 	"github.com/eventify/backend/pkg/models"
 	"github.com/google/uuid"
+	 "database/sql"
 	"github.com/jmoiron/sqlx"
 )
 
@@ -75,6 +76,32 @@ func (r *PostgresVendorCoreMetricsRepository) GetVendorBasicInfo(ctx context.Con
 	}
 
 	return &info, nil
+}
+
+// Add after GetVendorBasicInfo implementation (around line 50-60)
+
+func (r *PostgresVendorCoreMetricsRepository) GetVendorTier(ctx context.Context, vendorID uuid.UUID) (models.SubscriptionTier, error) {
+	query := `
+		SELECT tier 
+		FROM subscriptions
+		WHERE vendor_id = $1
+		  AND status = 'active'
+		  AND (expires_at IS NULL OR expires_at > NOW())
+		ORDER BY starts_at DESC
+		LIMIT 1
+	`
+
+	var tier string
+	err := r.DB.QueryRowContext(ctx, query, vendorID).Scan(&tier)
+
+	if err == sql.ErrNoRows {
+		return models.TierFree, nil
+	}
+	if err != nil {
+		return models.TierFree, fmt.Errorf("failed to get vendor tier: %w", err)
+	}
+
+	return models.SubscriptionTier(tier), nil
 }
 
 func (r *PostgresVendorMetricsRepository) GetInquiryCountByPeriod(ctx context.Context, vendorID uuid.UUID, days int) (int, error) {
@@ -158,3 +185,24 @@ func (r *PostgresVendorMetricsRepository) GetAverageRatingByPeriod(ctx context.C
 
 	return avgRating, nil
 }
+
+
+func (r *PostgresVendorMetricsRepository) GetVendorTier(ctx context.Context, vendorID uuid.UUID) (models.SubscriptionTier, error) {
+    query := `SELECT subscription_tier FROM vendors WHERE id = $1`
+    
+    var tier string
+    err := r.DB.QueryRowContext(ctx, query, vendorID).Scan(&tier)
+
+    if err == sql.ErrNoRows {
+        return models.TierFree, nil
+    }
+
+    if err != nil {
+        return models.TierFree, fmt.Errorf("failed to get vendor tier: %w", err)
+    }
+
+    return models.SubscriptionTier(tier), nil
+}
+
+
+

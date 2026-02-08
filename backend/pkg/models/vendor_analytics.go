@@ -4,6 +4,12 @@ package models
 
 import "time"
 
+
+type TierRestrictions struct {
+	Tier            string   `json:"tier"`
+	Message         string   `json:"message"`
+	MissingFeatures []string `json:"missing_features,omitempty"`
+}
 // ============================================================================
 // MAIN RESPONSE STRUCTURE
 // ============================================================================
@@ -19,6 +25,7 @@ type VendorAnalyticsResponse struct {
 	Reviews     VendorReviews       `json:"reviews"`
 	Trends      VendorTrends        `json:"trends"`
 	Performance VendorPerformance   `json:"performance"`
+	Restrictions *TierRestrictions `json:"restrictions,omitempty"`
 }
 
 // ============================================================================
