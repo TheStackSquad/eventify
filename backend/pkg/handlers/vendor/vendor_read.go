@@ -1,7 +1,7 @@
 // backend/pkg/handlers/vendor/vendor_read.go
 // Vendor handler - read operations
 
-package handlers
+package vendor
 
 import (
 	"net/http"

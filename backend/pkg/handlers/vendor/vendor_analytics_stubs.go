@@ -1,6 +1,6 @@
 // backend/pkg/handlers/vendor_analytics_stubs.go
 
-package handlers
+package vendor
 
 import (
 	"net/http"

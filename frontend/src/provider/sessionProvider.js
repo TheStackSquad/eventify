@@ -1,4 +1,5 @@
 // frontend/src/provider/sessionProvider.js
+
 "use client";
 
 import React, {
@@ -10,11 +11,10 @@ import React, {
 } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { verifySessionApi } from "@/services/authAPI";
+import { refreshTokenApi } from "@/services/authAPI";
 import {
   initializeTokenRefresh,
   clearRefreshTimer,
-  getAccessTokenFromCookies,
-  isTokenValid,
 } from "@/axiosConfig/tokenService";
 
 const IS_DEV = process.env.NODE_ENV === "development";
@@ -24,9 +24,10 @@ const debugLog = (category, message, data = {}) => {
   const emoji = {
     INIT: "🚀",
     SESSION: "🔐",
-    TOKEN: "🎫",
-    ERROR: "❌",
+    REFRESH: "🔄",
     SUCCESS: "✅",
+    ERROR: "❌",
+    CLEANUP: "🧹",
   };
   console.log(
     `${emoji[category] || "📋"} [SessionProvider:${category}] ${message}`,
@@ -37,9 +38,6 @@ const debugLog = (category, message, data = {}) => {
 export const AuthContext = createContext(null);
 
 export default function SessionProvider({ children }) {
-  // ================================================================
-  // STATE MANAGEMENT
-  // ================================================================
   const [user, setUserState] = useState(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
@@ -47,23 +45,7 @@ export default function SessionProvider({ children }) {
   const queryClient = useQueryClient();
 
   // ================================================================
-  // TOKEN REFRESH INITIALIZATION
-  // ================================================================
-  useEffect(() => {
-    debugLog("INIT", "Initializing token refresh system");
-
-    const token = getAccessTokenFromCookies();
-
-    if (token && isTokenValid(token)) {
-      debugLog("TOKEN", "Valid token found - starting refresh scheduler");
-      initializeTokenRefresh();
-    } else {
-      debugLog("TOKEN", "No valid token - skipping refresh scheduler");
-    }
-  }, []); // Run once on mount
-
-  // ================================================================
-  // SESSION VERIFICATION QUERY
+  // ✅ REFACTORED: SESSION VERIFICATION WITH REFRESH RETRY
   // ================================================================
   const {
     data: sessionData,
@@ -77,194 +59,176 @@ export default function SessionProvider({ children }) {
       debugLog("SESSION", "Verifying session with backend...");
 
       try {
-        const user = await verifySessionApi();
-        debugLog("SUCCESS", "Session verified", {
-          userId: user?.id,
-          email: user?.email,
-        });
-        return user;
+        // Attempt 1: Verify existing session
+        const userData = await verifySessionApi();
+        debugLog("SUCCESS", "Session valid", { email: userData.email });
+        return userData;
       } catch (error) {
         const status = error.response?.status;
-        const isAuthError = status === 401 || status === 403;
 
-        debugLog("ERROR", "Session verification failed", {
-          status,
-          isAuthError,
-          message: error.message,
-        });
+        // ✅ FIX: On 401, attempt token refresh before giving up
+        if (status === 401) {
+          debugLog("REFRESH", "Session expired, attempting token refresh...");
 
-        // For auth errors, return null instead of throwing
-        // This allows the query to succeed with a "no session" result
-        if (isAuthError) {
+          try {
+            // Attempt 2: Refresh the token
+            await refreshTokenApi();
+            debugLog("SUCCESS", "Token refreshed, re-verifying session");
+
+            // Attempt 3: Verify session again with new token
+            const userData = await verifySessionApi();
+            debugLog("SUCCESS", "Session restored after refresh", {
+              email: userData.email,
+            });
+            return userData;
+          } catch (refreshError) {
+            const refreshStatus = refreshError.response?.status;
+
+            debugLog("ERROR", "Refresh failed", {
+              status: refreshStatus,
+              code: refreshError.response?.data?.code,
+            });
+
+            // Both access token AND refresh token are invalid
+            // User needs to re-authenticate
+            return null;
+          }
+        }
+
+        // For 403 or other errors, don't retry
+        if (status === 403) {
+          debugLog("ERROR", "Access forbidden");
           return null;
         }
 
-        // For network/server errors, throw to trigger retry
+        // Network errors or 5xx - throw to trigger retry
         throw error;
       }
     },
-    // Always enabled - run immediately on mount
     enabled: true,
-    // Don't retry auth errors (user not logged in)
     retry: (failureCount, error) => {
-      const status = error?.response?.status;
-      if (status === 401 || status === 403) return false;
+      // Don't retry on auth failures (handled in queryFn)
+      if (error?.response?.status === 401 || error?.response?.status === 403) {
+        return false;
+      }
+      // Retry network errors up to 2 times
       return failureCount < 2;
     },
-    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 5000),
-    // Recheck session when user returns to tab
+    staleTime: 5 * 60 * 1000, // 5 minutes
     refetchOnWindowFocus: true,
-    // Don't refetch on component remount
-    refetchOnMount: false,
-    // Don't poll - use token refresh events instead
-    refetchInterval: false,
-    // Consider session fresh for 5 minutes
-    staleTime: 5 * 60 * 1000,
-    // Keep in cache for 10 minutes
-    gcTime: 10 * 60 * 1000,
+    refetchOnMount: true,
   });
 
   // ================================================================
-  // SYNC QUERY RESULT TO LOCAL STATE
+  // SYNC SERVER STATE TO LOCAL STATE
   // ================================================================
   useEffect(() => {
-    // Wait for initial query to complete
     if (!isFetched) return;
 
     if (sessionData) {
-      // User is authenticated
-      debugLog("SESSION", "Setting authenticated state", {
-        userId: sessionData.id,
+      debugLog("SUCCESS", "User authenticated", {
+        email: sessionData.email,
+        isVendor: sessionData.isVendor,
+        hasEvents: sessionData.hasEvents,
       });
 
       setUserState(sessionData);
       setIsAuthenticated(true);
-      setIsInitialized(true);
 
-      // Ensure token refresh is active for authenticated users
-      const token = getAccessTokenFromCookies();
-      if (token && isTokenValid(token)) {
-        initializeTokenRefresh();
-      }
+      // Session confirmed - start proactive refresh scheduler
+      initializeTokenRefresh();
     } else {
-      // No session (could be auth error or user not logged in)
-      debugLog("SESSION", "No active session", {
-        hadError: !!sessionError,
-      });
-
+      debugLog("SESSION", "No active session");
       setUserState(null);
       setIsAuthenticated(false);
-      setIsInitialized(true);
+      clearRefreshTimer();
     }
-  }, [sessionData, isFetched, sessionError]);
+
+    setIsInitialized(true);
+  }, [sessionData, isFetched]);
 
   // ================================================================
-  // LISTEN FOR TOKEN REFRESH EVENTS
+  // REFRESH EVENT LISTENER
   // ================================================================
   useEffect(() => {
     const handleTokenRefresh = () => {
-      debugLog("TOKEN", "Token refreshed - invalidating session query");
+      debugLog("REFRESH", "Token rotated, invalidating session cache");
       queryClient.invalidateQueries({ queryKey: ["session"] });
     };
 
-    if (typeof window !== "undefined") {
-      window.addEventListener("tokenRefreshed", handleTokenRefresh);
-      return () => {
-        window.removeEventListener("tokenRefreshed", handleTokenRefresh);
-      };
-    }
+    window.addEventListener("tokenRefreshed", handleTokenRefresh);
+
+    return () => {
+      window.removeEventListener("tokenRefreshed", handleTokenRefresh);
+      clearRefreshTimer();
+      debugLog("CLEANUP", "SessionProvider unmounted");
+    };
   }, [queryClient]);
 
   // ================================================================
-  // PUBLIC API METHODS
+  // EXPOSED METHODS
   // ================================================================
   const setUser = useCallback(
     (userData) => {
-      debugLog("SESSION", "Manually setting user", { userId: userData?.id });
+      debugLog("SESSION", "Manual user state update", {
+        action: userData ? "login" : "logout",
+      });
 
       setUserState(userData);
       setIsAuthenticated(!!userData);
-      setIsInitialized(true);
-
-      // Update React Query cache
       queryClient.setQueryData(["session"], userData);
 
-      // Start token refresh for new session
       if (userData) {
-        const token = getAccessTokenFromCookies();
-        if (token && isTokenValid(token)) {
-          initializeTokenRefresh();
-        }
+        initializeTokenRefresh();
+      } else {
+        clearRefreshTimer();
       }
     },
     [queryClient],
   );
 
   const clearAuth = useCallback(() => {
-    debugLog("SESSION", "Clearing authentication state");
+    debugLog("CLEANUP", "Clearing auth state");
 
     setUserState(null);
     setIsAuthenticated(false);
-    setIsInitialized(true);
-
-    // Clear React Query cache
     queryClient.setQueryData(["session"], null);
-    queryClient.removeQueries({ queryKey: ["session"] });
-
-    // Stop token refresh
     clearRefreshTimer();
   }, [queryClient]);
 
-  const refreshSession = useCallback(async () => {
-    debugLog("SESSION", "Manually refreshing session");
-
-    try {
-      const result = await refetchSession();
-      if (result.data) {
-        debugLog("SUCCESS", "Session refreshed", { userId: result.data.id });
-        return result.data;
-      }
-      return null;
-    } catch (error) {
-      debugLog("ERROR", "Session refresh failed", { error: error.message });
-      throw error;
-    }
-  }, [refetchSession]);
-
-  // ================================================================
-  // CONTEXT VALUE
-  // ================================================================
   const value = useMemo(
     () => ({
-      // State
       user,
       isAuthenticated,
       isInitialized,
-      loading: !isInitialized,
-
-      // Methods
+      loading: !isInitialized || (isInitialized && isLoading),
       setUser,
       clearAuth,
-      refetchSession: refreshSession,
+      refetchSession,
     }),
-    [user, isAuthenticated, isInitialized, setUser, clearAuth, refreshSession],
+    [
+      user,
+      isAuthenticated,
+      isInitialized,
+      isLoading,
+      setUser,
+      clearAuth,
+      refetchSession,
+    ],
   );
 
   // ================================================================
-  // DEV LOGGING
+  // DEBUG: Log state changes in development
   // ================================================================
   useEffect(() => {
-    if (!IS_DEV) return;
-
-    debugLog("SESSION", "State changed", {
-      isInitialized,
-      isAuthenticated,
-      hasUser: !!user,
-      userId: user?.id,
-      queryFetched: isFetched,
-      queryLoading: isLoading,
-    });
-  }, [isInitialized, isAuthenticated, user, isFetched, isLoading]);
+    if (IS_DEV && isInitialized) {
+      debugLog("SESSION", "State snapshot", {
+        isAuthenticated,
+        hasUser: !!user,
+        userEmail: user?.email,
+      });
+    }
+  }, [isAuthenticated, user, isInitialized]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

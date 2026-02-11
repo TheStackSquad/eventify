@@ -12,8 +12,9 @@ import (
 type VendorStatus string
 
 const (
-	VendorStatusActive    VendorStatus = "active"
-	VendorStatusSuspended VendorStatus = "suspended"
+    VendorStatusActive    VendorStatus = "active"
+    VendorStatusSuspended VendorStatus = "suspended"
+    VendorStatusDeleted   VendorStatus = "deleted" 
 )
 
 // MarshalJSON ensures MinPrice and NullStrings return simple values or null to the frontend

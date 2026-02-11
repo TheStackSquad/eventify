@@ -15,8 +15,8 @@ func (s *vendorAnalyticsServiceImpl) ApplyTierRestrictions(
 	vendorID uuid.UUID,
 	fullAnalytics *models.VendorAnalyticsResponse,
 ) (*models.VendorAnalyticsResponse, error) {
-	
-	tier, err := s.coreRepo.GetVendorTier(ctx, vendorID)
+
+	tier, err := s.optimizedRepo.GetVendorTier(ctx, vendorID)
 	if err != nil {
 		tier = models.TierFree // Default to free on error
 	}
@@ -24,13 +24,13 @@ func (s *vendorAnalyticsServiceImpl) ApplyTierRestrictions(
 	switch tier {
 	case models.TierFree:
 		return s.buildFreeTierAnalytics(fullAnalytics), nil
-	
+
 	case models.TierPremium:
 		return s.buildPremiumTierAnalytics(fullAnalytics), nil
-	
+
 	case models.TierFeatured:
 		return fullAnalytics, nil // Full access
-	
+
 	default:
 		return s.buildFreeTierAnalytics(fullAnalytics), nil
 	}
@@ -76,7 +76,7 @@ func (s *vendorAnalyticsServiceImpl) buildFreeTierAnalytics(full *models.VendorA
 
 func (s *vendorAnalyticsServiceImpl) buildPremiumTierAnalytics(full *models.VendorAnalyticsResponse) *models.VendorAnalyticsResponse {
 	premium := *full // Copy all data
-	
+
 	premium.Restrictions = &models.TierRestrictions{
 		Tier:    "premium",
 		Message: "⭐ Upgrade to Featured for priority placement and advanced insights",
@@ -86,7 +86,6 @@ func (s *vendorAnalyticsServiceImpl) buildPremiumTierAnalytics(full *models.Vend
 			"Competitive intelligence",
 		},
 	}
-	
+
 	return &premium
 }
-

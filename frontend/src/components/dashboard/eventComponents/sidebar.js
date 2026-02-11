@@ -37,28 +37,28 @@ export default function Sidebar({
   // ================================================================
   // DYNAMIC MENU FILTERING
   // ================================================================
+
   const menuItems = useMemo(() => {
     const items = [];
 
-    // Access for Creators (Constellar), existing Vendors, or Admins
-    if (user?.hasEvents || user?.isVendor || user?.is_admin) {
+    // 1. Organizer View (Existing logic)
+    if (user?.hasEvents || user?.is_admin) {
       items.push({ id: "events", label: "My Events", icon: Calendar });
     }
 
-    // "Loosened" Logic: Always show the Vendor group so users can register
-    // We only gate the specific sub-items that require "active" vendor status
+    // 2. Vendor Portal Group (Always present)
     const vendorSubItems = [
-      { id: "vendor-register", label: "Register as Vendor", icon: UserPlus },
-    ];
-
-    // Only add Analytics to the sub-menu if they are already a vendor or admin
-    if (user?.isVendor || user?.is_admin) {
-      vendorSubItems.unshift({
+      {
         id: "vendor",
-        label: "Vendor Analytics",
+        label: user?.isVendor ? "Business Analytics" : "Marketplace Stats",
         icon: Package,
-      });
-    }
+      },
+      {
+        id: "vendor-register",
+        label: user?.isVendor ? "Business Profile" : "Register as Vendor",
+        icon: user?.isVendor ? CreditCard : UserPlus,
+      },
+    ];
 
     items.push({
       id: "vendor-group",

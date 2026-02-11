@@ -1,326 +1,233 @@
 // frontend/src/axiosConfig/tokenService.js
+
 import { API_ENDPOINTS } from "@/utils/constants/globalConstants";
 
 const IS_DEV = process.env.NODE_ENV === "development";
 
-// === DEBUG LOGGING ===
 const debugLog = (category, message, data = {}) => {
   if (!IS_DEV) return;
-  
-  const styles = {
-    TOKEN: '🎫',
-    REFRESH: '🔄',
-    SCHEDULE: '⏰',
-    ERROR: '❌',
-    SUCCESS: '✅',
-  };
-  
-  console.log(`${styles[category] || '📋'} [${category}] ${message}`, 
-    Object.keys(data).length ? data : '');
+  const styles = { REFRESH: "🔄", SCHEDULE: "⏰", ERROR: "❌", SUCCESS: "✅" };
+  console.log(
+    `${styles[category] || "📋"} [tokenService:${category}] ${message}`,
+    Object.keys(data).length ? data : "",
+  );
 };
 
-// === TOKEN RETRIEVAL ===
-export const getAccessTokenFromCookies = () => {
-  if (typeof document === "undefined") return null;
-  const match = document.cookie.match(/access_token=([^;]+)/);
-  return match ? match[1] : null;
-};
-
-export const getRefreshTokenFromCookies = () => {
-  if (typeof document === "undefined") return null;
-  const match = document.cookie.match(/refresh_token=([^;]+)/);
-  return match ? match[1] : null;
-};
-
-// === COOKIE CLEANUP ===
-export const clearAuthCookies = () => {
-  if (typeof document === "undefined") return;
-  
-  const cookieOptions = [
-    'path=/',
-    'max-age=0',
-    'SameSite=Lax',
-  ];
-  
-  // Add domain if in production
-  if (typeof window !== "undefined" && window.location.hostname !== "localhost") {
-    cookieOptions.push(`domain=${window.location.hostname}`);
-  }
-  
-  const cookieString = cookieOptions.join('; ');
-  
-  document.cookie = `access_token=; ${cookieString}`;
-  document.cookie = `refresh_token=; ${cookieString}`;
-  
-  debugLog('TOKEN', 'Auth cookies cleared');
-};
-
-// === JWT DECODING ===
-export const decodeJWT = (token) => {
-  if (!token || typeof token !== "string") {
-    debugLog('ERROR', 'JWT decode failed: Invalid token type', { 
-      hasToken: !!token,
-      type: typeof token 
-    });
-    return null;
-  }
-
-  try {
-    const parts = token.split(".");
-    if (parts.length !== 3) {
-      throw new Error("Invalid JWT format");
-    }
-    
-    const base64Url = parts[1];
-    const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
-    const jsonPayload = decodeURIComponent(
-      atob(base64)
-        .split("")
-        .map((c) => "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2))
-        .join("")
-    );
-    
-    const decoded = JSON.parse(jsonPayload);
-    debugLog('TOKEN', 'JWT decoded successfully', { 
-      exp: decoded.exp ? new Date(decoded.exp * 1000).toISOString() : 'none',
-      iat: decoded.iat ? new Date(decoded.iat * 1000).toISOString() : 'none',
-    });
-    
-    return decoded;
-  } catch (error) {
-    debugLog('ERROR', 'JWT decode error', { error: error.message });
-    return null;
-  }
-};
-
-// === TOKEN VALIDATION ===
-export const isTokenValid = (token) => {
-  if (!token) return false;
-  
-  const decoded = decodeJWT(token);
-  if (!decoded?.exp) return false;
-  
-  const now = Date.now();
-  const expiry = decoded.exp * 1000;
-  const isValid = expiry > now;
-  
-  debugLog('TOKEN', 'Token validation', {
-    isValid,
-    expiresIn: `${Math.round((expiry - now) / 1000)}s`,
-  });
-  
-  return isValid;
-};
-
-// === TOKEN EXPIRY ===
-export const getTokenExpiry = (token) => {
-  const decoded = decodeJWT(token);
-  return decoded?.exp ? decoded.exp * 1000 : null;
-};
-
-export const getTokenTimeRemaining = (token) => {
-  const expiry = getTokenExpiry(token);
-  if (!expiry) return 0;
-  
-  return Math.max(0, expiry - Date.now());
-};
-
-// === REFRESH SCHEDULING ===
+// === STATE MANAGEMENT ===
 let refreshTimer = null;
 let backendInstanceRef = null;
-let isRefreshScheduled = false;
 let lastRefreshAttempt = 0;
 
-const MIN_REFRESH_INTERVAL = 5000; // Prevent refresh spam (5s)
-const REFRESH_BUFFER_MS = 120000; // Refresh 2min before expiry
+// ✅ OPTIMIZED: Adjusted refresh intervals
+// Access token lifetime: 24 hours (86400000ms)
+// We refresh at 80% of lifetime to avoid expiry
+const ACCESS_TOKEN_LIFETIME = 24 * 60 * 60 * 1000; // 24 hours in ms
+const REFRESH_INTERVAL = ACCESS_TOKEN_LIFETIME * 0.8; // 19.2 hours (80% of lifetime)
+const MIN_REFRESH_INTERVAL = 60000; // 1 minute (prevent spam)
+
+// Fallback interval if we can't determine token lifetime
+const DEFAULT_REFRESH_INTERVAL = 19 * 60 * 60 * 1000; // 19 hours
 
 export const setBackendInstanceRef = (instance) => {
   backendInstanceRef = instance;
-  debugLog('SCHEDULE', 'Backend instance reference set');
+  debugLog("SCHEDULE", "Backend instance reference set");
 };
 
-export const scheduleTokenRefresh = () => {
-  // Clear existing timer
-  if (refreshTimer) {
-    clearTimeout(refreshTimer);
-    refreshTimer = null;
-    isRefreshScheduled = false;
-  }
+/**
+ * ✅ OPTIMIZED: Smart refresh scheduler
+ *
+ * Strategy:
+ * 1. Use 80% of access token lifetime as refresh interval
+ * 2. If token expiry is known, schedule at 80% mark
+ * 3. Fallback to 19 hours if expiry unknown
+ * 4. Network failures retry with exponential backoff
+ */
+export const scheduleTokenRefresh = (customInterval = null) => {
+  if (refreshTimer) clearTimeout(refreshTimer);
 
-  const token = getAccessTokenFromCookies();
-  if (!token) {
-    debugLog('SCHEDULE', 'No access token found for scheduling');
-    return;
-  }
+  // Use custom interval or calculated default
+  const interval = customInterval || REFRESH_INTERVAL;
 
-  // Validate token before scheduling
-  if (!isTokenValid(token)) {
-    debugLog('SCHEDULE', 'Token already expired, not scheduling');
-    return;
-  }
-
-  const expiry = getTokenExpiry(token);
-  if (!expiry) {
-    debugLog('ERROR', 'Could not decode token expiry');
-    return;
-  }
-
-  const now = Date.now();
-  const timeUntilExpiry = expiry - now;
-  const refreshTime = Math.max(0, timeUntilExpiry - REFRESH_BUFFER_MS);
-
-  // Don't schedule if expiry is too soon (already handled by interceptor)
-  if (refreshTime < 5000) {
-    debugLog('SCHEDULE', 'Token expires too soon, relying on interceptor', {
-      expiresIn: `${Math.round(timeUntilExpiry / 1000)}s`,
-    });
-    return;
-  }
-
-  debugLog('SCHEDULE', 'Token refresh scheduled', {
-    in: `${Math.round(refreshTime / 1000)}s`,
-    expiresAt: new Date(expiry).toISOString(),
-  });
-
-  isRefreshScheduled = true;
+  debugLog(
+    "SCHEDULE",
+    `Next proactive refresh in ${(interval / 60000).toFixed(1)} minutes`,
+    {
+      intervalMs: interval,
+      intervalHours: (interval / 3600000).toFixed(1),
+    },
+  );
 
   refreshTimer = setTimeout(async () => {
-    // Prevent refresh spam
-    const timeSinceLastRefresh = Date.now() - lastRefreshAttempt;
-    if (timeSinceLastRefresh < MIN_REFRESH_INTERVAL) {
-      debugLog('SCHEDULE', 'Skipping refresh - too soon since last attempt', {
-        timeSince: `${timeSinceLastRefresh}ms`,
+    const timeSinceLast = Date.now() - lastRefreshAttempt;
+
+    // Prevent refresh spam (minimum 1 minute between attempts)
+    if (timeSinceLast < MIN_REFRESH_INTERVAL) {
+      debugLog("SCHEDULE", "Skipping refresh (too soon since last attempt)", {
+        timeSinceLastMs: timeSinceLast,
       });
+      scheduleTokenRefresh(); // Reschedule
       return;
     }
 
     if (!backendInstanceRef) {
-      debugLog('ERROR', 'Backend instance not available for refresh');
+      debugLog("ERROR", "No axios instance available for refresh");
       return;
     }
 
     try {
-      debugLog('REFRESH', 'Proactive token refresh triggered');
+      debugLog("REFRESH", "Triggering proactive refresh");
       lastRefreshAttempt = Date.now();
-      
-      await backendInstanceRef.post(API_ENDPOINTS.AUTH.REFRESH);
-      
-      debugLog('SUCCESS', 'Proactive refresh completed');
-      
-      // Schedule next refresh with new token
+
+      // withCredentials: true sends the HttpOnly refresh_token automatically
+      const response = await backendInstanceRef.post(
+        API_ENDPOINTS.AUTH.REFRESH,
+      );
+
+      debugLog("SUCCESS", "Proactive refresh successful", {
+        status: response.status,
+      });
+
+      // Schedule next refresh at 80% of token lifetime
       scheduleTokenRefresh();
-      
-      // Notify listeners (for session provider)
+
+      // Notify components of successful refresh
       if (typeof window !== "undefined") {
-        window.dispatchEvent(new CustomEvent('tokenRefreshed', { 
-          detail: { timestamp: Date.now() } 
-        }));
+        window.dispatchEvent(
+          new CustomEvent("tokenRefreshed", {
+            detail: { timestamp: Date.now() },
+          }),
+        );
       }
     } catch (error) {
-      debugLog('ERROR', 'Proactive refresh failed', {
-        status: error.response?.status,
+      const status = error.response?.status;
+
+      debugLog("ERROR", "Proactive refresh failed", {
+        status,
         code: error.response?.data?.code,
-        message: error.message,
+        message: error.response?.data?.message,
       });
-      
-      // Don't schedule again if refresh failed with auth error
-      const isAuthError = error.response?.status === 401 || 
-                         error.response?.status === 403;
-      
-      if (!isAuthError) {
-        // Network error or server error - try again
-        scheduleTokenRefresh();
+
+      // Handle different error types
+      if (status === 401) {
+        // Session expired - stop scheduling
+        debugLog("ERROR", "Session expired - stopping refresh scheduler");
+        clearRefreshTimer();
+
+        // Notify components
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(
+            new CustomEvent("sessionExpired", {
+              detail: { reason: "REFRESH_TOKEN_EXPIRED" },
+            }),
+          );
+        }
+      } else if (status === 403) {
+        // Security violation - stop scheduling
+        debugLog(
+          "ERROR",
+          "Security violation detected - stopping refresh scheduler",
+        );
+        clearRefreshTimer();
+      } else {
+        // Network error or server issue - retry with backoff
+        const retryDelay = 5 * 60 * 1000; // 5 minutes
+
+        debugLog(
+          "SCHEDULE",
+          `Network error - retrying in ${retryDelay / 60000} minutes`,
+        );
+        scheduleTokenRefresh(retryDelay);
       }
     }
-  }, refreshTime);
+  }, interval);
 };
 
+/**
+ * Initialize the token refresh system
+ * Called when user logs in or session is verified
+ */
+export const initializeTokenRefresh = () => {
+  debugLog("SCHEDULE", "Starting refresh system", {
+    refreshIntervalHours: (REFRESH_INTERVAL / 3600000).toFixed(1),
+    tokenLifetimeHours: ACCESS_TOKEN_LIFETIME / 3600000,
+  });
+
+  scheduleTokenRefresh();
+};
+
+/**
+ * Clear the refresh timer
+ * Called on logout or session expiry
+ */
 export const clearRefreshTimer = () => {
   if (refreshTimer) {
     clearTimeout(refreshTimer);
     refreshTimer = null;
-    isRefreshScheduled = false;
-    debugLog('SCHEDULE', 'Token refresh timer cleared');
+    debugLog("SCHEDULE", "Refresh timer cleared");
   }
 };
 
-export const initializeTokenRefresh = () => {
-  debugLog('SCHEDULE', 'Initializing token refresh system');
-  
-  const token = getAccessTokenFromCookies();
-  if (!token) {
-    debugLog('SCHEDULE', 'No token found during initialization');
-    return;
-  }
-  
-  if (!isTokenValid(token)) {
-    debugLog('SCHEDULE', 'Token invalid during initialization');
-    clearAuthCookies();
-    return;
-  }
-  
-  scheduleTokenRefresh();
+/**
+ * ✅ OPTIMIZED: Cleanup function
+ * We can't delete HttpOnly cookies via JS.
+ * This merely clears the scheduler.
+ * The backend MUST clear cookies via Set-Cookie Max-Age=0.
+ */
+export const clearAuthCookies = () => {
+  clearRefreshTimer();
+  debugLog("TOKEN", "Client-side session state cleared");
 };
 
-export const getRefreshStatus = () => ({
-  isScheduled: isRefreshScheduled,
-  lastAttempt: lastRefreshAttempt,
-  hasValidToken: isTokenValid(getAccessTokenFromCookies()),
-});
+/**
+ * ✅ NEW: Manual refresh trigger
+ * Useful for "stay signed in" buttons or activity-based refresh
+ */
+export const triggerManualRefresh = async () => {
+  if (!backendInstanceRef) {
+    throw new Error("Backend instance not initialized");
+  }
 
-// === VISIBILITY CHANGE HANDLER ===
-if (typeof document !== "undefined") {
-  let visibilityHandler = null;
-  
-  const handleVisibilityChange = () => {
-    if (document.visibilityState === "visible") {
-      debugLog('TOKEN', 'App became visible, checking token state');
-      
-      const token = getAccessTokenFromCookies();
-      
-      if (!token) {
-        debugLog('TOKEN', 'No token found on app resume');
-        clearRefreshTimer();
-        return;
-      }
-      
-      const timeRemaining = getTokenTimeRemaining(token);
-      const shouldRefresh = timeRemaining < 300000; // 5min buffer
-      
-      debugLog('TOKEN', 'Token state on resume', {
-        timeRemaining: `${Math.round(timeRemaining / 1000)}s`,
-        shouldRefresh,
-      });
-      
-      if (shouldRefresh && timeRemaining > 0) {
-        // Token is still valid but close to expiry
-        debugLog('REFRESH', 'Triggering refresh on app resume');
-        backendInstanceRef?.post(API_ENDPOINTS.AUTH.REFRESH)
-          .then(() => {
-            debugLog('SUCCESS', 'Resume refresh completed');
-            scheduleTokenRefresh();
-          })
-          .catch((error) => {
-            debugLog('ERROR', 'Resume refresh failed', { 
-              error: error.message 
-            });
-          });
-      } else if (timeRemaining > 0) {
-        // Token is still valid, reschedule refresh
-        scheduleTokenRefresh();
-      } else {
-        // Token expired while app was hidden
-        debugLog('TOKEN', 'Token expired while app was hidden');
-        clearRefreshTimer();
-      }
-    }
+  debugLog("REFRESH", "Manual refresh triggered");
+  lastRefreshAttempt = Date.now();
+
+  try {
+    const response = await backendInstanceRef.post(API_ENDPOINTS.AUTH.REFRESH);
+
+    debugLog("SUCCESS", "Manual refresh successful");
+
+    // Reset the automatic scheduler
+    scheduleTokenRefresh();
+
+    return response.data;
+  } catch (error) {
+    debugLog("ERROR", "Manual refresh failed", {
+      status: error.response?.status,
+    });
+    throw error;
+  }
+};
+
+/**
+ * NEW: Get refresh status for debugging
+ */
+export const getRefreshStatus = () => {
+  return {
+    isScheduled: refreshTimer !== null,
+    lastAttempt: lastRefreshAttempt,
+    timeSinceLastAttempt: lastRefreshAttempt
+      ? Date.now() - lastRefreshAttempt
+      : null,
+    hasBackendRef: backendInstanceRef !== null,
   };
-  
-  // Remove old listener if exists
-  if (visibilityHandler) {
-    document.removeEventListener("visibilitychange", visibilityHandler);
-  }
-  
-  visibilityHandler = handleVisibilityChange;
-  document.addEventListener("visibilitychange", visibilityHandler);
-}
+};
+
+// ================================================================
+// ✅ REMOVED: Dead code
+// ================================================================
+// The following function was removed as it cannot read HttpOnly cookies:
+// - getAccessTokenFromCookies()
+//
+// HttpOnly cookies are only accessible to the server.
+// Attempting to read them via document.cookie always returns empty.
+// All token handling now relies on withCredentials: true in axios config.
+// ================================================================

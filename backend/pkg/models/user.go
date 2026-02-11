@@ -31,31 +31,40 @@ type User struct {
 	UpdatedAt        time.Time    `json:"updated_at" db:"updated_at"`
 }
 
+// backend/pkg/models/user.go
+
 type UserProfile struct {
-	ID        uuid.UUID `json:"id"`
-	Name      string    `json:"name"`
-	Email     string    `json:"email"`
-	Role      Role      `json:"role"`
-	IsVendor  bool      `json:"isVendor"`
-	HasEvents bool      `json:"hasEvents"`
+    ID        uuid.UUID      `json:"id"`
+    Name      string         `json:"name"`
+    Email     string         `json:"email"`
+    Role      Role           `json:"role"`
+    IsVendor  bool           `json:"isVendor"`
+    VendorID  *uuid.UUID     `json:"vendorId,omitempty"`
+    HasEvents bool           `json:"hasEvents"`
 }
 
-func (u *User) ToUserProfile(isVendor bool, hasEvents bool) *UserProfile {
-	if u == nil {
-		return nil
-	}
+func (u *User) ToUserProfile(vendorID *uuid.UUID, hasEvents bool) *UserProfile {
+    if u == nil {
+        return nil
+    }
 
-	isVendorFlag := isVendor || u.Role == RoleAdmin
-	hasEventsFlag := hasEvents || u.Role == RoleAdmin
+    // Determine if user is a vendor based on:
+    // 1. Having an active vendor account (vendorID != nil)
+    // 2. Role is explicitly "vendor"
+    // 3. Role is "admin"
+    isVendorFlag := vendorID != nil || u.Role == RoleVendor || u.Role == RoleAdmin
+    
+    hasEventsFlag := hasEvents || u.Role == RoleAdmin
 
-	return &UserProfile{
-		ID:        u.ID,
-		Name:      u.Name,
-		Email:     u.Email,
-		Role:      u.Role,
-		IsVendor:  isVendorFlag,
-		HasEvents: hasEventsFlag,
-	}
+    return &UserProfile{
+        ID:        u.ID,
+        Name:      u.Name,
+        Email:     u.Email,
+        Role:      u.Role,
+        IsVendor:  isVendorFlag,
+        VendorID:  vendorID,
+        HasEvents: hasEventsFlag,
+    }
 }
 
 type LoginRequest struct {

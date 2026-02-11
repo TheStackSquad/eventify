@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/eventify/backend/pkg/models"
-	servicejwt "github.com/eventify/backend/pkg/services/jwt" // Fixed import path
+	servicejwt "github.com/eventify/backend/pkg/services/jwt"
 	"github.com/google/uuid"
 )
 
@@ -30,14 +30,15 @@ type AuthService interface {
 	// Read Operations
 	GetUserProfile(ctx context.Context, userID uuid.UUID) (*models.UserProfile, error)
 	VerifyResetToken(ctx context.Context, token string) (bool, error)
-	// Updated to use the Claims struct from the servicejwt package
 	ParseAccessToken(ctx context.Context, token string) (*servicejwt.Claims, error)
 
 	// Write Operations
 	Login(ctx context.Context, email, password, ipAddress, userAgent string) (*models.UserProfile, *TokenPair, error)
 	Signup(ctx context.Context, user *models.User) (uuid.UUID, error)
 	
-	RefreshToken(ctx context.Context, oldToken string, absoluteTimeout time.Duration, ipAddress string, userAgent string) (*TokenPair, error)
+	//FIXED: Updated signature to return userID for enriched session verification
+	RefreshToken(ctx context.Context, oldToken string, absoluteTimeout time.Duration, ipAddress string, userAgent string) (userID uuid.UUID, tokens *TokenPair, err error)
+	
 	Logout(ctx context.Context, userID uuid.UUID, refreshToken string, accessToken string) error
 	ForgotPassword(ctx context.Context, email string) (string, error)
 	ResetPassword(ctx context.Context, token, newPassword string) error

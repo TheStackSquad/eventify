@@ -5,6 +5,7 @@ package vendor
 import (
 	"context"
 	"errors"
+	"fmt"
 	"reflect"
 	"database/sql"
 
@@ -13,6 +14,20 @@ import (
 )
 
 func (s *VendorServiceImpl) CreateVendor(ctx context.Context, vendor *models.Vendor) (string, error) {
+
+	  existingVendor, err := s.vendorRepo.GetByOwnerID(ctx, vendor.OwnerID)
+    if err != nil {
+        return "", fmt.Errorf("failed to check existing vendor: %w", err)
+    }
+
+	  if existingVendor != nil {
+        // Check if it's a deleted vendor
+       if existingVendor.Status == "deleted" {
+            return "", errors.New("you previously had a vendor account that was deleted. Please contact support to restore it")
+        }
+        return "", errors.New("user already has an active vendor account")
+    }
+
 	// 1. Strict Validation: Vendor cannot exist without vNIN
 	// We check .Valid (is it not null?) and .String (is it not empty?)
 	if !vendor.VNIN.Valid || vendor.VNIN.String == "" {
@@ -39,11 +54,11 @@ func (s *VendorServiceImpl) CreateVendor(ctx context.Context, vendor *models.Ven
 	// 5. Calculate initial PVS score
 	vendor.PVSScore = models.CalculatePVS(vendor)
 
-	// 6. Persistence
-	vendorID, err := s.vendorRepo.Create(ctx, vendor)
-	if err != nil {
-		return "", err
-	}
+	  // 6. Persistence
+    vendorID, err := s.vendorRepo.Create(ctx, vendor)
+    if err != nil {
+        return "", err
+    }
 	
 	return vendorID.String(), nil
 }

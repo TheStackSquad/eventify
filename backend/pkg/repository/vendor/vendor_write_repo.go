@@ -109,9 +109,20 @@ func (r *PostgresVendorRepository) IncrementField(ctx context.Context, id uuid.U
 }
 
 func (r *PostgresVendorRepository) Delete(ctx context.Context, id uuid.UUID) (int64, error) {
-	query := `DELETE FROM vendors WHERE id = $1`
-	res, err := r.DB.ExecContext(ctx, query, id)
-	if err != nil { return 0, err }
-	return res.RowsAffected()
+    // ✅ Set deleted_at timestamp instead of changing status
+    query := `
+        UPDATE vendors 
+        SET deleted_at = NOW(), 
+            updated_at = NOW() 
+        WHERE id = $1 
+        AND deleted_at IS NULL
+    `
+    
+    res, err := r.DB.ExecContext(ctx, query, id)
+    if err != nil {
+        return 0, fmt.Errorf("failed to soft delete vendor: %w", err)
+    }
+    
+    return res.RowsAffected()
 }
 

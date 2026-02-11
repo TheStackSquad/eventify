@@ -1,9 +1,10 @@
 // backend/pkg/models/vendor_analytics.go
 
 package models
-
-import "time"
-
+import (
+ "time"
+"github.com/google/uuid"
+)
 
 type TierRestrictions struct {
 	Tier            string   `json:"tier"`
@@ -187,4 +188,57 @@ type VendorAnalyticsError struct {
 	Status  string `json:"status"`  // "error"
 	Message string `json:"message"` // Human-readable error
 	Code    string `json:"code"`    // Error code for client handling
+}
+
+// ============================================================================
+// INTERNAL DATA TRANSFER OBJECT (Repository → Service)
+// ============================================================================
+
+// VendorAnalyticsData represents the complete analytics dataset
+// Used internally between repository and service layers
+type VendorAnalyticsData struct {
+	// Base Info
+	ID                 uuid.UUID `json:"id"`
+	Name               string    `json:"name"`
+	Category           string    `json:"category"`
+	PvsScore           int       `json:"pvsScore"`
+	ReviewCount        int       `json:"reviewCount"`
+	IsIdentityVerified bool      `json:"isIdentityVerified"`
+	CacNumber          string    `json:"cacNumber"`
+	IsBusinessVerified bool      `json:"isBusinessVerified"`
+	ProfileCompletion  int       `json:"profileCompletion"`
+	InquiryCount       int       `json:"inquiryCount"`
+	RespondedCount     int       `json:"respondedCount"`
+	CreatedAt          string    `json:"createdAt"`
+	UpdatedAt          string    `json:"updatedAt"`
+	
+	// Subscription
+	Tier               string `json:"tier"`
+	SubscriptionStatus string `json:"subscriptionStatus"`
+	
+	// Views
+	ViewsTotal int `json:"viewsTotal"`
+	Views30d   int `json:"views30d"`
+	
+	// Time-based Metrics
+	Inquiries7d    int     `json:"inquiries7d"`
+	Reviews7d      int     `json:"reviews7d"`
+	AvgRating7d    float64 `json:"avgRating7d"`
+	Inquiries30d   int     `json:"inquiries30d"`
+	Reviews30d     int     `json:"reviews30d"`
+	AvgRating30d   float64 `json:"avgRating30d"`
+	TotalInquiries int     `json:"totalInquiries"`
+	TotalReviews   int     `json:"totalReviews"`
+	AvgRatingAll   float64 `json:"avgRatingAll"`
+	
+	// Rating Distribution
+	FiveStar  int `json:"fiveStar"`
+	FourStar  int `json:"fourStar"`
+	ThreeStar int `json:"threeStar"`
+	TwoStar   int `json:"twoStar"`
+	OneStar   int `json:"oneStar"`
+	
+	// Recent Activity
+	RecentInquiries []RecentInquiry `json:"recentInquiries"`
+	RecentReviews   []RecentReview  `json:"recentReviews"`
 }

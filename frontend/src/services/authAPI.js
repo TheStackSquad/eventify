@@ -2,15 +2,11 @@
 import backendInstance from "@/axiosConfig/axios";
 import { API_ENDPOINTS } from "@/utils/constants/globalConstants";
 
-const IS_DEV = process.env.NODE_ENV === "development";
-
-// Debug logging helper
+// ✅ Debug logger
 const debugLog = (method, endpoint, data = {}) => {
-  if (!IS_DEV) return;
-  console.log(
-    `🌐 [AuthAPI] ${method} ${endpoint}`,
-    Object.keys(data).length ? data : "",
-  );
+  if (process.env.NODE_ENV === "development") {
+    console.log(`📡 [AuthAPI] ${method} ${endpoint}`, data);
+  }
 };
 
 // === SESSION VERIFICATION ===
@@ -19,17 +15,20 @@ export const verifySessionApi = async () => {
 
   try {
     const response = await backendInstance.get(API_ENDPOINTS.AUTH.VERIFY);
-
+    
     debugLog("GET", API_ENDPOINTS.AUTH.VERIFY, {
       status: response.status,
-      userId: response.data?.user?.id,
+      hasUser: !!response.data.user,
+      isVendor: response.data.user?.isVendor,
+      hasEvents: response.data.user?.hasEvents,
     });
 
+    // Return user object from { user: {...} } envelope
     return response.data.user;
   } catch (error) {
-    debugLog("GET", API_ENDPOINTS.AUTH.VERIFY, {
-      error: error.response?.status || error.message,
-      code: error.response?.data?.code,
+    console.error("❌ [AuthAPI] Session verification failed", {
+      status: error.response?.status,
+      message: error.message,
     });
     throw error;
   }
@@ -37,29 +36,21 @@ export const verifySessionApi = async () => {
 
 // === LOGIN ===
 export const loginApi = async (credentials) => {
-  debugLog("POST", API_ENDPOINTS.AUTH.LOGIN, {
-    email: credentials.email,
-  });
+   debugLog("POST", API_ENDPOINTS.AUTH.LOGIN, {
+     email: credentials.email,
+   });
+  const response = await backendInstance.post(
+    API_ENDPOINTS.AUTH.LOGIN,
+    credentials,
+  );
 
-  try {
-    const response = await backendInstance.post(
-      API_ENDPOINTS.AUTH.LOGIN,
-      credentials,
-    );
-
-    debugLog("POST", API_ENDPOINTS.AUTH.LOGIN, {
-      status: response.status,
-      userId: response.data?.user?.id,
-    });
-
-    return response.data;
-  } catch (error) {
-    debugLog("POST", API_ENDPOINTS.AUTH.LOGIN, {
-      error: error.response?.status || error.message,
-      code: error.response?.data?.code,
-    });
-    throw error;
-  }
+      debugLog("POST", API_ENDPOINTS.AUTH.LOGIN, {
+        status: response.status,
+        userId: response.data?.user?.id,
+      });
+  // Return the whole response.data so useLogin can access
+  // both data.user AND data.message (and tokens if you use them there)
+  return response.data;
 };
 
 // === SIGNUP ===
