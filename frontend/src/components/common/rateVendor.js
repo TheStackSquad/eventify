@@ -51,26 +51,37 @@ const RateVendor = ({ vendorId, vendorName, onClose }) => {
     setErrors({});
   }, []);
 
-  const handleSubmit = (e) => {
-    e.preventDefault();
+ const handleSubmit = (e) => {
+   e.preventDefault();
 
-    if (!validateForm()) return;
+   // Prepare data for validation and submission
+   const reviewData = {
+     rating: Number(rating),
+     comment: reviewText.trim(),
+     user_name: user?.name || userName.trim(),
+     email: user?.email || email.trim(),
+     vendor_id: vendorId,
+   };
 
-    const reviewData = {
-      rating: Number(rating),
-      comment: reviewText.trim(),
-      user_name: user?.name || userName.trim(),
-      email: user?.email || email.trim(),
-      vendor_id: vendorId,
-    };
+   // Run validation
+   const validation = validateReview(reviewData);
+   if (!validation.isValid) {
+     setErrors(validation.errors);
+     return;
+   }
 
-    postReview(reviewData, {
-      onSuccess: () => {
-        resetForm();
-        setTimeout(() => onClose?.(), 2000);
-      },
-    });
-  };
+   // Submit to backend
+   postReview(reviewData, {
+     onSuccess: () => {
+       resetForm();
+       // Optional: Show a success toast here
+       setTimeout(() => onClose?.(), 2000);
+     },
+     onError: (err) => {
+       console.error("Submission failed:", err);
+     },
+   });
+ };
 
   const ratingInfo = (() => {
     const currentRating = hoverRating || rating;

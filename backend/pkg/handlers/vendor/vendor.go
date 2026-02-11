@@ -1,6 +1,6 @@
 // backend/pkg/handlers/vendor/vendor.go
 
-package handlers
+package vendor
 
 import (
 	repovendor "github.com/eventify/backend/pkg/repository/vendor"

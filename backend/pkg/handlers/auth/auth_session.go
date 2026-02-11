@@ -1,10 +1,11 @@
-//backend/pkg/handlers/auth/auth_session.go
+// backend/pkg/handlers/auth/auth_session.go
 
 package auth
 
 import (
 	"net/http"
-	 "time"
+	"time"
+
 	"github.com/eventify/backend/pkg/models"
 	serviceauth "github.com/eventify/backend/pkg/services/auth"
 	"github.com/gin-gonic/gin"
@@ -21,14 +22,12 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	}
 
 	// 1. Capture Metadata
-	// We extract the IP and UserAgent here to pass to the service for security auditing
 	ip := c.ClientIP()
 	ua := c.Request.UserAgent()
 
 	// 2. Service Call
-	// The signature now matches the updated AuthService interface
 	user, tokens, err := h.AuthService.Login(c.Request.Context(), req.Email, req.Password, ip, ua)
-	
+
 	if err != nil {
 		switch err {
 		case serviceauth.ErrAccountLocked:
@@ -42,13 +41,14 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 
-	// 3. Set Persistence
+	// 3. Set Persistence (now includes CSRF token generation)
 	setAuthCookies(c, tokens.AccessToken, tokens.RefreshToken)
 
 	// 4. Response
 	log.Info().
 		Str("user_id", user.ID.String()).
 		Str("ip", ip).
+		Str("user_agent", ua).
 		Msg("Auth: Login successful")
 
 	c.JSON(http.StatusOK, models.AuthResponse{
@@ -56,7 +56,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		User:    user,
 	})
 }
-// RefreshToken handles token rotation with metadata awareness
+
 func (h *AuthHandler) RefreshToken(c *gin.Context) {
 	oldRefreshToken, err := c.Cookie(RefreshTokenCookieName)
 	if err != nil || oldRefreshToken == "" {
@@ -64,18 +64,17 @@ func (h *AuthHandler) RefreshToken(c *gin.Context) {
 		return
 	}
 
-	// 1. GATHER METADATA
-	ipAddress := c.ClientIP()
-	userAgent := c.Request.UserAgent()
+	// 1. GATHER CURRENT METADATA
+	currentIP := c.ClientIP()
+	currentUA := c.Request.UserAgent()
 
-	// 2. ATTEMPT REFRESH
-	// FIXED: Pass ipAddress and userAgent to satisfy the "want 5 arguments" error
-	tokens, err := h.AuthService.RefreshToken(
-		c.Request.Context(), 
-		oldRefreshToken, 
-		time.Duration(AbsoluteSessionTimeout)*time.Second, // Ensure correct type
-		ipAddress, 
-		userAgent,
+	// 2. ATTEMPT REFRESH (now returns userID for enriched response)
+	userID, tokens, err := h.AuthService.RefreshToken(
+		c.Request.Context(),
+		oldRefreshToken,
+		time.Duration(AbsoluteSessionTimeout)*time.Second,
+		currentIP,
+		currentUA,
 	)
 
 	if err != nil {
@@ -85,15 +84,19 @@ func (h *AuthHandler) RefreshToken(c *gin.Context) {
 		case serviceauth.ErrSessionExpired:
 			clearAuthCookies(c)
 			c.JSON(http.StatusUnauthorized, gin.H{
-				"code": "SESSION_EXPIRED",
+				"code":    "SESSION_EXPIRED",
 				"message": "Your session has expired. Please log in again.",
 			})
 
-		case serviceauth.ErrTokenReused: // Now defined in serviceauth
+		case serviceauth.ErrTokenReused:
 			clearAuthCookies(c)
-			log.Warn().Str("ip", ipAddress).Msg("🚨 Security Alert: Token reuse attempt")
+			log.Warn().
+				Str("ip", currentIP).
+				Str("user_agent", currentUA).
+				Msg("🚨 Security Alert: Token reuse attempt")
+			
 			c.JSON(http.StatusForbidden, gin.H{
-				"code": "SECURITY_VIOLATION",
+				"code":    "SECURITY_VIOLATION",
 				"message": "Security alert: Multiple session access detected. Please log in again.",
 			})
 
@@ -105,9 +108,19 @@ func (h *AuthHandler) RefreshToken(c *gin.Context) {
 		return
 	}
 
+	// ✅ NEW: Log successful refresh with metadata for security monitoring
+	log.Info().
+		Str("user_id", userID.String()).
+		Str("ip", currentIP).
+		Str("user_agent_preview", currentUA[:min(50, len(currentUA))]).
+		Msg("Auth: Token refresh successful")
+
+	// 3. Set new cookies (CSRF token already exists, no need to regenerate)
 	setAuthCookies(c, tokens.AccessToken, tokens.RefreshToken)
+
 	c.JSON(http.StatusOK, gin.H{"message": "Session refreshed."})
 }
+
 // Logout handles user session termination
 func (h *AuthHandler) Logout(c *gin.Context) {
 	// 1. Clear cookies IMMEDIATELY to protect the client
@@ -120,25 +133,33 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 		}
 	}
 
-	// 2. Extract tokens from cookies (Gin can still read them if called before the response is sent)
+	// 2. Extract tokens from cookies
 	refreshToken, _ := c.Cookie(RefreshTokenCookieName)
 	accessToken, _ := c.Cookie(AccessTokenCookieName)
 
 	// 3. Delegate ALL revocation logic to the service
-	// This now handles Refresh revocation AND Access blacklisting in one call
 	if userID != uuid.Nil {
 		err := h.AuthService.Logout(c.Request.Context(), userID, refreshToken, accessToken)
 		if err != nil {
 			log.Error().Err(err).Msg("Auth: Logout service reported an error")
-			// We don't return 500 here because the client is already "logged out" locally
 		}
 	}
 
+	// ✅ NEW: Log logout with metadata
 	log.Info().
 		Str("user_id", userID.String()[:8]).
+		Str("ip", c.ClientIP()).
 		Bool("has_refresh", refreshToken != "").
 		Bool("has_access", accessToken != "").
 		Msg("Auth: Logout successful")
 
 	c.JSON(http.StatusOK, gin.H{"message": "Logged out successfully."})
+}
+
+// ✅ Helper function for safe string truncation
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }

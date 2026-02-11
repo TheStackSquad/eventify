@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"errors"
 	"time"
+	"fmt"
 
 	"github.com/google/uuid"
 )
@@ -88,4 +89,27 @@ func (r *PostgresAuthRepository) UpdateLastLogin(ctx context.Context, userID uui
 	query := `UPDATE users SET last_login = $1, updated_at = $2 WHERE id = $3`
 	_, err := r.DB.ExecContext(ctx, query, time.Now(), time.Now(), userID)
 	return err
+}
+
+func (r *PostgresAuthRepository) GetVendorIDByOwnerID(ctx context.Context, ownerID uuid.UUID) (*uuid.UUID, error) {
+    var vendorID uuid.UUID
+    
+    // ✅ SOFT DELETE SUPPORT: Only get active vendors
+    query := `
+        SELECT id 
+        FROM vendors 
+        WHERE owner_id = $1 
+        AND deleted_at IS NULL
+        LIMIT 1
+    `
+    
+    err := r.DB.GetContext(ctx, &vendorID, query, ownerID)
+    if err != nil {
+        if errors.Is(err, sql.ErrNoRows) {
+            return nil, nil
+        }
+        return nil, fmt.Errorf("failed to get vendor ID: %w", err)
+    }
+    
+    return &vendorID, nil
 }

@@ -5,126 +5,213 @@ package vendor
 import (
 	"context"
 	"fmt"
-	"sync"
+	"time"
 
 	"github.com/eventify/backend/pkg/models"
 	repovendor "github.com/eventify/backend/pkg/repository/vendor"
 	"github.com/google/uuid"
+	"github.com/jmoiron/sqlx" // Added sqlx for the DB type
+	"github.com/rs/zerolog/log"
 )
 
 type VendorAnalyticsService interface {
-	GetVendorAnalytics(ctx context.Context, vendorID uuid.UUID) (*models.VendorAnalyticsResponse, error)
+	// Accept userID as the third parameter for the ownership check
+	GetVendorAnalytics(ctx context.Context, vendorID uuid.UUID, userID uuid.UUID) (*models.VendorAnalyticsResponse, error)
 }
 
 type vendorAnalyticsServiceImpl struct {
-	coreRepo    repovendor.VendorCoreMetricsRepository
-	metricsRepo repovendor.VendorMetricsRepository
-	dataRepo    repovendor.VendorDataRepository
+	optimizedRepo repovendor.VendorAnalyticsOptimizedRepository
+	db            *sqlx.DB // 👈 Added the db field to the struct
 }
 
 func NewVendorAnalyticsService(
-	cr repovendor.VendorCoreMetricsRepository,
-	mr repovendor.VendorMetricsRepository,
-	dr repovendor.VendorDataRepository,
+	optimizedRepo repovendor.VendorAnalyticsOptimizedRepository,
+	db *sqlx.DB, // 👈 Inject the db connection here
 ) VendorAnalyticsService {
 	return &vendorAnalyticsServiceImpl{
-		coreRepo:    cr,
-		metricsRepo: mr,
-		dataRepo:    dr,
+		optimizedRepo: optimizedRepo,
+		db:            db, // Initialize the db field
 	}
 }
 
-func (s *vendorAnalyticsServiceImpl) GetVendorAnalytics(ctx context.Context, vendorID uuid.UUID) (*models.VendorAnalyticsResponse, error) {
-	// PHASE 1: Synchronous Core Data
-	// Basic Info is required for all subsequent calculations
-	vendorInfo, err := s.coreRepo.GetVendorBasicInfo(ctx, vendorID)
+// GetVendorAnalytics fetches complete analytics with a built-in ownership check
+func (s *vendorAnalyticsServiceImpl) GetVendorAnalytics(
+	ctx context.Context,
+	vendorID uuid.UUID,
+	userID uuid.UUID,
+) (*models.VendorAnalyticsResponse, error) {
+
+	// 1. SECURITY CHECK: Verify the User owns this Vendor profile
+	var isOwner bool
+	ownerQuery := `SELECT EXISTS(SELECT 1 FROM vendors WHERE id = $1 AND owner_id = $2)`
+
+	// Using QueryRowContext for a fast existence check using the injected db
+	err := s.db.QueryRowContext(ctx, ownerQuery, vendorID, userID).Scan(&isOwner)
 	if err != nil {
-		return nil, fmt.Errorf("failed to retrieve vendor profile: %w", err)
+		log.Error().Err(err).Msg("Database error during ownership check")
+		return nil, err
 	}
 
-	trustScore, err := s.coreRepo.GetVendorTrustScore(ctx, vendorID)
-	if err != nil {
-		trustScore = &models.VendorTrustScore{TotalTrustWeight: 0}
+	if !isOwner {
+		log.Warn().
+			Str("user_id", userID.String()).
+			Str("vendor_id", vendorID.String()).
+			Msg("Unauthorized: User does not own this vendor")
+		// We return "vendor not found" for security to avoid confirming valid IDs to unauthorized users
+		return nil, fmt.Errorf("vendor not found")
 	}
 
-	// PHASE 2: Concurrent Data Acquisition
-	var (
-		wg              sync.WaitGroup
-		reviewMetrics   *models.ReviewMetricsRaw
-		recentReviews   []models.RecentReview
-		recentInquiries []models.RecentInquiry
+	log.Info().
+		Str("vendor_id", vendorID.String()).
+		Msg("Fetching vendor analytics (verified owner)")
+
+	// 2. FETCH DATA: Call the optimized repository logic
+	data, err := s.optimizedRepo.GetCompleteVendorAnalytics(ctx, vendorID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to retrieve vendor analytics: %w", err)
+	}
+
+	// 3. TRANSFORM: Map the internal Data model to the API Response format
+	response := s.transformToResponse(data)
+
+	log.Info().
+		Str("vendor_id", vendorID.String()).
+		Str("vendor_name", data.Name).
+		Msg("Vendor analytics fetched successfully")
+
+	return response, nil
+}
+
+// transformToResponse converts internal data model to API response
+func (s *vendorAnalyticsServiceImpl) transformToResponse(
+	data *models.VendorAnalyticsData,
+) *models.VendorAnalyticsResponse {
+	
+	// Calculate inquiry trend
+	trend := s.calculateInquiryTrend(data.Inquiries7d, data.Inquiries30d)
+	
+	// Calculate sentiment trend
+	sentimentTrend := "stable"
+	if data.AvgRatingAll >= 4.5 {
+		sentimentTrend = "improving"
+	} else if data.AvgRatingAll < 3.0 {
+		sentimentTrend = "declining"
+	}
+	
+	// Calculate PVS trend
+	pvsScoreTrend := "stable"
+	if data.PvsScore >= 80 {
+		pvsScoreTrend = "improving"
+	} else if data.PvsScore < 50 {
+		pvsScoreTrend = "declining"
+	}
+	
+	// Parse timestamps
+	createdAt, _ := time.Parse(time.RFC3339, data.CreatedAt)
+	updatedAt, _ := time.Parse(time.RFC3339, data.UpdatedAt)
+	
+	// Calculate days on platform
+	daysOnPlatform := int(time.Since(createdAt).Hours() / 24)
+	
+	// Determine account status
+	accountStatus := "active"
+	if daysOnPlatform < 30 {
+		accountStatus = "new"
+	} else if time.Since(updatedAt).Hours() > 30*24 {
+		accountStatus = "inactive"
+	}
+	
+	return &models.VendorAnalyticsResponse{
+		VendorID:   data.ID.String(),
+		VendorName: data.Name,
+		Category:   data.Category,
 		
-		// Metric Windows
-		in7, rev7, in30, rev30 int
-		avg7, avg30            float64
-	)
-
-	errCh := make(chan error, 10) // Increased buffer for 5 concurrent tasks
-
-	// Task 1: Comprehensive Review Stats
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		var e error
-		reviewMetrics, e = s.metricsRepo.GetReviewMetrics(ctx, vendorID)
-		if e != nil { errCh <- fmt.Errorf("review_metrics: %w", e) }
-	}()
-
-	// Task 2: Recent Activity (Reviews)
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		var e error
-		recentReviews, e = s.dataRepo.GetRecentReviews(ctx, vendorID, 5)
-		if e != nil { errCh <- fmt.Errorf("recent_reviews: %w", e) }
-	}()
-
-	// Task 3: Recent Activity (Inquiries)
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		var e error
-		recentInquiries, e = s.dataRepo.GetRecentInquiries(ctx, vendorID, 5)
-		if e != nil { errCh <- fmt.Errorf("recent_inquiries: %w", e) }
-	}()
-
-	// Task 4: 7-Day Performance Window
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		in7, _ = s.metricsRepo.GetInquiryCountByPeriod(ctx, vendorID, 7)
-		rev7, _ = s.metricsRepo.GetReviewCountByPeriod(ctx, vendorID, 7)
-		avg7, _ = s.metricsRepo.GetAverageRatingByPeriod(ctx, vendorID, 7)
-	}()
-
-	// Task 5: 30-Day Performance Window
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		in30, _ = s.metricsRepo.GetInquiryCountByPeriod(ctx, vendorID, 30)
-		rev30, _ = s.metricsRepo.GetReviewCountByPeriod(ctx, vendorID, 30)
-		avg30, _ = s.metricsRepo.GetAverageRatingByPeriod(ctx, vendorID, 30)
-	}()
-
-	wg.Wait()
-	close(errCh)
-
-	// PHASE 3: Safety & Aggregation
-	if reviewMetrics == nil {
-		reviewMetrics = &models.ReviewMetricsRaw{RatingCounts: make(map[int]int)}
+		Overview: models.VendorOverview{
+			CurrentPVSScore:    data.PvsScore,
+			TotalInquiries:     data.TotalInquiries,
+			TotalViews:         data.ViewsTotal,
+			Views30d:           data.Views30d,
+			ProfileCompletion:  float64(data.ProfileCompletion),
+			AverageRating:      data.AvgRatingAll,
+			TotalReviews:       data.TotalReviews,
+			IsIdentityVerified: data.IsIdentityVerified,
+			IsBusinessVerified: data.IsBusinessVerified,
+			IsFullyVerified:    data.IsIdentityVerified && data.IsBusinessVerified,
+		},
+		
+		Inquiries: models.VendorInquiries{
+			Total:               data.Inquiries30d,
+			Pending:             0, // TODO: Track status in inquiries table
+			Responded:           0,
+			Closed:              0,
+			ResponseRate:        0.0,
+			AverageResponseTime: "N/A",
+			RecentInquiries:     data.RecentInquiries,
+			InquiryTrend:        trend,
+		},
+		
+		Reviews: models.VendorReviews{
+			TotalReviews:    data.TotalReviews,
+			ApprovedReviews: data.TotalReviews,
+			PendingReviews:  0,
+			AverageRating:   data.AvgRatingAll,
+			RatingDistribution: models.RatingDistribution{
+				FiveStar:  data.FiveStar,
+				FourStar:  data.FourStar,
+				ThreeStar: data.ThreeStar,
+				TwoStar:   data.TwoStar,
+				OneStar:   data.OneStar,
+				AvgRating: data.AvgRatingAll,
+			},
+			RecentReviews:  data.RecentReviews,
+			SentimentTrend: sentimentTrend,
+		},
+		
+		Trends: models.VendorTrends{
+			Last7Days: models.PeriodMetrics{
+				InquiryCount:  data.Inquiries7d,
+				NewReviews:    data.Reviews7d,
+				AverageRating: data.AvgRating7d,
+			},
+			Last30Days: models.PeriodMetrics{
+				InquiryCount:  data.Inquiries30d,
+				NewReviews:    data.Reviews30d,
+				AverageRating: data.AvgRating30d,
+			},
+		},
+		
+		Performance: models.VendorPerformance{
+			IsIdentityVerified:  data.IsIdentityVerified,
+			IsBusinessVerified:  data.IsBusinessVerified,
+			CACNumber:           data.CacNumber,
+			DaysOnPlatform:      daysOnPlatform,
+			LastProfileUpdate:   updatedAt,
+			AccountStatus:       accountStatus,
+			ProfileCompleteness: float64(data.ProfileCompletion),
+			PVSScoreTrend:       pvsScoreTrend,
+		},
+		
+		// No tier restrictions for now (all vendors get full access)
+		Restrictions: nil,
 	}
+}
 
-	// Final Data Mapping (Using internal helper methods)
-	fullAnalytics := &models.VendorAnalyticsResponse{
-		VendorID:    vendorInfo.ID.String(),
-		VendorName:  vendorInfo.Name,
-		Category:    vendorInfo.Category,
-		Overview:    s.calculateOverview(vendorInfo, trustScore),
-		Inquiries:   s.calculateInquiries(recentInquiries, in7, in30),
-		Reviews:     s.calculateReviews(reviewMetrics, recentReviews),
-		Trends:      s.calculateTrends(in7, rev7, avg7, in30, rev30, avg30),
-		Performance: s.calculatePerformance(vendorInfo, trustScore),
+func (s *vendorAnalyticsServiceImpl) calculateInquiryTrend(
+	inquiries7d int,
+	inquiries30d int,
+) string {
+	if inquiries30d == 0 {
+		return "stable"
 	}
-
-	return s.ApplyTierRestrictions(ctx, vendorID, fullAnalytics)
+	
+	weeklyAvg := float64(inquiries7d)
+	monthlyAvg := float64(inquiries30d) / 4.3 // Avg weeks in a month
+	
+	if weeklyAvg > monthlyAvg*1.2 {
+		return "increasing"
+	} else if weeklyAvg < monthlyAvg*0.8 {
+		return "decreasing"
+	}
+	
+	return "stable"
 }

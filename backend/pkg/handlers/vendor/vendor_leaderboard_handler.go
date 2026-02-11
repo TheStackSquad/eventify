@@ -1,5 +1,5 @@
 // backend/pkg/handlers/vendor/vendor_leaderboard_handler.go
-package handlers
+package vendor
 
 import (
 	"net/http"

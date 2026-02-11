@@ -1,11 +1,9 @@
 // frontend/src/axiosConfig/axios.js
+
 import axios from "axios";
 import { API_ENDPOINTS } from "@/utils/constants/globalConstants";
 import { createResponseInterceptor } from "./interceptorService";
-import {
-  getAccessTokenFromCookies,
-  setBackendInstanceRef,
-} from "./tokenService";
+import { setBackendInstanceRef } from "./tokenService";
 
 // --- Configuration ---
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8081";
@@ -13,25 +11,18 @@ const IS_DEV = process.env.NODE_ENV === "development";
 
 if (IS_DEV) console.log("Axios Base URL:", API_BASE_URL);
 
-/**
- * SHARED UTILS & INTERCEPTORS
- */
+// CSRF Token Helper
+const getCSRFToken = () => {
+  if (typeof document === "undefined") return null; // SSR safety
 
-// Function to attach Bearer token to requests
-const attachAuthToken = (config) => {
-  const accessToken = getAccessTokenFromCookies();
-  if (accessToken && !config.headers.Authorization) {
-    config.headers.Authorization = `Bearer ${accessToken}`;
+  const cookies = document.cookie.split(";");
+  for (let cookie of cookies) {
+    const [name, value] = cookie.trim().split("=");
+    if (name === "csrf_token") {
+      return decodeURIComponent(value);
+    }
   }
-
-  if (IS_DEV) {
-    console.log(`${config.baseURL ? "Backend" : "Frontend"} Request:`, {
-      method: config.method?.toUpperCase(),
-      url: config.url,
-      hasAuth: !!config.headers.Authorization,
-    });
-  }
-  return config;
+  return null;
 };
 
 // Copy static methods from original axios to an instance
@@ -52,7 +43,7 @@ export const backendInstance = axios.create({
   headers: {
     "Content-Type": "application/json",
   },
-  withCredentials: true,
+  withCredentials: true, // Required for HttpOnly cookies
 });
 injectStaticMethods(backendInstance);
 
@@ -72,15 +63,38 @@ injectStaticMethods(frontendInstance);
 
 // --- APPLY INTERCEPTORS ---
 
-// 1. Request Interceptors (Both instances get Auth Headers)
-backendInstance.interceptors.request.use(attachAuthToken, (err) =>
-  Promise.reject(err),
-);
-frontendInstance.interceptors.request.use(attachAuthToken, (err) =>
-  Promise.reject(err),
+// ✅ NEW: Request Interceptor for CSRF Token Injection
+backendInstance.interceptors.request.use(
+  (config) => {
+    // Only attach CSRF token for state-changing methods
+    const stateChangingMethods = ["POST", "PUT", "PATCH", "DELETE"];
+
+    if (stateChangingMethods.includes(config.method?.toUpperCase())) {
+      const csrfToken = getCSRFToken();
+
+      if (csrfToken) {
+        config.headers["X-CSRF-Token"] = csrfToken;
+
+        if (IS_DEV) {
+          console.log(
+            `🛡️ [CSRF] Token attached to ${config.method?.toUpperCase()} ${config.url}`,
+          );
+        }
+      } else if (IS_DEV) {
+        console.warn(
+          `⚠️ [CSRF] No token found for ${config.method?.toUpperCase()} ${config.url}`,
+        );
+      }
+    }
+
+    return config;
+  },
+  (error) => {
+    return Promise.reject(error);
+  },
 );
 
-// 2. Backend Response Interceptor (Handles token refreshes)
+// Backend Response Interceptor (Handles token refreshes)
 backendInstance.interceptors.response.use((response) => {
   if (IS_DEV) {
     console.log("Backend Success:", {
@@ -88,11 +102,10 @@ backendInstance.interceptors.response.use((response) => {
       url: response.config.url,
     });
   }
-  /* Note: Proactive refresh scheduling is handled in tokenService via scheduleTokenRefresh */
   return response;
 }, createResponseInterceptor(backendInstance));
 
-// 3. Frontend Response Interceptor (Basic error handling)
+// Frontend Response Interceptor (Basic error handling)
 frontendInstance.interceptors.response.use(
   (response) => {
     if (IS_DEV) {
@@ -104,6 +117,29 @@ frontendInstance.interceptors.response.use(
     return response;
   },
   (error) => {
+    // ✅ NEW: Handle CSRF errors specifically
+    if (
+      error.response?.data?.code === "CSRF_TOKEN_MISSING" ||
+      error.response?.data?.code === "CSRF_TOKEN_INVALID"
+    ) {
+      console.error("🚨 CSRF Protection Error:", {
+        code: error.response.data.code,
+        message: error.response.data.message,
+      });
+
+      // Dispatch custom event for components to handle
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(
+          new CustomEvent("csrfError", {
+            detail: {
+              code: error.response.data.code,
+              message: error.response.data.message,
+            },
+          }),
+        );
+      }
+    }
+
     console.error("Frontend API Error:", {
       status: error.response?.status,
       url: error.config?.url,

@@ -1,4 +1,4 @@
-//backend/pkg/repository/auth/auth_repo_user.go
+// backend/pkg/repository/auth/auth_repo_user.go
 
 package auth
 
@@ -51,9 +51,13 @@ func (r *PostgresAuthRepository) GetUserByEmail(ctx context.Context, email strin
 	return &user, nil
 }
 
+
 func (r *PostgresAuthRepository) GetUserByID(ctx context.Context, id uuid.UUID) (*models.User, error) {
 	var user models.User
-	query := "SELECT * FROM users WHERE id = $1"
+	
+	// Simple query - just get the user record
+	// Vendor/event checks are done separately in the service layer
+	query := `SELECT * FROM users WHERE id = $1`
 
 	err := r.DB.GetContext(ctx, &user, query, id)
 	if err != nil {

@@ -156,7 +156,9 @@ func main() {
 	eventRepo := repoevent.NewPostgresEventRepository(dbClient)
 
 	analyticsRepo := analytics.NewPostgresAnalyticsRepository(dbClient)
-    vendorAnalyticsOptimizedRepo := repovendor.NewVendorAnalyticsOptimizedRepository(dbClient)
+	vendorCoreMetricsRepo := repovendor.NewVendorCoreMetricsRepository(dbClient)
+	vendorMetricsRepo := repovendor.NewVendorMetricsRepository(dbClient)
+	vendorDataRepo := repovendor.NewVendorDataRepository(dbClient)
 	vendorLeaderboardRepo := repovendor.NewVendorLeaderboardRepo(dbClient)
 	subscriptionRepo := reposubscription.NewSubscriptionRepository(dbClient)
 
@@ -178,11 +180,11 @@ authService := serviceauth.NewAuthService(
 	inquiryService := serviceinquiries.NewInquiryService(inquiryRepo, inquiryRepo, vendorRepo)
 	feedbackService := servicefeedback.NewFeedbackService(feedbackRepo)
 	analyticsService := serviceanalytics.NewAnalyticsService(analyticsRepo)
-	
-vendorAnalyticsService := servicevendor.NewVendorAnalyticsService(
-    vendorAnalyticsOptimizedRepo,
-    dbClient,
-)
+	vendorAnalyticsService := servicevendor.NewVendorAnalyticsService(
+		vendorCoreMetricsRepo,
+		vendorMetricsRepo,
+		vendorDataRepo,
+	)
 	vendorLeaderboardService := servicevendor.NewVendorLeaderboardService(vendorLeaderboardRepo)
 
 paystackClient := servicepaystack.NewClient(
@@ -219,8 +221,7 @@ paystackClient := servicepaystack.NewClient(
 	feedbackHandler := handlerfeedback.NewFeedbackHandler(feedbackService)
 	orderHandler := handlerorder.NewOrderHandler(orderService)
 	analyticsHandler := handleranalytics.NewAnalyticsHandler(analyticsService)
-	
-    vendorAnalyticsHandler := handlervendor.NewVendorAnalyticsHandler(vendorAnalyticsService, dbClient)
+	vendorAnalyticsHandler := handlervendor.NewVendorAnalyticsHandler(vendorAnalyticsService)
 	subscriptionHandler := handlersubscription.NewSubscriptionHandler(subscriptionService, vendorRepo)
 
 	utils.LogSuccess(serviceName, "handlers", "All handlers initialized")

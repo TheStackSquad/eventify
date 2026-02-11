@@ -35,12 +35,12 @@ func (h *ReviewHandler) CreateReview(c *gin.Context) {
 	}
 
 	// 1. DTO to capture raw JSON strings (sql.NullString won't bind directly from strings)
-	type CreateReviewRequest struct {
-		UserName string `json:"userName" binding:"required"`
-		Email    string `json:"email" binding:"required,email"`
-		Rating   int32  `json:"rating" binding:"required,min=1,max=5"`
-		Comment  string `json:"comment" binding:"required"`
-	}
+type CreateReviewRequest struct {
+        UserName string `json:"user_name" binding:"required"` 
+        Email    string `json:"email"     binding:"required,email"`
+        Rating   int32  `json:"rating"    binding:"required,min=1,max=5"`
+        Comment  string `json:"comment"   binding:"required"`
+    }
 
 	var req CreateReviewRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -49,15 +49,15 @@ func (h *ReviewHandler) CreateReview(c *gin.Context) {
 		return
 	}
 
-	// 2. Map DTO to the robust model (Fixes the Scan/NULL error)
-	reviewModel := models.Review{
-		ID:       uuid.New(),
-		VendorID: vendorID,
-		UserName: sql.NullString{String: req.UserName, Valid: req.UserName != ""},
-		Email:    sql.NullString{String: req.Email, Valid: req.Email != ""},
-		Rating:   req.Rating,
-		Comment:  req.Comment,
-	}
+// Map DTO to the model
+    reviewModel := models.Review{
+        ID:       uuid.New(),
+        VendorID: vendorID,
+        UserName: sql.NullString{String: req.UserName, Valid: req.UserName != ""},
+        Email:    sql.NullString{String: req.Email,    Valid: req.Email != ""},
+        Rating:   req.Rating,
+        Comment:  req.Comment,
+    }
 
 	// 3. Set reviewer identity logic from Auth Middleware
 	if val, exists := c.Get("user_id"); exists {

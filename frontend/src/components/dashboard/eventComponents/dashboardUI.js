@@ -1,4 +1,5 @@
 // src/components/dashboard/eventComponents/dashboardUI.js
+
 "use client";
 
 import { motion } from "framer-motion";
@@ -20,7 +21,7 @@ export default function DashboardUI({
   quickActions,
   filteredEvents,
   activeView = "events",
-  onViewChange, //this is grayed out
+  onViewChange,
 }) {
   // ✅ Get user data directly from useAuth hook
   const { user } = useAuth();
@@ -45,8 +46,6 @@ export default function DashboardUI({
     (filteredEvents?.upcomingEvents?.length ?? 0) +
     (filteredEvents?.pastEvents?.length ?? 0);
 
-  // ✅ REMOVED: formattedStats transformation - stats are already formatted at source
-
   // Loading state component
   const LoadingState = (
     <div className="text-center py-20">
@@ -58,6 +57,32 @@ export default function DashboardUI({
         {welcomeMessage}
       </h2>
       <p className="text-gray-500">Setting up your dashboard...</p>
+    </div>
+  );
+
+  // View Toggle Component
+  const ViewToggle = () => (
+    <div className="flex items-center gap-2 bg-gray-100 rounded-xl p-1">
+      <button
+        onClick={() => onViewChange?.("events")}
+        className={`px-4 py-2 text-sm font-medium rounded-lg transition-all ${
+          activeView === "events"
+            ? "bg-white text-gray-900 shadow-sm"
+            : "text-gray-500 hover:text-gray-700"
+        }`}
+      >
+        Events
+      </button>
+      <button
+        onClick={() => onViewChange?.("vendors")}
+        className={`px-4 py-2 text-sm font-medium rounded-lg transition-all ${
+          activeView === "vendors"
+            ? "bg-white text-gray-900 shadow-sm"
+            : "text-gray-500 hover:text-gray-700"
+        }`}
+      >
+        Vendors
+      </button>
     </div>
   );
 
@@ -90,6 +115,9 @@ export default function DashboardUI({
 
             {/* View Toggle and Logout */}
             <div className="flex items-center gap-4">
+              {/* View Toggle - Only show if both events and vendors are available */}
+              {!isLoading && user && <ViewToggle />}
+
               {onLogout && !isLoading && (
                 <button
                   onClick={onLogout}
@@ -115,10 +143,12 @@ export default function DashboardUI({
             className="space-y-8"
           >
             {/* Stats Grid - Pass stats directly without transformation */}
-            <DashboardStats stats={stats ?? []} />
+            {activeView === "events" && <DashboardStats stats={stats ?? []} />}
 
-            {/* Quick Actions */}
-            <DashboardQuickActions quickActions={quickActions ?? []} />
+            {/* Quick Actions - Only show for events view */}
+            {activeView === "events" && (
+              <DashboardQuickActions quickActions={quickActions ?? []} />
+            )}
 
             {/* Dynamic Content Based on Active View */}
             {activeView === "events" ? (
@@ -193,13 +223,15 @@ export default function DashboardUI({
                 </motion.div>
               </>
             ) : (
-              /* Vendors Section */
+              /* Vendors Section - PASS USER PROP */
               <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.7, duration: 0.5 }}
               >
-                <VendorsDashboard />
+                <VendorsDashboard
+                  currentUser={user?.vendorId} // Pass the user object directly
+                />
               </motion.div>
             )}
           </motion.div>

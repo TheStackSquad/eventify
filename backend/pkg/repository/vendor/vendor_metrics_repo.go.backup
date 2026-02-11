@@ -1,5 +1,7 @@
 // backend/pkg/repository/ vendor/vendor_metrics_repo.go
 
+// backend/pkg/repository/vendor/vendor_metrics_repo.go
+
 package vendor
 
 import (
@@ -101,16 +103,6 @@ func (r *PostgresVendorAnalyticsOptimizedRepo) GetCompleteVendorAnalytics(ctx co
 		return nil, fmt.Errorf("analytics query failed: %w", err)
 	}
 	return rawData.ToAnalyticsData()
-}
-
-// GetVendorTier implements the VendorAnalyticsOptimizedRepository interface
-// This allows tier-based access restrictions without a separate query
-func (r *PostgresVendorAnalyticsOptimizedRepo) GetVendorTier(ctx context.Context, vendorID uuid.UUID) (models.SubscriptionTier, error) {
-	analytics, err := r.GetCompleteVendorAnalytics(ctx, vendorID)
-	if err != nil {
-		return models.TierFree, err
-	}
-	return models.SubscriptionTier(analytics.Tier), nil
 }
 
 // ============================================================================

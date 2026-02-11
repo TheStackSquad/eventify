@@ -46,7 +46,8 @@ export function useIsInitialized() {
 
 export function useIsAdmin() {
   const { user } = useAuth();
-  return user?.is_admin || false;
+  // Backend returns Role as a string: "admin", "vendor", "customer"
+  return user?.role === "admin";
 }
 
 /**
@@ -64,16 +65,15 @@ export function useAuthReady() {
  */
 export function useCanAccessEvents() {
   const user = useCurrentUser();
-  return !!(user?.hasEvents || user?.isVendor || user?.is_admin);
+  return !!(user?.hasEvents || user?.isVendor);
 }
-
 /**
  * Grants access to business-specific tools.
  * True only if they completed the vNIN/Business registration.
  */
 export function useCanAccessVendorTools() {
   const user = useCurrentUser();
-  return !!(user?.isVendor || user?.is_admin);
+  return !!user?.isVendor;
 }
 
 // ================================================================

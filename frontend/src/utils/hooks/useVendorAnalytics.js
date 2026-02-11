@@ -1,41 +1,46 @@
 // frontend/src/hooks/useVendorAnalytics.js
 
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import {
   fetchVendorAnalyticsApi,
   checkAnalyticsHealthApi,
 } from "@/services/vendorApi";
-import { ANALYTICS_CONSTANTS } from "@/utils/constants/globalConstants";
 
-// Logging utility (duplicated to keep each file independent)
+// ============================================================================
+// QUERY KEYS - Centralized for consistency
+// ============================================================================
+
+export const analyticsKeys = {
+  all: ["vendors", "analytics"],
+  analytics: (id) => ["vendors", "analytics", id],
+  health: ["vendors", "analytics", "health"],
+};
+
+// ============================================================================
+// LOGGING UTILITY
+// ============================================================================
+
+const IS_DEV = process.env.NODE_ENV === "development";
+
 const log = {
   query: (hookName, action, data = null) => {
+    if (!IS_DEV) return;
     const timestamp = new Date().toISOString();
-    if (data) {
-      console.log(`📊 [${timestamp}] ${hookName}: ${action}`, data);
-    } else {
-      console.log(`📊 [${timestamp}] ${hookName}: ${action}`);
-    }
+    console.log(`📊 [${timestamp}] ${hookName}: ${action}`, data || "");
   },
   error: (hookName, action, error) => {
+    if (!IS_DEV) return;
     const timestamp = new Date().toISOString();
     console.error(`❌ [${timestamp}] ${hookName}: ${action}`, {
       message: error.message,
-      name: error.name,
       status: error.status,
-      code: error.code,
-      stack: error.stack?.split("\n")[0],
     });
   },
 };
 
-// Analytics-specific query keys
-export const analyticsKeys = {
-  // Analytics data for a specific vendor
-  analytics: (id) => ["vendors", "analytics", id],
-  // Service health check
-  health: ["vendors", "health"],
-};
+// ============================================================================
+// MAIN ANALYTICS HOOK - Optimized for Performance
+// ============================================================================
 
 export const useVendorAnalytics = (vendorId, options = {}) => {
   const hookName = "useVendorAnalytics";
@@ -43,19 +48,19 @@ export const useVendorAnalytics = (vendorId, options = {}) => {
   log.query(hookName, "Hook called", { vendorId, enabled: !!vendorId });
 
   return useQuery({
+    // ✅ Unique query key per vendor
     queryKey: analyticsKeys.analytics(vendorId),
+
+    // ✅ Fetch function
     queryFn: async () => {
       log.query(hookName, "Fetching vendor analytics...", { vendorId });
       try {
         const data = await fetchVendorAnalyticsApi(vendorId);
         log.query(hookName, "Fetch successful", {
           vendorId,
-          hasData: !!data,
-          sections: data ? Object.keys(data) : [],
-          insightsCount: data?.insights?.length || 0,
-          inquiries: data?.inquiries || null,
-          reviews: data?.reviews || null,
-          trends: data?.trends ? "present" : "absent",
+          vendorName: data?.vendorName,
+          totalInquiries: data?.inquiries?.total || 0,
+          totalReviews: data?.reviews?.totalReviews || 0,
         });
         return data;
       } catch (error) {
@@ -63,43 +68,71 @@ export const useVendorAnalytics = (vendorId, options = {}) => {
         throw error;
       }
     },
+
+    // ✅ CRITICAL: Only fetch if vendorId exists
     enabled: !!vendorId,
-    staleTime: ANALYTICS_CONSTANTS?.CACHE_TIME?.ANALYTICS || 1000 * 60 * 5, // 5 minutes default
-    cacheTime: ANALYTICS_CONSTANTS?.CACHE_TIME?.ANALYTICS || 1000 * 60 * 5,
-    refetchOnWindowFocus: true,
+
+    // ============================================================================
+    // SMART CACHING STRATEGY
+    // ============================================================================
+
+    // ✅ Data is "fresh" for 10 minutes (won't refetch during this time)
+    staleTime: 10 * 60 * 1000, // 10 minutes
+
+    // ✅ Keep in cache for 30 minutes even if component unmounts
+    cacheTime: 30 * 60 * 1000, // 30 minutes (renamed to gcTime in v5)
+
+    // ✅ Don't refetch when user switches browser tabs (saves resources)
+    refetchOnWindowFocus: false,
+
+    // ✅ DO refetch when user regains internet connection
+    refetchOnReconnect: true,
+
+    // ✅ Auto-refresh every 5 minutes (keep data relatively fresh)
+    refetchInterval: 5 * 60 * 1000, // 5 minutes
+
+    // ✅ Stop auto-refresh when window is not visible (battery optimization)
+    refetchIntervalInBackground: false,
+
+    // ============================================================================
+    // ERROR HANDLING & RETRY
+    // ============================================================================
+
+    // ✅ Retry failed requests (exponential backoff)
     retry: 2,
+    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 5000),
+
+    // ✅ Callbacks for debugging
     onSuccess: (data) => {
-      log.query(hookName, "Query onSuccess", {
+      log.query(hookName, "Query succeeded", {
         vendorId,
-        dataStructure: data
-          ? {
-              hasOverview: !!data.overview,
-              hasInsights: !!data.insights,
-              hasInquiries: !!data.inquiries,
-              hasReviews: !!data.reviews,
-              hasTrends: !!data.trends,
-            }
-          : "no data",
+        hasOverview: !!data?.overview,
+        hasInquiries: !!data?.inquiries,
+        hasReviews: !!data?.reviews,
       });
     },
+
     onError: (error) => {
       log.error(hookName, "Query error", error);
     },
-    onSettled: (data, error) => {
-      log.query(hookName, "Query settled", {
-        vendorId,
-        status: error ? "error" : "success",
-        retries: options.retry || 2,
-      });
+
+    // ✅ Show placeholder while loading (better UX)
+    placeholderData: (previousData) => {
+      // If we have previous data, show it while refetching
+      return previousData;
     },
+
+    // ✅ Merge with any custom options passed in
     ...options,
   });
 };
 
+// ============================================================================
+// ANALYTICS HEALTH CHECK HOOK
+// ============================================================================
+
 export const useAnalyticsHealth = (options = {}) => {
   const hookName = "useAnalyticsHealth";
-
-  log.query(hookName, "Hook called");
 
   return useQuery({
     queryKey: analyticsKeys.health,
@@ -107,163 +140,96 @@ export const useAnalyticsHealth = (options = {}) => {
       log.query(hookName, "Checking analytics health...");
       try {
         const data = await checkAnalyticsHealthApi();
-        log.query(hookName, "Health check successful", {
-          status: data?.status || "unknown",
-          timestamp: data?.timestamp || "N/A",
-        });
+        log.query(hookName, "Health check successful", data);
         return data;
       } catch (error) {
         log.error(hookName, "Health check failed", error);
         throw error;
       }
     },
-    staleTime: ANALYTICS_CONSTANTS?.CACHE_TIME?.STATIC_DATA || 1000 * 60 * 10, // 10 minutes default
-    cacheTime: ANALYTICS_CONSTANTS?.CACHE_TIME?.STATIC_DATA || 1000 * 60 * 10,
+    staleTime: 10 * 60 * 1000, // 10 minutes
+    cacheTime: 10 * 60 * 1000,
     refetchInterval: 60000, // Check every minute
-    onSuccess: (data) => {
-      log.query(hookName, "Health status updated", data);
-    },
-    onError: (error) => {
-      log.error(hookName, "Health check error", error);
-    },
     ...options,
   });
 };
 
-export const useVendorOverview = (vendorId, options = {}) => {
-  const hookName = "useVendorOverview";
-  const { data, ...rest } = useVendorAnalytics(vendorId, options);
+// ============================================================================
+// DERIVED HOOKS - Extract specific sections
+// ============================================================================
 
-  const result = {
+export const useVendorOverview = (vendorId, options = {}) => {
+  const { data, ...rest } = useVendorAnalytics(vendorId, options);
+  return {
     data: data?.overview || null,
     ...rest,
   };
-
-  log.query(hookName, "Hook result", {
-    vendorId,
-    hasData: !!result.data,
-    dataStructure: result.data ? Object.keys(result.data) : [],
-    status: rest.status,
-  });
-
-  return result;
-};
-
-export const useVendorInsights = (vendorId, options = {}) => {
-  const hookName = "useVendorInsights";
-  const { data, ...rest } = useVendorAnalytics(vendorId, options);
-
-  const insights = data?.insights || [];
-  const result = {
-    data: insights,
-    criticalInsights: insights.filter((i) => i.type === "critical") || [],
-    warningInsights: insights.filter((i) => i.type === "warning") || [],
-    ...rest,
-  };
-
-  log.query(hookName, "Hook result", {
-    vendorId,
-    totalInsights: insights.length,
-    criticalCount: result.criticalInsights.length,
-    warningCount: result.warningInsights.length,
-    status: rest.status,
-  });
-
-  return result;
 };
 
 export const useVendorInquiries = (vendorId, options = {}) => {
-  const hookName = "useVendorInquiries";
   const { data, ...rest } = useVendorAnalytics(vendorId, options);
-
-  const inquiries = data?.inquiries || null;
-  const result = {
-    data: inquiries,
-    pendingCount: inquiries?.pending || 0,
+  return {
+    data: data?.inquiries || null,
+    pendingCount: data?.inquiries?.pending || 0,
     ...rest,
   };
-
-  log.query(hookName, "Hook result", {
-    vendorId,
-    hasData: !!inquiries,
-    pendingCount: result.pendingCount,
-    totalInquiries: inquiries?.total || 0,
-    status: rest.status,
-  });
-
-  return result;
 };
 
 export const useVendorReviews = (vendorId, options = {}) => {
-  const hookName = "useVendorReviews";
   const { data, ...rest } = useVendorAnalytics(vendorId, options);
-
-  const reviews = data?.reviews || null;
-  const result = {
-    data: reviews,
-    averageRating: reviews?.averageRating || 0,
-    pendingReviews: reviews?.pendingReviews || 0,
+  return {
+    data: data?.reviews || null,
+    averageRating: data?.reviews?.averageRating || 0,
     ...rest,
   };
-
-  log.query(hookName, "Hook result", {
-    vendorId,
-    hasData: !!reviews,
-    averageRating: result.averageRating,
-    pendingReviews: result.pendingReviews,
-    totalReviews: reviews?.totalReviews || 0,
-    status: rest.status,
-  });
-
-  return result;
 };
 
 export const useVendorTrends = (vendorId, options = {}) => {
-  const hookName = "useVendorTrends";
   const { data, ...rest } = useVendorAnalytics(vendorId, options);
-
-  const trends = data?.trends || null;
-  const result = {
-    data: trends,
-    last7Days: trends?.last7Days || null,
-    last30Days: trends?.last30Days || null,
+  return {
+    data: data?.trends || null,
+    last7Days: data?.trends?.last7Days || null,
+    last30Days: data?.trends?.last30Days || null,
     ...rest,
   };
-
-  log.query(hookName, "Hook result", {
-    vendorId,
-    hasData: !!trends,
-    has7DaysData: !!result.last7Days,
-    has30DaysData: !!result.last30Days,
-    status: rest.status,
-  });
-
-  return result;
 };
 
+// ============================================================================
+// CACHE INVALIDATION HOOK - Use when data changes
+// ============================================================================
+
+export const useInvalidateAnalytics = () => {
+  const queryClient = useQueryClient();
+
+  return {
+    // Invalidate specific vendor's analytics
+    invalidateVendor: (vendorId) => {
+      log.query("useInvalidateAnalytics", "Invalidating vendor", { vendorId });
+      queryClient.invalidateQueries({
+        queryKey: analyticsKeys.analytics(vendorId),
+      });
+    },
+
+    // Invalidate all analytics
+    invalidateAll: () => {
+      log.query("useInvalidateAnalytics", "Invalidating all analytics");
+      queryClient.invalidateQueries({
+        queryKey: analyticsKeys.all,
+      });
+    },
+  };
+};
+
+// ============================================================================
+// PREFETCH HELPER - Preload analytics before navigation
+// ============================================================================
+
 export const prefetchVendorAnalytics = async (queryClient, vendorId) => {
-  const hookName = "prefetchVendorAnalytics";
+  log.query("prefetchVendorAnalytics", "Prefetching", { vendorId });
 
-  log.query(hookName, "Starting prefetch", { vendorId });
-
-  try {
-    await queryClient.prefetchQuery({
-      queryKey: analyticsKeys.analytics(vendorId),
-      queryFn: async () => {
-        log.query(hookName, "Prefetching analytics...", { vendorId });
-        const data = await fetchVendorAnalyticsApi(vendorId);
-        log.query(hookName, "Prefetch successful", {
-          vendorId,
-          hasData: !!data,
-          sections: data ? Object.keys(data) : [],
-        });
-        return data;
-      },
-      staleTime: ANALYTICS_CONSTANTS?.CACHE_TIME?.ANALYTICS || 1000 * 60 * 5,
-    });
-    log.query(hookName, "Prefetch completed", { vendorId });
-  } catch (error) {
-    log.error(hookName, "Prefetch failed", error);
-    throw error;
-  }
+  await queryClient.prefetchQuery({
+    queryKey: analyticsKeys.analytics(vendorId),
+    queryFn: () => fetchVendorAnalyticsApi(vendorId),
+    staleTime: 10 * 60 * 1000,
+  });
 };
