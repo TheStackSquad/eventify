@@ -1,17 +1,22 @@
-// frontend/src/components/vendorUI/components/form/selectedField.jsx
-
+// frontend/src/components/vendorUI/components/form/vendorTextAreaField.js
 import React from "react";
-import { ChevronDown, AlertCircle } from "lucide-react";
+import { AlertCircle } from "lucide-react";
 
-const SelectField = ({
+const VendorTextAreaField = ({
   icon: Icon,
   label,
-  options = [],
   error,
   required,
   helperText,
+  maxLength = 500,
+  showCharCount = true,
   ...props
 }) => {
+  const currentLength = props.value?.length || 0;
+  const remaining = maxLength - currentLength;
+  const isNearLimit = remaining <= 50;
+  const isOverLimit = remaining < 0;
+
   return (
     <div className="group w-full">
       <label className="block text-sm font-semibold text-gray-700 mb-2">
@@ -20,35 +25,38 @@ const SelectField = ({
 
       <div className="relative">
         {Icon && (
-          <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-indigo-600 transition-colors pointer-events-none z-10">
+          <div className="absolute left-4 top-4 text-gray-400 group-focus-within:text-indigo-600 transition-colors">
             <Icon size={20} />
           </div>
         )}
 
-        <select
+        <textarea
           {...props}
+          maxLength={maxLength}
           className={`
-            w-full ${Icon ? "pl-12" : "px-4"} pr-10 py-3.5 
+            w-full ${Icon ? "pl-12" : "px-4"} pr-4 py-3.5 
             bg-gray-50 border-2 rounded-xl text-gray-900 
-            transition-all duration-200 appearance-none cursor-pointer
+            placeholder-gray-400 transition-all duration-200 
             focus:bg-white focus:border-indigo-500 
             focus:ring-4 focus:ring-indigo-100 focus:outline-none
+            resize-none
             ${error ? "border-red-400 bg-red-50" : "border-gray-200"}
             ${props.disabled ? "opacity-70 cursor-not-allowed bg-gray-100" : ""}
           `}
-        >
-          <option value="">Select {label}</option>
-          {options.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
+          rows={4}
+        />
 
-        {/* Dropdown icon */}
-        <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none">
-          <ChevronDown className="w-5 h-5 text-gray-400 group-focus-within:text-indigo-600 transition-colors" />
-        </div>
+        {/* Character Count */}
+        {showCharCount && (
+          <div
+            className={`
+            absolute bottom-3 right-3 text-xs font-medium
+            ${isOverLimit ? "text-red-600" : isNearLimit ? "text-amber-600" : "text-gray-400"}
+          `}
+          >
+            {currentLength} / {maxLength}
+          </div>
+        )}
       </div>
 
       {/* Helper Text */}
@@ -67,4 +75,4 @@ const SelectField = ({
   );
 };
 
-export default SelectField;
+export default VendorTextAreaField;

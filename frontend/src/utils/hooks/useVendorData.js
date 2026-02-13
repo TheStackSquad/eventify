@@ -123,183 +123,66 @@ export function useVendors(filters = {}, options = {}) {
   });
 }
 
-export function useVendorProfile(vendorId, initialData) {
+export function useVendorProfile(vendorId, options = {}) {
   return useQuery({
-    queryKey: ["vendors", "detail", vendorId],
+    queryKey: vendorKeys.detail(vendorId),
     queryFn: () => fetchVendorProfileApi(vendorId),
-    initialData: initialData,
     staleTime: 1000 * 60 * 5,
     enabled: !!vendorId,
+    ...options,
   });
 }
 
+// Register new vendor
 export function useRegisterVendor() {
-  const hookName = "useRegisterVendor";
   const queryClient = useQueryClient();
-
-  log.mutation(hookName, "Hook called");
 
   return useMutation({
     mutationFn: async (vendorData) => {
-      log.mutation(hookName, "Starting vendor registration", {
-        dataKeys: Object.keys(vendorData),
-        hasId: !!vendorData.id,
-      });
-      try {
-        const result = await registerVendorApi(vendorData);
-        log.mutation(hookName, "Registration API successful", {
-          newVendorId: result?.id,
-          vendorName: result?.name || "N/A",
-        });
-        return result;
-      } catch (error) {
-        log.error(hookName, "Registration API failed", error);
-        throw error;
-      }
+      const result = await registerVendorApi(vendorData);
+      return result;
     },
-    onSuccess: (newVendor, variables) => {
-      log.mutation(hookName, "Mutation onSuccess triggered", {
-        newVendorId: newVendor?.id,
-        variables: variables ? Object.keys(variables) : [],
-      });
-
-      // 1. Show success toast (Mimicking Thunk action)
-      toastAlert.success(
-        SUCCESS_MESSAGES.VENDOR_REGISTERED ||
-          "Vendor registration submitted successfully!"
-      );
-
-      // 2. 
-      const updateCache = (oldData) => {
-        log.cache("Before update", vendorKeys.list(), oldData);
-
-        if (!oldData || !oldData.vendors) {
-          const newData = {
-            vendors: [newVendor],
-            pagination: { totalCount: 1 },
-          };
-          log.cache("Setting fresh cache", vendorKeys.list(), newData);
-          return newData;
-        }
-
-        const updatedData = {
-          ...oldData,
-          vendors: [newVendor, ...oldData.vendors],
-          pagination: {
-            ...oldData.pagination,
-            totalCount: oldData.pagination.totalCount + 1,
-          },
-        };
-
-        log.cache("After update", vendorKeys.list(), {
-          oldCount: oldData.vendors.length,
-          newCount: updatedData.vendors.length,
-          newTotalCount: updatedData.pagination.totalCount,
-        });
-
-        return updatedData;
-      };
-
-      queryClient.setQueryData(vendorKeys.list(), updateCache);
-
-      // 3. Optional: Invalidate any general list queries to ensure freshness on next fetch
-      log.cache("Invalidating list queries", vendorKeys.list());
-      queryClient.invalidateQueries({ queryKey: vendorKeys.list() });
-
-      log.mutation(hookName, "Cache operations completed");
+    onSuccess: (data) => {
+      // Single success toast
+      toastAlert.success("Vendor profile created successfully!");
+      
+      // Invalidate relevant queries
+      queryClient.invalidateQueries({ queryKey: vendorKeys.all });
     },
-    onError: (error, variables) => {
-      log.mutation(hookName, "Mutation onError triggered", {
-        error: error.message,
-        variables: variables ? Object.keys(variables) : [],
-      });
-
-      // 1. Show error toast (Mimicking Thunk action)
-      const message =
-        error.response?.data?.message || ERROR_MESSAGES.REGISTER_VENDOR_FAILED;
+    onError: (error) => {
+      // Single error toast
+      const message = error.response?.data?.message || ERROR_MESSAGES.REGISTER_VENDOR_FAILED;
       toastAlert.error(message);
-      log.error(hookName, "Vendor registration failed", error);
-    },
-    onSettled: (data, error, variables) => {
-      log.mutation(hookName, "Mutation settled", {
-        hasData: !!data,
-        hasError: !!error,
-        vendorId: data?.id || "none",
-      });
     },
   });
 }
 
+// Update existing vendor
 export function useUpdateVendor() {
-  const hookName = "useUpdateVendor";
   const queryClient = useQueryClient();
-
-  log.mutation(hookName, "Hook called");
 
   return useMutation({
     mutationFn: async ({ vendorId, vendorData }) => {
-      log.mutation(hookName, "Starting vendor update", {
-        vendorId,
-        dataKeys: Object.keys(vendorData),
-        updateFields: Object.keys(vendorData).join(", "),
-      });
-      try {
-        const result = await updateVendorApi({ vendorId, vendorData });
-        log.mutation(hookName, "Update API successful", {
-          vendorId,
-          updatedFields: result ? Object.keys(result) : [],
-        });
-        return result;
-      } catch (error) {
-        log.error(hookName, "Update API failed", error);
-        throw error;
+      const result = await updateVendorApi({ vendorId, vendorData });
+      return result;
+    },
+    onSuccess: (data, { vendorId }) => {
+      // Single success toast
+      toastAlert.success("Vendor profile updated successfully!");
+
+      // Update cache with new data
+      if (data?.vendor) {
+        queryClient.setQueryData(vendorKeys.profile(vendorId), data.vendor);
       }
+
+      // Invalidate to refetch
+      queryClient.invalidateQueries({ queryKey: vendorKeys.profile(vendorId) });
+      queryClient.invalidateQueries({ queryKey: vendorKeys.all });
     },
-    onSuccess: (updatedVendor, { vendorId }) => {
-      log.mutation(hookName, "Mutation onSuccess triggered", {
-        vendorId,
-        updatedVendorId: updatedVendor?.id,
-      });
-
-      // 1. Show success toast (Mimicking Thunk action)
-      toastAlert.success(
-        SUCCESS_MESSAGES.VENDOR_UPDATED ||
-          "Vendor profile updated successfully!"
-      );
-
-      // 2. Update the individual vendor detail cache immediately (Mimicking Reducer logic)
-      log.cache(
-        "Setting vendor detail",
-        vendorKeys.detail(vendorId),
-        updatedVendor
-      );
-      queryClient.setQueryData(vendorKeys.detail(vendorId), updatedVendor);
-
-      // 3. Invalidate relevant caches to ensure components re-fetch fresh data
-      log.cache("Invalidating vendor detail", vendorKeys.detail(vendorId));
-      queryClient.invalidateQueries({ queryKey: vendorKeys.detail(vendorId) }); // Re-fetch to confirm change
-
-      log.cache("Invalidating vendor list", vendorKeys.list());
-      queryClient.invalidateQueries({ queryKey: vendorKeys.list() }); // Invalidate list in case the update affects list view (e.g., name/image)
-
-      log.mutation(hookName, "Cache operations completed");
-    },
-    onError: (error, { vendorId }) => {
-      log.mutation(hookName, "Mutation onError triggered", { vendorId });
-
-      // 1. Show error toast (Mimicking Thunk action)
-      const message =
-        error.response?.data?.message || ERROR_MESSAGES.UPDATE_VENDOR_FAILED;
+    onError: (error) => {
+      // Single error toast
+      const message = error.response?.data?.message || ERROR_MESSAGES.UPDATE_VENDOR_FAILED;
       toastAlert.error(message);
-      log.error(hookName, "Vendor update failed", error);
-    },
-    onSettled: (data, error, { vendorId }) => {
-      log.mutation(hookName, "Mutation settled", {
-        vendorId,
-        hasData: !!data,
-        hasError: !!error,
-        status: error ? "failed" : "success",
-      });
     },
   });
 }

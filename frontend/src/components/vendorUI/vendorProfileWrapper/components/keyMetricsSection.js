@@ -4,16 +4,19 @@ import { MapPin, Star, Wallet } from "lucide-react";
 import { formatNumber } from "@/utils/currency";
 
 const KeyMetricsSection = ({ vendor }) => {
-   console.log('vendor HERE:', vendor);
-  
-  const minPrice = vendor.initialData?.minPrice?.Valid
-    ? vendor.initialData.minPrice.Int32
-    : 0;
-  
+  console.log("Key Metrics Data:", vendor);
+
+  // Directly access the flat JSON fields
+  const minPrice = vendor?.minPrice || 0;
+  const city = vendor?.city || "Unknown City";
+  const state = vendor?.state || "Unknown State";
+  const createdAt = vendor?.createdAt;
+
   return (
     <div className="p-5 border rounded-xl bg-gradient-to-br from-gray-50 to-white">
       <h2 className="text-lg font-bold text-gray-800 mb-4">Key Metrics</h2>
       <ul className="space-y-3" role="list">
+        {/* Location Row */}
         <li
           className="flex items-center justify-between p-3 bg-white rounded-lg border"
           role="listitem"
@@ -27,36 +30,33 @@ const KeyMetricsSection = ({ vendor }) => {
             <span>Location</span>
           </div>
           <span className="font-semibold text-gray-800 text-right">
-            <span className="block">{vendor.initialData.city}</span>
-            <span className="text-sm text-gray-600">
-              {vendor.initialData.state}
-            </span>
+            <span className="block">{city}</span>
+            <span className="text-sm text-gray-600">{state}</span>
           </span>
         </li>
+
+        {/* Starting Price Row */}
         <li
           className="flex items-center justify-between p-3 bg-white rounded-lg border"
           role="listitem"
         >
           <div className="flex items-center text-gray-700">
-            <span
-              className="text-green-600 font-bold mr-3 text-xl"
-              aria-label="Naira"
-            >
-              <Wallet
-                size={20}
-                className="mr-3 text-green-500"
-                aria-hidden="true"
-              />
-            </span>
+            <Wallet
+              size={20}
+              className="mr-3 text-green-500"
+              aria-hidden="true"
+            />
             <span>Starting Price</span>
           </div>
           <span
             className="font-bold text-green-700 text-xl"
-            aria-label={`Starting price: ₦${formatNumber(vendor.initialData.minPrice)}`}
+            aria-label={`Starting price: ₦${formatNumber(minPrice)}`}
           >
-            ₦{formatNumber(vendor.initialData.minPrice)}
+            ₦{formatNumber(minPrice)}
           </span>
         </li>
+
+        {/* Member Since Row */}
         <li
           className="flex items-center justify-between p-3 bg-white rounded-lg border"
           role="listitem"
@@ -70,13 +70,12 @@ const KeyMetricsSection = ({ vendor }) => {
             <span>Member Since</span>
           </div>
           <span className="font-bold text-gray-700">
-            {new Date(vendor.initialData.createdAt).toLocaleDateString(
-              "en-US",
-              {
-                month: "short",
-                year: "numeric",
-              },
-            )}
+            {createdAt
+              ? new Date(createdAt).toLocaleDateString("en-US", {
+                  month: "short",
+                  year: "numeric",
+                })
+              : "N/A"}
           </span>
         </li>
       </ul>

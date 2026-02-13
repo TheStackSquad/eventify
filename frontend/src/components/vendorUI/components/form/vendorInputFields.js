@@ -8,7 +8,8 @@ const VendorInputField = ({
   label,
   error,
   required,
-  helperText, // Extract this so it doesn't go into ...props
+  helperText,
+  isVerified = false,
   ...props
 }) => {
   return (

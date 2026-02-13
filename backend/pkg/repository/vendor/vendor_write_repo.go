@@ -1,5 +1,4 @@
-//backend/pkg/repository/vendor/vendor_write_repo.go
-
+// backend/pkg/repository/vendor/vendor_write_repo.go
 package vendor
 
 import (
@@ -11,25 +10,31 @@ import (
 
 	"github.com/eventify/backend/pkg/models"
 	"github.com/google/uuid"
+	"github.com/rs/zerolog/log"
 )
 
 func (r *PostgresVendorRepository) Create(ctx context.Context, v *models.Vendor) (uuid.UUID, error) {
-	if v == nil { return uuid.Nil, errors.New("vendor is nil") }
+	if v == nil { 
+		return uuid.Nil, errors.New("vendor is nil") 
+	}
+	
 	now := time.Now()
-	if v.ID == uuid.Nil { v.ID = uuid.New() }
+	if v.ID == uuid.Nil { 
+		v.ID = uuid.New() 
+	}
 	v.CreatedAt, v.UpdatedAt = now, now
 
 	query := `
 		INSERT INTO vendors (
 			id, owner_id, name, category, description, image_url, status,
-			vnin, first_name, middle_name, last_name, date_of_birth, gender,
+			vnin, first_name, middle_name, last_name,
 			is_identity_verified, cac_number, is_business_verified, 
 			state, city, phone_number, email,
 			min_price, pvs_score, review_count, profile_completion,
 			inquiry_count, responded_count, created_at, updated_at
 		) VALUES (
 			:id, :owner_id, :name, :category, :description, :image_url, :status,
-			:vnin, :first_name, :middle_name, :last_name, :date_of_birth, :gender,
+			:vnin, :first_name, :middle_name, :last_name,
 			:is_identity_verified, :cac_number, :is_business_verified,
 			:state, :city, :phone_number, :email,
 			:min_price, :pvs_score, :review_count, :profile_completion,
@@ -37,13 +42,20 @@ func (r *PostgresVendorRepository) Create(ctx context.Context, v *models.Vendor)
 		) RETURNING id`
 
 	rows, err := r.DB.NamedQueryContext(ctx, query, v)
-	if err != nil { return uuid.Nil, fmt.Errorf("failed to insert: %w", err) }
+	if err != nil { 
+		log.Error().Err(err).Str("vendor_name", v.Name).Msg("Failed to create vendor")
+		return uuid.Nil, fmt.Errorf("failed to insert: %w", err) 
+	}
 	defer rows.Close()
 
 	var newID uuid.UUID
 	if rows.Next() {
-		if err := rows.Scan(&newID); err != nil { return uuid.Nil, err }
+		if err := rows.Scan(&newID); err != nil { 
+			return uuid.Nil, err 
+		}
 	}
+	
+	log.Info().Str("vendor_id", newID.String()).Str("vendor_name", v.Name).Msg("Vendor created successfully")
 	return newID, nil
 }
 
@@ -53,7 +65,7 @@ func (r *PostgresVendorRepository) Update(ctx context.Context, v *models.Vendor)
 		UPDATE vendors SET
 			name = :name, category = :category, description = :description, image_url = :image_url,
 			status = :status, vnin = :vnin, first_name = :first_name, middle_name = :middle_name,
-			last_name = :last_name, date_of_birth = :date_of_birth, gender = :gender,
+			last_name = :last_name,
 			is_identity_verified = :is_identity_verified, cac_number = :cac_number,
 			is_business_verified = :is_business_verified, state = :state, city = :city,
 			phone_number = :phone_number, email = :email, min_price = :min_price,
@@ -61,27 +73,48 @@ func (r *PostgresVendorRepository) Update(ctx context.Context, v *models.Vendor)
 		WHERE id = :id AND owner_id = :owner_id`
 
 	result, err := r.DB.NamedExecContext(ctx, query, v)
-	if err != nil { return fmt.Errorf("failed to update: %w", err) }
+	if err != nil { 
+		log.Error().Err(err).Str("vendor_id", v.ID.String()).Msg("Failed to update vendor")
+		return fmt.Errorf("failed to update: %w", err) 
+	}
+	
 	rows, _ := result.RowsAffected()
-	if rows == 0 { return errors.New("vendor not found or unauthorized") }
+	if rows == 0 { 
+		return errors.New("vendor not found or unauthorized") 
+	}
+	
+	log.Info().Str("vendor_id", v.ID.String()).Msg("Vendor updated successfully")
 	return nil
 }
 
 func (r *PostgresVendorRepository) UpdateFields(ctx context.Context, id uuid.UUID, updates map[string]interface{}) error {
-	if len(updates) == 0 { return nil }
+	if len(updates) == 0 { 
+		return nil 
+	}
 	updates["updated_at"] = time.Now()
+	
 	setClauses := make([]string, 0, len(updates))
 	args := make([]interface{}, 0, len(updates)+1)
 	argCounter := 1
+	
 	for k, v := range updates {
 		setClauses = append(setClauses, fmt.Sprintf("%s = $%d", k, argCounter))
 		args = append(args, v)
 		argCounter++
 	}
 	args = append(args, id)
+	
 	query := fmt.Sprintf("UPDATE vendors SET %s WHERE id = $%d", strings.Join(setClauses, ", "), argCounter)
-	_, err := r.DB.ExecContext(ctx, query, args...)
-	return err
+	result, err := r.DB.ExecContext(ctx, query, args...)
+	
+	if err != nil {
+		log.Error().Err(err).Str("vendor_id", id.String()).Msg("Failed to update vendor fields")
+		return err
+	}
+	
+	rows, _ := result.RowsAffected()
+	log.Info().Str("vendor_id", id.String()).Int64("rows_affected", rows).Msg("Vendor fields updated")
+	return nil
 }
 
 func (r *PostgresVendorRepository) UpdateVerificationFlag(ctx context.Context, id uuid.UUID, field string, isVerified bool, reason string) error {

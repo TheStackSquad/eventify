@@ -1,4 +1,5 @@
-//backend/pkg/handlers/vendor/vendor_write.go
+// backend/pkg/handlers/vendor/vendor_write.go
+
 package vendor
 
 import (
@@ -31,25 +32,30 @@ type VendorBinding struct {
 	FirstName          string `json:"firstName"`
 	MiddleName         string `json:"middleName"`
 	LastName           string `json:"lastName"`
-	DateOfBirth        string `json:"dateOfBirth"`
-	Gender             string `json:"gender"`
 
 	// Business (CAC)
 	CACNumber          string `json:"cacNumber"`
 	VerifiedCACNumber  string `json:"verifiedCacNumber"`
 	IsBusinessVerified bool   `json:"isBusinessVerified"`
+	Status             string `json:"status"`
+}
+
+// convertNairaToKobo converts Naira to Kobo (multiply by 100)
+func convertNairaToKobo(naira int32) int32 {
+	return naira * 100
 }
 
 func (h *VendorHandler) RegisterVendor(c *gin.Context) {
 	var input VendorBinding
 	if err := c.ShouldBindJSON(&input); err != nil {
-		log.Error().Err(err).Msg("Vendor registration binding failed")
+		log.Warn().Err(err).Msg("Invalid vendor registration payload")
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input data"})
 		return
 	}
 
 	// 1. SECURITY: Tamper-proof check for vNIN
 	if input.VNIN != input.VerifiedVNIN {
+		log.Warn().Msg("vNIN verification mismatch attempt")
 		c.JSON(http.StatusForbidden, gin.H{"error": "Identity verification mismatch"})
 		return
 	}
@@ -65,50 +71,40 @@ func (h *VendorHandler) RegisterVendor(c *gin.Context) {
 	// 3. Logic: Check if user already has a vendor profile
 	existingVendor, _ := h.VendorService.GetVendorByOwnerID(c.Request.Context(), ownerID)
 	if existingVendor != nil {
-		c.JSON(http.StatusConflict, gin.H{"error": "Vendor profile already exists for this user"})
+		log.Warn().Str("owner_id", ownerID.String()).Msg("Duplicate vendor registration attempt")
+		c.JSON(http.StatusConflict, gin.H{"error": "You already have a vendor profile. Please use the edit function to update it."})
 		return
 	}
 
-	// 4. Mapping: Binding -> Model
-	// 4. Mapping: Binding -> Model
-vendor := models.Vendor{
-    OwnerID:     ownerID,
-    Name:        input.Name,
-    Category:    input.Category,
-   Status:             models.VendorStatusActive,
-    IsIdentityVerified: input.IsIdentityVerified,
-    State:       input.State,
+	// 4. Price Conversion: Convert Naira to Kobo
+	minPriceKobo := convertNairaToKobo(input.MinPrice)
 
-    // NEW: Using helpers for ALL nullable fields identified in your audit
-    Description: models.ToNullString(input.Description),
-    ImageURL:    models.ToNullString(input.ImageURL),
-    City:        models.ToNullString(input.City),
-    PhoneNumber: models.ToNullString(input.PhoneNumber),
-    Email:       models.ToNullString(input.Email),
-    VNIN:        models.ToNullString(input.VNIN),
-    FirstName:   models.ToNullString(input.FirstName),
-    MiddleName:  models.ToNullString(input.MiddleName),
-    LastName:    models.ToNullString(input.LastName),
-    Gender:      models.ToNullString(input.Gender),
-    CACNumber:   models.ToNullString(input.CACNumber),
-    
-    // Date specific helper
-    DateOfBirth: models.ToNullTimeFromString(input.DateOfBirth),
-    
-    // Integer helper
-    MinPrice:    models.ToNullInt32(input.MinPrice),
+	// 5. Mapping: Binding -> Model
+	vendor := models.Vendor{
+		OwnerID:            ownerID,
+		Name:               input.Name,
+		Category:           input.Category,
+		Status:             models.VendorStatusActive,
+		IsIdentityVerified: input.IsIdentityVerified,
+		State:              input.State,
+		Description:        models.ToNullString(input.Description),
+		ImageURL:           models.ToNullString(input.ImageURL),
+		City:               models.ToNullString(input.City),
+		PhoneNumber:        models.ToNullString(input.PhoneNumber),
+		Email:              models.ToNullString(input.Email),
+		VNIN:               models.ToNullString(input.VNIN),
+		FirstName:          models.ToNullString(input.FirstName),
+		MiddleName:         models.ToNullString(input.MiddleName),
+		LastName:           models.ToNullString(input.LastName),
+		CACNumber:          models.ToNullString(input.CACNumber),
+		MinPrice:           models.ToNullInt32(minPriceKobo),
+		IsBusinessVerified: sql.NullBool{Bool: input.IsBusinessVerified, Valid: true},
+	}
 
-    // Boolean helper (Custom)
-   IsBusinessVerified: sql.NullBool{
-    Bool:  input.IsBusinessVerified,
-    Valid: true,
-},
-}
-
-	// 5. Execution
+	// 6. Execution
 	vendorID, err := h.VendorService.CreateVendor(c.Request.Context(), &vendor)
 	if err != nil {
-		log.Error().Err(err).Msg("Failed to create vendor")
+		log.Error().Err(err).Str("owner_id", ownerID.String()).Msg("Vendor creation failed")
 		if strings.Contains(err.Error(), "unique constraint") {
 			c.JSON(http.StatusConflict, gin.H{"error": "vNIN or Business Name already registered"})
 			return
@@ -117,63 +113,90 @@ vendor := models.Vendor{
 		return
 	}
 
-	c.JSON(http.StatusCreated, gin.H{"vendor_id": vendorID, "message": "Welcome aboard!"})
+	log.Info().Str("vendor_id", vendorID).Str("vendor_name", input.Name).Msg("Vendor registered successfully")
+	c.JSON(http.StatusCreated, gin.H{
+		"vendor_id": vendorID,
+		"message":   "Vendor profile created successfully!",
+	})
 }
 
 func (h *VendorHandler) UpdateVendor(c *gin.Context) {
-    vendorID := c.Param("id")
+	vendorIDStr := c.Param("id") // Get as string
+	userIDVal, _ := c.Get("user_id")
+	requestorID := userIDVal.(uuid.UUID)
 
-    // 1. Auth: Get requestor ID
-    userIDVal, _ := c.Get("user_id")
-    requestorID := userIDVal.(uuid.UUID)
+	var input VendorBinding
+	if err := c.ShouldBindJSON(&input); err != nil {
+		log.Warn().Err(err).Str("vendor_id", vendorIDStr).Msg("Invalid update payload")
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid update data"})
+		return
+	}
 
-    // 2. Use the DTO instead of map[string]interface{}
-    var input VendorBinding 
-    if err := c.ShouldBindJSON(&input); err != nil {
-        log.Error().Err(err).Msg("Vendor update binding failed")
-        c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid update data"})
-        return
-    }
+	// Validate and default status
+	status := models.VendorStatus(input.Status)
+	if status == "" {
+		status = models.VendorStatusActive
+	}
 
-    // 3. Map the DTO to the Model (reusing your robust NullString logic)
-    updatedVendor := models.Vendor{
-        // Name, Category, State are NOT NULL in DB
-        Name:     input.Name,
-        Category: input.Category,
-        State:    input.State,
+	validStatuses := map[models.VendorStatus]bool{
+		models.VendorStatusActive:    true,
+		models.VendorStatusSuspended: true,
+		models.VendorStatusDeleted:   true,
+	}
+	if !validStatuses[status] {
+		log.Warn().Str("status", string(status)).Msg("Invalid vendor status")
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid vendor status"})
+		return
+	}
 
-        // Use helpers for all nullable fields to ensure NULLs are handled
-        Description:        models.ToNullString(input.Description),
-        ImageURL:           models.ToNullString(input.ImageURL),
-        City:               models.ToNullString(input.City),
-        PhoneNumber:        models.ToNullString(input.PhoneNumber),
-        Email:              models.ToNullString(input.Email),
-        VNIN:               models.ToNullString(input.VNIN),
-        FirstName:          models.ToNullString(input.FirstName),
-        MiddleName:         models.ToNullString(input.MiddleName),
-        LastName:           models.ToNullString(input.LastName),
-        Gender:             models.ToNullString(input.Gender),
-        CACNumber:          models.ToNullString(input.CACNumber),
-        DateOfBirth:        models.ToNullTimeFromString(input.DateOfBirth),
-        MinPrice:           models.ToNullInt32(input.MinPrice),
-        IsBusinessVerified: sql.NullBool{Bool: input.IsBusinessVerified, Valid: true},
-        IsIdentityVerified: input.IsIdentityVerified,
-    }
+	// Price Conversion: Convert Naira to Kobo
+	minPriceKobo := convertNairaToKobo(input.MinPrice)
 
-    // 4. Pass the structured Model to the service
-    err := h.VendorService.UpdateVendor(c.Request.Context(), vendorID, requestorID, &updatedVendor)
-    
-    if err != nil {
-        if err.Error() == "unauthorized" {
-            c.JSON(http.StatusForbidden, gin.H{"error": "You do not own this profile"})
-            return
-        }
-        log.Error().Err(err).Msg("Update execution failed")
-        c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update profile"})
-        return
-    }
+	updatedVendor := models.Vendor{
+		Name:               input.Name,
+		Category:           input.Category,
+		State:              input.State,
+		Status:             status,
+		IsIdentityVerified: input.IsIdentityVerified,
+		Description:        models.ToNullString(input.Description),
+		ImageURL:           models.ToNullString(input.ImageURL),
+		City:               models.ToNullString(input.City),
+		PhoneNumber:        models.ToNullString(input.PhoneNumber),
+		Email:              models.ToNullString(input.Email),
+		VNIN:               models.ToNullString(input.VNIN),
+		FirstName:          models.ToNullString(input.FirstName),
+		MiddleName:         models.ToNullString(input.MiddleName),
+		LastName:           models.ToNullString(input.LastName),
+		CACNumber:          models.ToNullString(input.CACNumber),
+		MinPrice:           models.ToNullInt32(minPriceKobo),
+		IsBusinessVerified: sql.NullBool{Bool: input.IsBusinessVerified, Valid: true},
+	}
 
-    c.JSON(http.StatusOK, gin.H{"message": "Profile updated successfully"})
+	err := h.VendorService.UpdateVendor(c.Request.Context(), vendorIDStr, requestorID, &updatedVendor)
+
+	if err != nil {
+		if err.Error() == "unauthorized" {
+			c.JSON(http.StatusForbidden, gin.H{"error": "You do not own this profile"})
+			return
+		}
+		log.Error().Err(err).Str("vendor_id", vendorIDStr).Msg("Vendor update failed")
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update profile"})
+		return
+	}
+
+	// Return updated vendor data
+	refreshed, err := h.VendorService.GetVendorByID(c.Request.Context(), vendorIDStr)
+	if err != nil {
+		log.Warn().Err(err).Str("vendor_id", vendorIDStr).Msg("Failed to fetch updated vendor")
+		c.JSON(http.StatusOK, gin.H{"message": "Profile updated successfully"})
+		return
+	}
+
+	log.Info().Str("vendor_id", vendorIDStr).Msg("Vendor updated successfully")
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Vendor profile updated successfully!",
+		"vendor":  refreshed,
+	})
 }
 
 func (h *VendorHandler) ToggleIdentityVerification(c *gin.Context) {

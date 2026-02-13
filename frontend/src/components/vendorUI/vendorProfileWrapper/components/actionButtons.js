@@ -15,16 +15,16 @@ const ActionButtons = ({ vendor }) => {
     setIsModalOpen(false);
   };
 
-  // Prepare vendor data for the modal
+  // Prepare vendor data for the modal using flat structure
   const vendorData = {
-    id: vendor.initialData.id,
-    name: vendor.initialData.name,
-    category: vendor.initialData.category,
-    state: vendor.initialData.state,
-    city: vendor.initialData.city,
-    image: vendor.initialData.imageURL,
-    rating: (vendor.initialData.pvsScore / 20).toFixed(1),
-    location: `${vendor.initialData.city}, ${vendor.initialData.state}`,
+    id: vendor?.id,
+    name: vendor?.name,
+    category: vendor?.category,
+    state: vendor?.state,
+    city: vendor?.city,
+    image: vendor?.imageURL,
+    rating: vendor?.pvsScore ? (vendor.pvsScore / 20).toFixed(1) : "0.0",
+    location: `${vendor?.city || "Unknown"}, ${vendor?.state || "Location"}`,
   };
 
   return (
@@ -43,7 +43,7 @@ const ActionButtons = ({ vendor }) => {
         </button>
 
         <Link
-          href={`mailto:${vendor.initialData.email}?subject=Inquiry about ${vendor.initialData.name}`}
+          href={`mailto:${vendor?.email}?subject=Inquiry about ${vendor?.name}`}
           className="w-full py-3.5 bg-white text-green-700 font-semibold rounded-lg border-2 border-green-300 hover:bg-green-50 hover:border-green-400 transition-colors duration-300 flex items-center justify-center"
           aria-label="Send inquiry email"
         >
@@ -54,7 +54,7 @@ const ActionButtons = ({ vendor }) => {
 
       {/* Modal - only renders when isModalOpen is true */}
       <ContactVendorModal
-        vendorId={vendor.initialData.id}
+        vendorId={vendor?.id}
         vendorData={vendorData}
         isOpen={isModalOpen}
         onClose={handleCloseModal}

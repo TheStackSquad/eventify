@@ -1,13 +1,32 @@
-// frontend/src/components/vendorUI/vendorFormPricingVerification.jsx
+// frontend/src/components/vendorUI/components/form/vendorFormPricingVerification.jsx
 
 "use client";
 
-import React from "react";
-import { Info, Building2, ShieldCheck } from "lucide-react";
-import VendorInputField from "@/components/vendorUI/components/form/vendorInputFields";
-import VNINVerificationField from "@/components/vendorUI/components/form/vNINVerificationField";
-import CACVerificationField from "@/components/vendorUI/components/form/CACVerificationField";
-import { PRICE_RANGES, FORM_PLACEHOLDERS } from "@/data/vendorData";
+import React, { Suspense } from "react";
+import dynamic from "next/dynamic";
+import { DollarSign, FileText } from "lucide-react";
+import VendorInputField from "./vendorInputFields";
+import VendorTextAreaField from "./vendorTextAreaField";
+
+// --- Granular Lazy Loading ---
+// Using custom skeletons to match the specific look of each verification field
+const VerificationFieldSkeleton = () => (
+  <div className="animate-pulse space-y-3 py-2">
+    <div className="h-4 bg-gray-100 rounded w-1/4"></div>
+    <div className="h-12 bg-gray-50 rounded-xl border border-dashed border-gray-200"></div>
+  </div>
+);
+
+const VNINVerificationField = dynamic(() => import("./vNINVerificationField"), {
+  ssr: false,
+  loading: () => <VerificationFieldSkeleton />,
+});
+
+const CACVerificationField = dynamic(() => import("./CACVerificationField"), {
+  ssr: false,
+  loading: () => <VerificationFieldSkeleton />,
+});
+// ----------------------------
 
 const VendorFormPricingVerification = ({
   formData,
@@ -15,173 +34,113 @@ const VendorFormPricingVerification = ({
   handleChange,
   onVninVerified,
   onCacVerified,
+  isEditMode = false,
 }) => {
   return (
-    <div className="space-y-8">
-      {/* SECTION 1: IDENTITY (Compulsory) */}
-      <div className="bg-gradient-to-br from-gray-50 to-white p-6 rounded-2xl border border-gray-200 shadow-sm">
-        <div className="flex items-center gap-3 mb-6 pb-4 border-b border-gray-200">
-          <div className="p-2 bg-purple-100 rounded-lg">
-            <ShieldCheck className="w-6 h-6 text-purple-600" />
-          </div>
-          <h3 className="text-xl font-bold text-gray-800">
-            Identity Verification
+    <>
+      {/* Section 3: Identity & Business Verification */}
+      <section className="space-y-6">
+        <div className="flex items-center gap-2 mb-2">
+          <div className="h-6 w-1 bg-indigo-600 rounded-full"></div>
+          <h3 className="font-bold text-gray-800 uppercase tracking-wider text-xs">
+            Verification & Trust
           </h3>
         </div>
 
-        <div className="space-y-6">
+        {/* vNIN Verification with independent Suspense */}
+        <Suspense fallback={<VerificationFieldSkeleton />}>
           <VNINVerificationField
             formData={formData}
             formErrors={formErrors}
             handleChange={handleChange}
             onVninVerified={onVninVerified}
+            isEditMode={isEditMode}
           />
+        </Suspense>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <VendorInputField
-              icon={Info}
-              label="First Name"
-              name="firstName"
-              value={formData.firstName || ""}
-              onChange={handleChange}
-              placeholder="John"
-              error={formErrors.firstName}
-              required
-              disabled={formData.vnin && formData.firstName}
-              helperText={
-                formData.vnin && formData.firstName
-                  ? "Verified by NIMC"
-                  : "Official first name"
-              }
-            />
-            <VendorInputField
-              icon={Info}
-              label="Middle Name"
-              name="middleName"
-              value={formData.middleName || ""}
-              onChange={handleChange}
-              placeholder="Chukwu"
-              error={formErrors.middleName}
-              disabled={formData.vnin && formData.middleName}
-              helperText="Optional"
-            />
-            <VendorInputField
-              icon={Info}
-              label="Last Name"
-              name="lastName"
-              value={formData.lastName || ""}
-              onChange={handleChange}
-              placeholder="Doe"
-              error={formErrors.lastName}
-              required
-              disabled={formData.vnin && formData.lastName}
-              helperText={
-                formData.vnin && formData.lastName
-                  ? "Verified by NIMC"
-                  : "Official last name"
-              }
-            />
-          </div>
-        </div>
-      </div>
-
-      {/* SECTION 2: BUSINESS REGISTRATION (Optional - High Weight) */}
-      <div className="bg-gradient-to-br from-amber-50 to-white p-6 rounded-2xl border border-amber-200 shadow-sm">
-        <div className="flex items-center gap-3 mb-6 pb-4 border-b border-amber-100">
-          <div className="p-2 bg-amber-100 rounded-lg">
-            <Building2 className="w-6 h-6 text-amber-600" />
-          </div>
-          <div className="flex-1">
-            <h3 className="text-xl font-bold text-gray-800">
-              Business Registration (CAC)
-            </h3>
-            <p className="text-xs text-amber-600 font-medium">
-              Boost trust score by 40 points
-            </p>
-          </div>
-        </div>
-
-        <CACVerificationField
-          formData={formData}
-          formErrors={formErrors}
-          handleChange={handleChange}
-          onCacVerified={onCacVerified}
-        />
-        <p className="mt-4 text-xs text-gray-500 italic">
-          Verifying your CAC will automatically update your Business Name to
-          match official records.
-        </p>
-      </div>
-
-      {/* SECTION 3: PRICING */}
-      <div className="bg-gradient-to-br from-gray-50 to-white p-6 rounded-2xl border border-gray-200 shadow-sm">
-        <div className="flex items-center gap-3 mb-6 pb-4 border-b border-gray-200">
-          <div className="p-2 bg-green-100 rounded-lg">
-            <span className="text-2xl font-bold text-green-600">₦</span>
-          </div>
-          <h3 className="text-xl font-bold text-gray-800">Service Pricing</h3>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* Identity Fields (Static/Fast - these render immediately) */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <VendorInputField
-            icon={() => <span className="text-lg font-bold">₦</span>}
-            label="Starting Price (₦)"
-            type="number"
-            name="minPrice"
-            value={formData.minPrice}
+            label="First Name"
+            name="firstName"
+            value={formData.firstName}
             onChange={handleChange}
-            placeholder={FORM_PLACEHOLDERS.minPrice}
-            error={formErrors.minPrice}
+            placeholder="From NIMC"
+            error={formErrors.firstName}
             required
-            min={PRICE_RANGES.MIN}
-            step={PRICE_RANGES.STEP}
-            helperText="Minimum booking fee"
+            disabled={formData.isIdentityVerified}
+            helperText={formData.isIdentityVerified ? "✓ Verified" : undefined}
           />
           <VendorInputField
-            icon={() => <span className="text-lg font-bold">₦</span>}
-            label="Maximum Price (₦)"
-            type="number"
-            name="maxPrice"
-            value={formData.maxPrice || ""}
+            label="Middle Name"
+            name="middleName"
+            value={formData.middleName}
             onChange={handleChange}
             placeholder="Optional"
-            error={formErrors.maxPrice}
-            min={PRICE_RANGES.MIN}
-            step={PRICE_RANGES.STEP}
-            helperText="Leave empty if negotiable"
+            disabled={formData.isIdentityVerified}
+          />
+          <VendorInputField
+            label="Last Name"
+            name="lastName"
+            value={formData.lastName}
+            onChange={handleChange}
+            placeholder="From NIMC"
+            error={formErrors.lastName}
+            required
+            disabled={formData.isIdentityVerified}
+            helperText={formData.isIdentityVerified ? "✓ Verified" : undefined}
           />
         </div>
-      </div>
 
-      {/* SECTION 4: DESCRIPTION */}
-      <div className="bg-gradient-to-br from-gray-50 to-white p-6 rounded-2xl border border-gray-200 shadow-sm">
-        <div className="flex items-center gap-3 mb-6 pb-4 border-b border-gray-200">
-          <div className="p-2 bg-indigo-100 rounded-lg">
-            <Info className="w-6 h-6 text-indigo-600" />
-          </div>
-          <h3 className="text-xl font-bold text-gray-800">
-            Business Description
+        {/* CAC Verification with independent Suspense */}
+        <Suspense fallback={<VerificationFieldSkeleton />}>
+          <CACVerificationField
+            formData={formData}
+            formErrors={formErrors}
+            handleChange={handleChange}
+            onCacVerified={onCacVerified}
+            isEditMode={isEditMode}
+          />
+        </Suspense>
+      </section>
+
+      <hr className="border-gray-100" />
+
+      {/* Section 4: Pricing & Description */}
+      <section className="space-y-6">
+        <div className="flex items-center gap-2 mb-2">
+          <div className="h-6 w-1 bg-indigo-600 rounded-full"></div>
+          <h3 className="font-bold text-gray-800 uppercase tracking-wider text-xs">
+            Service Details
           </h3>
         </div>
 
-        <div className="space-y-3">
-          <label className="block text-sm font-semibold text-gray-700">
-            Tell clients about your expertise
-          </label>
-          <textarea
-            name="description"
-            value={formData.description || ""}
-            onChange={handleChange}
-            rows={4}
-            placeholder="Describe your services, unique selling points..."
-            className="w-full px-4 py-3 bg-white border border-gray-300 rounded-xl text-gray-900 focus:ring-3 focus:ring-indigo-500/30 focus:border-indigo-500 transition-all duration-200 resize-none"
-          />
-          <p className="text-xs text-gray-500">
-            A detailed description helps with search ranking and SEO.
-          </p>
-        </div>
-      </div>
-    </div>
+        <VendorInputField
+          icon={DollarSign}
+          label="Starting Price (₦)"
+          name="minPrice"
+          type="number"
+          value={formData.minPrice}
+          onChange={handleChange}
+          placeholder="50000"
+          error={formErrors.minPrice}
+          required
+          helperText="Minimum price for your services"
+        />
+
+        <VendorTextAreaField
+          icon={FileText}
+          label="Business Description"
+          name="description"
+          value={formData.description}
+          onChange={handleChange}
+          placeholder="Tell clients about your services, experience, and what makes you unique..."
+          error={formErrors.description}
+          maxLength={500}
+          showCharCount={true}
+        />
+      </section>
+    </>
   );
 };
 
