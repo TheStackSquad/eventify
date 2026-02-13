@@ -230,7 +230,9 @@ export default function DashboardUI({
                 transition={{ delay: 0.7, duration: 0.5 }}
               >
                 <VendorsDashboard
-                  currentUser={user?.vendorId} // Pass the user object directly
+                  activeView={activeView}
+                  user={user}
+                  onViewChange={onViewChange}
                 />
               </motion.div>
             )}

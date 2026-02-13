@@ -12,6 +12,7 @@ import {
   TrendingUp,
   TrendingDown,
   Minus,
+  Edit,
 } from "lucide-react";
 import LoadingSpinner from "@/components/common/loading/loadingSpinner";
 import EmptyAnalyticsState from "./emptyAnalyticsState";
@@ -26,6 +27,7 @@ export default function VendorAnalyticsDashboard({
   vendorId,
   userId,
   userEmail,
+  onViewChange,
 }) {
   const [timeRange, setTimeRange] = useState("7days");
 
@@ -151,6 +153,18 @@ export default function VendorAnalyticsDashboard({
               </button>
             ))}
           </div>
+
+          {/* 🆕 EDIT PROFILE BUTTON */}
+          {onViewChange && (
+            <button
+              onClick={() => onViewChange("vendor-register")}
+              className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 text-white text-sm font-bold rounded-xl hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100"
+              title="Edit your vendor profile"
+            >
+              <Edit size={16} />
+              <span className="hidden sm:inline">Edit Profile</span>
+            </button>
+          )}
 
           {/* Download Button */}
           <button

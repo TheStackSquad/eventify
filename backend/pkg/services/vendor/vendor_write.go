@@ -69,26 +69,36 @@ func (s *VendorServiceImpl) UpdateVendor(ctx context.Context, id string, request
 		return errors.New("invalid vendor ID format")
 	}
 
-	// 1. Ownership Check
+	// 1. Fetch current vendor (for ownership check + PVS calculation)
 	currentVendor, err := s.vendorRepo.GetByID(ctx, parsedID)
 	if err != nil {
 		return err
 	}
+
+	// 2. Ownership check
 	if currentVendor.OwnerID != requestorID {
 		return errors.New("unauthorized")
 	}
 
-	// 2. Business Logic: Re-verify flags if data changed
-	// If CAC is provided and was not verified before, or if it changed
-	if updatedVendor.CACNumber.Valid && updatedVendor.CACNumber.String != "" {
-		updatedVendor.IsBusinessVerified = sql.NullBool{Bool: true, Valid: true}
+	// 🔑 3. CRITICAL: Set ID and OwnerID on the update struct
+	updatedVendor.ID = parsedID
+	updatedVendor.OwnerID = requestorID
+
+	// 🔑 4. Preserve fields needed for PVS calculation (don't overwrite)
+	updatedVendor.ProfileCompletion = currentVendor.ProfileCompletion
+	updatedVendor.InquiryCount = currentVendor.InquiryCount
+	updatedVendor.RespondedCount = currentVendor.RespondedCount
+	updatedVendor.ReviewCount = currentVendor.ReviewCount
+
+	// 5. Don't automatically set IsBusinessVerified based on CAC presence
+	if !updatedVendor.IsBusinessVerified.Valid {
+		updatedVendor.IsBusinessVerified = currentVendor.IsBusinessVerified
 	}
 
-	// 3. Recalculate PVS Score
-	// Since we have the full struct, we just calculate it directly
+	// 6. Recalculate PVS Score with complete data
 	updatedVendor.PVSScore = models.CalculatePVS(updatedVendor)
 
-	// 4. Persistence: Pass the struct to the repo
+	// 7. Persist
 	return s.vendorRepo.Update(ctx, updatedVendor)
 }
 

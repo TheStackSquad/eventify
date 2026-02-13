@@ -1,24 +1,21 @@
 {
-  "thunder-client.httpLibrary": "axios",
-
   "go.useLanguageServer": true,
-  "go.toolsManagement.autoUpdate": true,
+  "go.formatTool": "default", // Changed from goimports to default
 
   "gopls": {
     "ui.semanticTokens": true,
-    "build.directoryFilters": ["-node_modules", "-vendor"]
+    "build.directoryFilters": ["-node_modules", "-vendor"],
+    "formatting.gofumpt": true,
+    "build.env": {
+      "GOWORK": "on"
+    }
   },
 
   "[go]": {
     "editor.formatOnSave": true,
     "editor.defaultFormatter": "golang.go",
     "editor.codeActionsOnSave": {
-      "source.organizeImports": "explicit"
+      "source.organizeImports": "explicit" // This handles what goimports used to do
     }
-  },
-
-  "[go.mod]": {
-    "editor.formatOnSave": true,
-    "editor.defaultFormatter": "golang.go"
   }
 }

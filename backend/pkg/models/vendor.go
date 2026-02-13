@@ -29,10 +29,6 @@ func (v Vendor) MarshalJSON() ([]byte, error) {
         if ni.Valid { return ni.Int32 }
         return nil
     }
-    cleanTime := func(nt sql.NullTime) interface{} {
-        if nt.Valid { return nt.Time.Format("2006-01-02") }
-        return nil
-    }
     cleanBool := func(nb sql.NullBool) interface{} {
         if nb.Valid { return nb.Bool }
         return nil
@@ -42,13 +38,11 @@ func (v Vendor) MarshalJSON() ([]byte, error) {
         ImageURL           interface{} `json:"imageURL"`
         City               interface{} `json:"city"`
         PhoneNumber        interface{} `json:"phoneNumber"`
-        MinPrice           interface{} `json:"minPrice"`
+        MinPrice           interface{} `json:"minPrice"` // Backend stores in kobo, returns kobo
         VNIN               interface{} `json:"vnin"`
         FirstName          interface{} `json:"firstName"`
         MiddleName         interface{} `json:"middleName"`
         LastName           interface{} `json:"lastName"`
-        DateOfBirth        interface{} `json:"dateOfBirth"`
-        Gender             interface{} `json:"gender"`
         Description        interface{} `json:"description"`
         Email              interface{} `json:"email"`
         CACNumber          interface{} `json:"cacNumber"`
@@ -58,13 +52,11 @@ func (v Vendor) MarshalJSON() ([]byte, error) {
         ImageURL:           cleanStr(v.ImageURL),
         City:               cleanStr(v.City),
         PhoneNumber:        cleanStr(v.PhoneNumber),
-        MinPrice:           cleanInt32(v.MinPrice),
+        MinPrice:           cleanInt32(v.MinPrice), // Returns raw kobo value
         VNIN:               cleanStr(v.VNIN),
         FirstName:          cleanStr(v.FirstName),
         MiddleName:         cleanStr(v.MiddleName),
         LastName:           cleanStr(v.LastName),
-        DateOfBirth:        cleanTime(v.DateOfBirth),
-        Gender:             cleanStr(v.Gender),
         Description:        cleanStr(v.Description),
         Email:              cleanStr(v.Email),
         CACNumber:          cleanStr(v.CACNumber),
@@ -72,7 +64,6 @@ func (v Vendor) MarshalJSON() ([]byte, error) {
         Alias:              (Alias)(v),
     })
 }
-
 
 type Vendor struct {
     ID                   uuid.UUID      `json:"id" db:"id"`
@@ -86,7 +77,7 @@ type Vendor struct {
     State                string         `json:"state" db:"state"`
     City                 sql.NullString `json:"city" db:"city"`
     PhoneNumber          sql.NullString `json:"phoneNumber" db:"phone_number"`
-    MinPrice             sql.NullInt32  `json:"minPrice" db:"min_price"`
+    MinPrice             sql.NullInt32  `json:"minPrice" db:"min_price"` // Stored in kobo
     PVSScore             int32          `json:"pvsScore" db:"pvs_score"`
     ReviewCount          int32          `json:"reviewCount" db:"review_count"`
     ProfileCompletion    float32        `json:"-" db:"profile_completion"`
@@ -94,17 +85,16 @@ type Vendor struct {
     RespondedCount       int32          `json:"-" db:"responded_count"`
     CreatedAt            time.Time      `json:"createdAt" db:"created_at"`
     UpdatedAt            time.Time      `json:"updatedAt" db:"updated_at"`
+    DeletedAt            sql.NullTime   `json:"-" db:"deleted_at"`
     VNIN                 sql.NullString `json:"vnin" db:"vnin"`
     FirstName            sql.NullString `json:"firstName" db:"first_name"`
     MiddleName           sql.NullString `json:"middleName" db:"middle_name"`
     LastName             sql.NullString `json:"lastName" db:"last_name"`
-    DateOfBirth          sql.NullTime   `json:"dateOfBirth" db:"date_of_birth"`
-    Gender               sql.NullString `json:"gender" db:"gender"`
+    // REMOVED: DateOfBirth and Gender
     Description          sql.NullString `json:"description" db:"description"`
     Email                sql.NullString `json:"email" db:"email"`
     CACNumber            sql.NullString `json:"cacNumber" db:"cac_number"`
     IsBusinessVerified   sql.NullBool   `json:"isBusinessVerified" db:"is_business_verified"`
-    // Ensure this matches the VARCHAR(20) in DB
     SubscriptionTier     SubscriptionTier `json:"subscriptionTier" db:"subscription_tier"`
 }
 

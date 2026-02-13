@@ -3,13 +3,17 @@ import React from "react";
 import { Star, Briefcase, Award, Sparkles } from "lucide-react";
 
 const ProfileHeader = ({ vendor }) => {
-  // Calculate vendor data from the nested structure
-  const ratingOutOf5 = vendor.initialData?.pvsScore
-    ? (vendor.initialData.pvsScore / 20).toFixed(1)
-    : "0.0";
+  console.log("Profile Header:", vendor);
 
-  const isPremium = vendor.initialData?.pvsScore >= 80;
-  const isNewVendor = vendor.initialData?.bookingsCompleted === 0;
+  // Map data directly from the flat JSON object
+  const pvsScore = vendor.pvsScore || 0;
+  const ratingOutOf5 = (pvsScore / 20).toFixed(1);
+  const reviewCount = vendor.reviewCount || 0;
+
+  // Logic for badges
+  const isPremium = pvsScore >= 80;
+  // Note: bookingsCompleted wasn't in your JSON, so we'll default to false or check another metric
+  const isNewVendor = vendor.bookingsCompleted === 0;
 
   return (
     <div className="flex flex-col lg:flex-row justify-between items-start border-b pb-6 mb-6 gap-6">
@@ -19,7 +23,8 @@ const ProfileHeader = ({ vendor }) => {
             className="text-2xl sm:text-3xl md:text-4xl font-extrabold text-gray-900 font-header"
             id="vendor-name"
           >
-            {vendor.initialData.name}
+            {/* Changed from firstName to name for the business title */}
+            {vendor.name || `${vendor.firstName} ${vendor.lastName}`}
           </h1>
 
           {isPremium && (
@@ -49,7 +54,8 @@ const ProfileHeader = ({ vendor }) => {
             size={20}
             aria-hidden="true"
           />
-          {vendor.initialData.category?.replace(/_/g, " ") || "Vendor"}
+          {/* Mapping category directly */}
+          {vendor.category?.replace(/_/g, " ") || "Vendor"}
         </p>
       </div>
 
@@ -68,19 +74,15 @@ const ProfileHeader = ({ vendor }) => {
         </div>
         <p className="text-sm text-gray-600 mt-1">
           Based on{" "}
-          <span className="font-bold text-gray-800">
-            {vendor.initialData.reviewCount || 0}
-          </span>{" "}
-          review{vendor.initialData.reviewCount !== 1 ? "s" : ""}
+          <span className="font-bold text-gray-800">{reviewCount}</span> review
+          {reviewCount !== 1 ? "s" : ""}
         </p>
         <div
           className="mt-2 text-xs text-gray-500 font-medium"
           aria-label="Performance score"
         >
           Performance Score:{" "}
-          <span className="font-bold text-gray-800">
-            {vendor.initialData.pvsScore || 0}%
-          </span>
+          <span className="font-bold text-gray-800">{pvsScore}%</span>
         </div>
       </div>
     </div>

@@ -1,48 +1,161 @@
-// frontend/src/components/vendorUI/components/vendorFileInputField.jsx
+// frontend/src/components/vendorUI/components/form/vendorFileInputField.jsx
 
-import React from "react";
+import React, { useState, useRef } from "react";
+import { Upload, X, AlertCircle, Image as ImageIcon } from "lucide-react";
+import Image from "next/image";
 
 const VendorFileInputField = ({
   icon: Icon,
   label,
   error,
-  accept,
   imageFile,
+  currentImage,
+  accept = "image/*",
   ...props
-}) => (
-  <div className="group">
-    <label className="block text-sm font-semibold text-gray-700 mb-2">
-      {label} <span className="text-red-500">*</span>
-    </label>
-    <div className="relative">
-      <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-indigo-600 transition-colors z-10">
-        <Icon size={20} />
+}) => {
+  const [preview, setPreview] = useState(currentImage || null);
+  const fileInputRef = useRef(null);
+
+  const handleFileSelect = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      // Validate file size (max 5MB)
+      if (file.size > 5 * 1024 * 1024) {
+        props.onChange({ target: { name: props.name, files: [] } });
+        setPreview(null);
+        alert("File size must be less than 5MB");
+        return;
+      }
+
+      // Create preview
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setPreview(reader.result);
+      };
+      reader.readAsDataURL(file);
+
+      // Pass to parent
+      props.onChange(e);
+    }
+  };
+
+  const handleClearImage = () => {
+    setPreview(currentImage || null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+    props.onChange({ target: { name: props.name, files: [] } });
+  };
+
+  const displayPreview = imageFile ? preview : currentImage;
+
+  return (
+    <div className="w-full">
+      <label className="block text-sm font-semibold text-gray-700 mb-2">
+        {label} <span className="text-red-500">*</span>
+      </label>
+
+      <div className="relative">
+        {/* Preview Area */}
+        {displayPreview ? (
+          <div className="relative group">
+            <div className="w-full h-48 rounded-xl overflow-hidden border-2 border-gray-200 bg-gray-50">
+
+  <Image
+    src={displayPreview}
+    alt="Vendor preview"
+    fill // Makes the image fill the parent container
+    className="object-cover"
+    sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+    priority={true} // Use this if the image is "above the fold" (LCP)
+  />
+            </div>
+
+            {/* Overlay with actions */}
+            <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity rounded-xl flex items-center justify-center gap-3">
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="px-4 py-2 bg-white text-gray-900 rounded-lg font-medium text-sm hover:bg-gray-100 transition-colors flex items-center gap-2"
+              >
+                <Upload size={16} />
+                Replace
+              </button>
+              <button
+                type="button"
+                onClick={handleClearImage}
+                className="px-4 py-2 bg-red-600 text-white rounded-lg font-medium text-sm hover:bg-red-700 transition-colors flex items-center gap-2"
+              >
+                <X size={16} />
+                Remove
+              </button>
+            </div>
+
+            {/* File name badge */}
+            {imageFile && (
+              <div className="absolute top-3 left-3 px-3 py-1.5 bg-white/90 backdrop-blur-sm rounded-lg border border-gray-200 shadow-sm">
+                <p className="text-xs font-medium text-gray-700 truncate max-w-[200px]">
+                  {imageFile.name}
+                </p>
+              </div>
+            )}
+          </div>
+        ) : (
+          /* Upload Area */
+          <div
+            onClick={() => fileInputRef.current?.click()}
+            className={`
+              w-full h-48 rounded-xl border-2 border-dashed transition-all duration-200
+              flex flex-col items-center justify-center gap-3 cursor-pointer
+              ${error ? "border-red-400 bg-red-50" : "border-gray-300 bg-gray-50 hover:border-indigo-400 hover:bg-indigo-50"}
+            `}
+          >
+            <div
+              className={`p-4 rounded-full ${error ? "bg-red-100" : "bg-gray-100"}`}
+            >
+              {Icon ? (
+                <Icon
+                  className={`w-8 h-8 ${error ? "text-red-500" : "text-gray-400"}`}
+                />
+              ) : (
+                <ImageIcon
+                  className={`w-8 h-8 ${error ? "text-red-500" : "text-gray-400"}`}
+                />
+              )}
+            </div>
+            <div className="text-center px-4">
+              <p className="text-sm font-semibold text-gray-700 mb-1">
+                Click to upload image
+              </p>
+              <p className="text-xs text-gray-500">PNG, JPG, WEBP up to 5MB</p>
+            </div>
+          </div>
+        )}
+
+        {/* Hidden file input */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept={accept}
+          onChange={handleFileSelect}
+          className="hidden"
+          {...props}
+        />
       </div>
-      <input
-        type="file"
-        accept={accept}
-        {...props}
-        className={`w-full pl-12 pr-4 py-3.5 bg-gray-50 border-2 rounded-xl text-gray-900 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 cursor-pointer transition-all duration-200 focus:bg-white focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100 focus:outline-none ${
-          error ? "border-red-400 bg-red-50" : "border-gray-200"
-        }`}
-      />
+
+      {/* Helper text or error */}
+      {error ? (
+        <p className="mt-2 text-sm text-red-600 flex items-center gap-1 px-1">
+          <AlertCircle size={14} />
+          {error}
+        </p>
+      ) : (
+        <p className="mt-2 text-xs text-gray-500 px-1">
+          High quality images get 30% more engagement
+        </p>
+      )}
     </div>
-    {imageFile && !error && (
-      <p className="mt-1.5 text-sm text-green-600 flex items-center gap-1">
-        <span className="inline-block w-1 h-1 bg-green-600 rounded-full"></span>
-        {imageFile.name} ({(imageFile.size / 1024).toFixed(1)} KB)
-      </p>
-    )}
-    {error && (
-      <p className="mt-1.5 text-sm text-red-600 flex items-center gap-1">
-        <span className="inline-block w-1 h-1 bg-red-600 rounded-full"></span>
-        {error}
-      </p>
-    )}
-    <p className="mt-1 text-xs text-gray-500">
-      Max 5MB • JPG, PNG, or WEBP format
-    </p>
-  </div>
-);
+  );
+};
 
 export default VendorFileInputField;

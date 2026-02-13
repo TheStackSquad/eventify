@@ -3,43 +3,57 @@
 export const vendorRegistrationValidate = (formData, isEditMode = false) => {
   const errors = {};
 
-  // ========== BUSINESS NAME (CAC NAME) ==========
+  // ========== BUSINESS NAME ==========
   if (!formData.name?.trim()) {
     errors.name = "Business name is required";
   } else if (formData.name.trim().length < 3) {
     errors.name = "Business name must be at least 3 characters";
   }
 
-  // ========== IDENTITY NAMES (NIMC) ==========
-  if (!formData.firstName?.trim()) errors.firstName = "First name is required";
-  if (!formData.lastName?.trim()) errors.lastName = "Last name is required";
-
-  // ========== vNIN (Virtual NIN) ==========
-  if (!formData.vnin?.trim()) {
-    errors.vnin = "Identity verification (vNIN) is mandatory";
-  } else {
-    // 16 chars: 2 letters, 12 digits, 2 letters (e.g., JZ-426633988976-CH)
-    const cleanedVnin = formData.vnin.replace(/[^A-Z0-9]/gi, "");
-    const vninRegex = /^[A-Z]{2}\d{12}[A-Z]{2}$/i;
-
-    if (cleanedVnin.length !== 16 || !vninRegex.test(cleanedVnin)) {
-      errors.vnin = "Invalid vNIN format (expected 16 characters)";
+  // ========== IDENTITY NAMES ==========
+  // Skip if already verified in edit mode
+  if (!(isEditMode && formData.isIdentityVerified)) {
+    if (!formData.firstName?.trim()) {
+      errors.firstName = "First name is required";
+    }
+    if (!formData.lastName?.trim()) {
+      errors.lastName = "Last name is required";
     }
   }
 
-  // ========== CAC NUMBER (Optional but must be valid if provided) ==========
-  if (formData.cacNumber?.trim()) {
-    const cleanedCac = formData.cacNumber.replace(/[^A-Z0-9]/gi, "");
-    // Nigerian RC/BN/IT numbers are usually 6-8 digits after the prefix
-    const cacRegex = /^(RC|BN|IT)\d{5,8}$/i;
-    if (!cacRegex.test(cleanedCac)) {
-      errors.cacNumber = "Invalid CAC. Format: RC123456 or BN123456";
+  // ========== vNIN ==========
+  // Skip entirely in edit mode (read-only)
+  if (!isEditMode) {
+    if (!formData.vnin?.trim()) {
+      errors.vnin = "Identity verification (vNIN) is mandatory";
+    } else {
+      const cleanedVnin = formData.vnin.replace(/[^A-Z0-9]/gi, "");
+      const vninRegex = /^[A-Z]{2}\d{12}[A-Z]{2}$/i;
+      if (cleanedVnin.length !== 16 || !vninRegex.test(cleanedVnin)) {
+        errors.vnin = "Invalid vNIN format (expected 16 characters)";
+      }
+    }
+  }
+
+  // ========== CAC NUMBER ==========
+  // Skip if already verified in edit mode
+  if (!(isEditMode && formData.isBusinessVerified)) {
+    if (formData.cacNumber?.trim()) {
+      const cleanedCac = formData.cacNumber.replace(/[^A-Z0-9]/gi, "");
+      const cacRegex = /^(RC|BN|IT)\d{5,8}$/i;
+      if (!cacRegex.test(cleanedCac)) {
+        errors.cacNumber = "Invalid CAC. Format: RC123456 or BN123456";
+      }
     }
   }
 
   // ========== CATEGORY & STATE ==========
-  if (!formData.category) errors.category = "Please select a service category";
-  if (!formData.state) errors.state = "Please select your primary state";
+  if (!formData.category) {
+    errors.category = "Please select a service category";
+  }
+  if (!formData.state) {
+    errors.state = "Please select your primary state";
+  }
 
   // ========== PHONE NUMBER ==========
   if (!formData.phoneNumber?.trim()) {
@@ -51,7 +65,9 @@ export const vendorRegistrationValidate = (formData, isEditMode = false) => {
       (cleanedPhone.length === 10 && /^[789]/.test(cleanedPhone)) ||
       (cleanedPhone.length === 13 && cleanedPhone.startsWith("234"));
 
-    if (!isValid) errors.phoneNumber = "Invalid Nigerian phone number format";
+    if (!isValid) {
+      errors.phoneNumber = "Invalid Nigerian phone number format";
+    }
   }
 
   // ========== MINIMUM PRICE ==========
@@ -67,20 +83,31 @@ export const vendorRegistrationValidate = (formData, isEditMode = false) => {
     errors.imageURL = "Business image is required";
   }
 
+  // ========== DESCRIPTION ==========
+  if (formData.description && formData.description.length > 500) {
+    errors.description = "Description must not exceed 500 characters";
+  }
+
   return errors;
 };
 
-export const validateVendorField = (fieldName, value) => {
+// Validate individual field
+
+export const validateVendorField = (fieldName, value, isEditMode = false) => {
   const cleaned = value?.toString().trim() || "";
 
   switch (fieldName) {
     case "vnin":
+      // Skip in edit mode
+      if (isEditMode) return null;
       if (!cleaned) return "vNIN is mandatory";
       const vninClean = cleaned.replace(/[^A-Z0-9]/gi, "");
       if (vninClean.length !== 16) return "vNIN must be 16 characters";
       return null;
 
     case "cacNumber":
+      // Skip if verified in edit mode
+      if (isEditMode) return null;
       if (!cleaned) return null; // CAC is optional
       const cacClean = cleaned.replace(/[^A-Z0-9]/gi, "");
       if (!/^(RC|BN|IT)\d{5,8}$/i.test(cacClean)) return "Invalid CAC format";
@@ -89,8 +116,9 @@ export const validateVendorField = (fieldName, value) => {
     case "phoneNumber":
       if (!cleaned) return "Required";
       const phoneClean = cleaned.replace(/\D/g, "");
-      if (phoneClean.length < 10 || phoneClean.length > 13)
+      if (phoneClean.length < 10 || phoneClean.length > 13) {
         return "Invalid number";
+      }
       return null;
 
     case "firstName":
@@ -98,6 +126,16 @@ export const validateVendorField = (fieldName, value) => {
     case "name":
       if (!cleaned) return "This field is required";
       if (cleaned.length < 2) return "Too short";
+      return null;
+
+    case "minPrice":
+      const price = parseInt(cleaned, 10);
+      if (isNaN(price)) return "Must be a number";
+      if (price < 1000) return "Minimum is ₦1,000";
+      return null;
+
+    case "description":
+      if (cleaned.length > 500) return "Max 500 characters";
       return null;
 
     default:

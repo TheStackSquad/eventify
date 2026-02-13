@@ -33,7 +33,7 @@ export async function fetchVendorProfileApi(vendorId, signal) {
   return response.data;
 }
 
-// Register new vendor with extended timeout
+// Register new vendor
 export async function registerVendorApi(vendorData) {
   const response = await backendInstance.post(
     API_ENDPOINTS.VENDORS.REGISTER,
@@ -44,11 +44,12 @@ export async function registerVendorApi(vendorData) {
 }
 
 // Update existing vendor
-export async function updateVendorApi({ vendorId, data }) {
+export async function updateVendorApi({ vendorId, vendorData }) {
   const endpoint = replaceUrlParams(API_ENDPOINTS.VENDORS.UPDATE, {
     id: vendorId,
   });
-  const response = await backendInstance.patch(endpoint, data);
+  
+  const response = await backendInstance.patch(endpoint, vendorData);
   return response.data;
 }
 

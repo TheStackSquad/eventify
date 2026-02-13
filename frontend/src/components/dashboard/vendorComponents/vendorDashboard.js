@@ -6,11 +6,16 @@ import LoadingSpinner from "@/components/common/loading/loadingSpinner";
 import VendorRegistrationView from "@/components/vendorUI/components/form/vendorRegistrationView";
 import VendorAnalyticsDashboard from "./vendorAnalytics/vendorAnalyticsDashboard";
 
-export default function VendorManagementView({ activeView, user }) {
+export default function VendorManagementView({
+  activeView,
+  user,
+  onViewChange,
+}) {
+  // 🔑 Add onViewChange prop
   console.log("🏪 [VendorDashboard] Rendering", {
     activeView,
     userId: user?.id,
-    vendorId: user?.vendorId, // ✅ Log both IDs for debugging
+    vendorId: user?.vendorId,
     isVendor: user?.isVendor,
   });
 
@@ -31,12 +36,11 @@ export default function VendorManagementView({ activeView, user }) {
   // ✅ View Routing
   switch (activeView) {
     case "vendor":
-      // ✅ FIXED: Check if user has vendor profile
+      // No vendor profile yet - show registration
       if (!user.vendorId) {
         console.warn(
           "⚠️ [VendorDashboard] User is marked as vendor but has no vendorId",
         );
-        // Redirect to registration or show empty state
         return (
           <VendorRegistrationView
             userId={user.id}
@@ -48,19 +52,27 @@ export default function VendorManagementView({ activeView, user }) {
         );
       }
 
-      // ✅ FIXED: Pass vendorId instead of userId
+      // Has vendor profile - show analytics
       return (
         <VendorAnalyticsDashboard
-          vendorId={user.vendorId} // ✅ Use vendorId
-          userId={user.id} // ✅ Keep userId for context
+          vendorId={user.vendorId}
+          userId={user.id}
           userEmail={user.email}
+          onViewChange={onViewChange} // 🔑 Pass it down
         />
       );
 
     case "vendor-register":
+      console.log("🔍 [VendorDashboard] vendor-register case:", {
+        userId: user.id,
+        vendorId: user.vendorId,
+        willBeEditMode: !!user.vendorId,
+      });
+
       return (
         <VendorRegistrationView
           userId={user.id}
+          vendorId={user.vendorId} // ✅ This is the key line!
           initialData={{
             email: user.email,
             fullName: user.name,
@@ -71,18 +83,17 @@ export default function VendorManagementView({ activeView, user }) {
     default:
       console.warn("⚠️ [VendorDashboard] Unknown view:", activeView);
 
-      // ✅ FIXED: Use vendorId in default case too
       if (user.vendorId) {
         return (
           <VendorAnalyticsDashboard
             vendorId={user.vendorId}
             userId={user.id}
             userEmail={user.email}
+            onViewChange={onViewChange}
           />
         );
       }
 
-      // No vendor profile, show registration
       return (
         <VendorRegistrationView
           userId={user.id}
