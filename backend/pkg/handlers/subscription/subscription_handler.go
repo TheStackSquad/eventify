@@ -188,11 +188,18 @@ func (h *SubscriptionHandler) GetMySubscription(c *gin.Context) {
 }
 
 // handleServiceError processes service layer errors
+
 func handleServiceError(c *gin.Context, err error, vID string) {
 	msg := err.Error()
 	log.Error().Err(err).Str("vendorID", vID).Msg("Service Error")
 
 	switch {
+	case strings.Contains(msg, "already has an active"):
+		c.JSON(http.StatusConflict, gin.H{
+			"status": "error",
+			"message": msg,
+			"action": "cancel_existing_or_wait",
+		})
 	case strings.Contains(msg, "already has"):
 		c.JSON(http.StatusConflict, gin.H{"error": msg})
 	case msg == "cannot subscribe to the free tier",

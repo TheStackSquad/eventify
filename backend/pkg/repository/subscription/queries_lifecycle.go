@@ -208,3 +208,23 @@ func (r *subscriptionRepository) GetByReference(ctx context.Context, reference s
 	}
 	return &sub, nil
 }
+
+// GetActiveByVendorID fetches the active subscription for a vendor
+func (r *subscriptionRepository) GetActiveByVendorID(ctx context.Context, vendorID uuid.UUID) (*models.Subscription, error) {
+	query := `
+		SELECT * FROM subscriptions
+		WHERE vendor_id = $1 AND status = 'active'
+		ORDER BY created_at DESC
+		LIMIT 1
+	`
+	
+	var sub models.Subscription
+	if err := r.db.GetContext(ctx, &sub, query, vendorID); err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil // No active subscription found
+		}
+		return nil, err
+	}
+	
+	return &sub, nil
+}

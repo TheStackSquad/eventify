@@ -11,7 +11,7 @@ import SearchWithSuggestions from "@/components/vendorUI/components/search/searc
 import LoadingState from "@/components/vendorUI/components/states/loadingState";
 import ErrorState from "@/components/vendorUI/components/states/errorState";
 import EmptyState from "@/components/vendorUI/components/states/emptyState";
-import { formatNumber } from "@/utils/currency";
+import { formatPrice } from "@/utils/currency";
 
 const VendorListingView = ({
   vendors,
@@ -182,7 +182,7 @@ const VendorListingView = ({
               <VendorCard
                 key={vendor.id}
                 vendor={vendor}
-                formatNumber={formatNumber}
+                formatPrice={formatPrice}
                 getRatingPercentage={getRatingPercentage}
                 onVendorClick={handleVendorClick}
               />

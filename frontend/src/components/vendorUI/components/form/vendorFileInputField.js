@@ -1,6 +1,6 @@
 // frontend/src/components/vendorUI/components/form/vendorFileInputField.jsx
 
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { Upload, X, AlertCircle, Image as ImageIcon } from "lucide-react";
 import Image from "next/image";
 
@@ -13,41 +13,53 @@ const VendorFileInputField = ({
   accept = "image/*",
   ...props
 }) => {
-  const [preview, setPreview] = useState(currentImage || null);
+  const [preview, setPreview] = useState(null);
   const fileInputRef = useRef(null);
+
+  // 🔑 Sync preview with imageFile or currentImage
+  useEffect(() => {
+    if (imageFile) {
+      // New file selected - create preview
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setPreview(reader.result);
+      };
+      reader.readAsDataURL(imageFile);
+    } else if (currentImage) {
+      // No new file, but we have a current image
+      setPreview(currentImage);
+    } else {
+      // No file at all
+      setPreview(null);
+    }
+  }, [imageFile, currentImage]);
 
   const handleFileSelect = (e) => {
     const file = e.target.files[0];
     if (file) {
       // Validate file size (max 5MB)
       if (file.size > 5 * 1024 * 1024) {
-        props.onChange({ target: { name: props.name, files: [] } });
-        setPreview(null);
-        alert("File size must be less than 5MB");
+        toastAlert.error("File size must be less than 5MB");
         return;
       }
 
-      // Create preview
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setPreview(reader.result);
-      };
-      reader.readAsDataURL(file);
-
-      // Pass to parent
+      // Pass to parent (parent will set imageFile state)
       props.onChange(e);
     }
   };
 
   const handleClearImage = () => {
-    setPreview(currentImage || null);
+    // Clear everything
+    setPreview(null);
+
+    // Clear file input
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
+
+    // Notify parent to clear the file
     props.onChange({ target: { name: props.name, files: [] } });
   };
-
-  const displayPreview = imageFile ? preview : currentImage;
 
   return (
     <div className="w-full">
@@ -57,18 +69,17 @@ const VendorFileInputField = ({
 
       <div className="relative">
         {/* Preview Area */}
-        {displayPreview ? (
+        {preview ? (
           <div className="relative group">
             <div className="w-full h-48 rounded-xl overflow-hidden border-2 border-gray-200 bg-gray-50">
-
-  <Image
-    src={displayPreview}
-    alt="Vendor preview"
-    fill // Makes the image fill the parent container
-    className="object-cover"
-    sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-    priority={true} // Use this if the image is "above the fold" (LCP)
-  />
+              <Image
+                src={preview}
+                alt="Vendor preview"
+                fill
+                className="object-cover"
+                sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+                priority={true}
+              />
             </div>
 
             {/* Overlay with actions */}
@@ -96,6 +107,9 @@ const VendorFileInputField = ({
               <div className="absolute top-3 left-3 px-3 py-1.5 bg-white/90 backdrop-blur-sm rounded-lg border border-gray-200 shadow-sm">
                 <p className="text-xs font-medium text-gray-700 truncate max-w-[200px]">
                   {imageFile.name}
+                </p>
+                <p className="text-[10px] text-gray-500">
+                  {(imageFile.size / 1024).toFixed(0)} KB
                 </p>
               </div>
             )}
@@ -139,7 +153,6 @@ const VendorFileInputField = ({
           accept={accept}
           onChange={handleFileSelect}
           className="hidden"
-          {...props}
         />
       </div>
 

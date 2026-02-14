@@ -1,4 +1,5 @@
 //backend/pkg/services/subscription/subscription_payment.go
+
 package subscription
 
 import (
@@ -15,76 +16,78 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-// backend/pkg/services/subscription/subscription_payment.go
-
 func (s *subscriptionServiceImpl) InitiateSubscription(ctx context.Context, vendorID uuid.UUID, req models.InitiateSubRequest) (*InitiateResponse, error) {
-	log.Info().Str("vendor", vendorID.String()).Str("tier", string(req.Tier)).Msg("🚀 Initiation started")
-	
-	// 1. Fetch the Vendor first to get the OwnerID (which links to the Users table)
-	vendor, err := s.vendorRepo.GetByID(ctx, vendorID)
-	if err != nil {
-		log.Error().Err(err).Str("vendorID", vendorID.String()).Msg("❌ Vendor not found")
-		return nil, fmt.Errorf("vendor profile not found")
-	}
+    // 1. INPUT VALIDATION (Move this up - don't hit DB for invalid inputs)
+    if req.Tier == models.TierFree {
+        return nil, fmt.Errorf("cannot subscribe to free tier via payment gateway")
+    }
 
-	// 2. Fetch User from DB using vendor.OwnerID to get the verified email
-	user, err := s.authRepo.GetUserByID(ctx, vendor.OwnerID)
-	if err != nil {
-		log.Error().Err(err).Str("ownerID", vendor.OwnerID.String()).Msg("❌ User (Owner) not found")
-		return nil, fmt.Errorf("user authentication failed")
-	}
+    // 2. CHECK EXISTING ACTIVE (Fail-Fast)
+    existingActive, err := s.subscriptionRepo.GetActiveByVendorID(ctx, vendorID)
+    if err != nil {
+        return nil, fmt.Errorf("failed to check existing subscription: %w", err)
+    }
+    if existingActive != nil {
+        return nil, fmt.Errorf("you already have an active %s subscription", existingActive.Tier)
+    }
 
-	if req.Tier == models.TierFree {
-		return nil, fmt.Errorf("cannot subscribe to free tier via payment")
-	}
+    // 3. FETCH VENDOR & USER (Necessary for the email)
+    vendor, err := s.vendorRepo.GetByID(ctx, vendorID)
+    if err != nil {
+        return nil, fmt.Errorf("vendor profile not found")
+    }
 
-	pricing := models.GetPricing(req.Tier)
-	
-	// 3. Prepare Subscription Record
-	sub := &models.Subscription{
-		ID:        uuid.New(),
-		VendorID:  vendorID,
-		Tier:      req.Tier,
-		Status:    models.SubStatusPending,
-		StartsAt:  time.Now().UTC(),
-		AutoRenew: req.AutoRenew,
-		Price:     pricing.MaxKobo,
-		Currency:  "NGN",
-	}
+    user, err := s.authRepo.GetUserByID(ctx, vendor.OwnerID)
+    if err != nil {
+        return nil, fmt.Errorf("user authentication failed")
+    }
 
-	// 4. Save to DB
-	if _, err := s.subscriptionRepo.Create(ctx, sub); err != nil {
-		log.Error().Err(err).Msg("❌ DB: Failed to create pending sub")
-		return nil, fmt.Errorf("failed to initialize subscription")
-	}
+    // 4. PREPARE PRICING
+    pricing := models.GetPricing(req.Tier)
+    subID := uuid.New()
 
-	// 5. Initialize Paystack Transaction using the DB-verified email
-	frontendURL := os.Getenv("FRONTEND_URL")
-	callback := fmt.Sprintf("%s/subscription/callback", frontendURL)
-	metadata := map[string]string{
-		"subscription_id": sub.ID.String(), 
-		"vendor_id":       vendorID.String(),
-	}
+    // 5. INITIALIZE PAYSTACK FIRST (Optional but recommended)
+    frontendURL := os.Getenv("FRONTEND_URL")
+    callback := fmt.Sprintf("%s/subscription/callback", frontendURL)
+    metadata := map[string]string{
+        "subscription_id": subID.String(), 
+        "vendor_id":       vendorID.String(),
+    }
 
-	authURL, err := s.paystack.InitializeTransaction(ctx, user.Email, sub.Price, sub.ID.String(), metadata, callback)
-	if err != nil {
-		log.Error().Err(err).Msg("❌ Paystack: Initialization failed")
-		// Mark as cancelled if gateway fails to avoid "stuck" pending subs
-		_ = s.subscriptionRepo.UpdateStatus(ctx, sub.ID, models.SubStatusCancelled)
-		return nil, fmt.Errorf("payment gateway unavailable")
-	}
+    // We use the subID as the reference to Paystack
+    authURL, err := s.paystack.InitializeTransaction(ctx, user.Email, pricing.MaxKobo, subID.String(), metadata, callback)
+    if err != nil {
+        log.Error().Err(err).Msg("❌ Paystack: Initialization failed")
+        return nil, fmt.Errorf("payment gateway unavailable")
+    }
 
-	log.Info().Str("subID", sub.ID.String()).Msg("✅ Payment link generated")
+    // 6. SAVE TO DB
+    sub := &models.Subscription{
+        ID:        subID,
+        VendorID:  vendorID,
+        Tier:      req.Tier,
+        Status:    models.SubStatusPending,
+        StartsAt:  time.Now().UTC(),
+        AutoRenew: req.AutoRenew,
+        Price:     pricing.MaxKobo,
+        Currency:  "NGN",
+    }
 
-	// 6. Return response for Frontend
-	return &InitiateResponse{
-		SubscriptionID:   sub.ID,
-		AuthorizationURL: authURL,
-		Reference:        sub.ID.String(),
-		Tier:             string(req.Tier),
-		AmountKobo:       sub.Price,
-	}, nil
+    if _, err := s.subscriptionRepo.Create(ctx, sub); err != nil {
+        log.Error().Err(err).Msg("❌ DB: Failed to create pending sub after Paystack success")
+        // This is a rare edge case: Paystack link exists but DB failed.
+        return nil, fmt.Errorf("failed to initialize subscription record")
+    }
+
+    return &InitiateResponse{
+        SubscriptionID:   sub.ID,
+        AuthorizationURL: authURL,
+        Reference:        sub.ID.String(),
+        Tier:             string(req.Tier),
+        AmountKobo:       sub.Price,
+    }, nil
 }
+
 func (s *subscriptionServiceImpl) VerifyAndFinalize(ctx context.Context, reference string, vendorID uuid.UUID) error {
     log.Info().Str("ref", reference).Msg("🔄 Verification started")
 

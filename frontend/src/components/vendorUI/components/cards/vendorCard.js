@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import { generateVendorSlug } from "@/utils/helper/vendorSlugHelper";
 
-const VendorCard = ({ vendor, formatNumber, getRatingPercentage }) => {
+const VendorCard = ({ vendor, formatPrice, getRatingPercentage }) => {
   const [imageError, setImageError] = useState(false);
   const [imageLoaded, setImageLoaded] = useState(false);
 
@@ -142,7 +142,7 @@ const VendorCard = ({ vendor, formatNumber, getRatingPercentage }) => {
           {minPrice && (
             <div className="absolute bottom-3 right-3 bg-white/95 backdrop-blur-sm px-3 py-2 rounded-xl shadow-lg border border-gray-100">
               <div className="text-sm font-black text-gray-900 leading-tight">
-                {formatNumber(minPrice)}
+                {formatPrice(minPrice)}
               </div>
               <div className="text-[10px] text-gray-500 font-medium mt-0.5">
                 Starting from
