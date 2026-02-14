@@ -36,6 +36,7 @@ export const transformBackendToFrontend = (data) => {
 
     // Price conversion: kobo to naira
     minPrice: koboToNaira(data.minPrice),
+   // minPrice: (data.minPrice),
 
     cacNumber: nullToEmpty(data.cacNumber),
 

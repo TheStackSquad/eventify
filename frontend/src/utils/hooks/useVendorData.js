@@ -172,16 +172,24 @@ export function useUpdateVendor() {
 
       // Update cache with new data
       if (data?.vendor) {
-        queryClient.setQueryData(vendorKeys.profile(vendorId), data.vendor);
+        queryClient.setQueryData(
+          vendorKeys.detail(vendorId),
+          data.vendor,
+        );
       }
 
       // Invalidate to refetch
-      queryClient.invalidateQueries({ queryKey: vendorKeys.profile(vendorId) });
-      queryClient.invalidateQueries({ queryKey: vendorKeys.all });
+      queryClient.invalidateQueries({
+        queryKey: vendorKeys.detail(vendorId),
+      });
+      queryClient.invalidateQueries({
+        queryKey: vendorKeys.all,
+      });
     },
     onError: (error) => {
       // Single error toast
-      const message = error.response?.data?.message || ERROR_MESSAGES.UPDATE_VENDOR_FAILED;
+      const message =
+        error.response?.data?.message || ERROR_MESSAGES.UPDATE_VENDOR_FAILED;
       toastAlert.error(message);
     },
   });

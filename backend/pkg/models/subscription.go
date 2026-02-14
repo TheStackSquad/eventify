@@ -195,6 +195,12 @@ type Subscription struct {
     
     CreatedAt         time.Time          `json:"createdAt" db:"created_at"`
     UpdatedAt         time.Time          `json:"updatedAt" db:"updated_at"`
+
+    PaymentSuccessSentAt sql.NullTime   `json:"-" db:"payment_success_sent_at"`
+    Reminder7DSentAt     sql.NullTime   `json:"-" db:"reminder_7d_sent_at"`
+    Reminder3DSentAt     sql.NullTime   `json:"-" db:"reminder_3d_sent_at"`
+    Reminder1DSentAt     sql.NullTime   `json:"-" db:"reminder_1d_sent_at"`
+    ExpiredNoticeSentAt  sql.NullTime   `json:"-" db:"expired_notice_sent_at"`
 }
 
 func (s Subscription) MarshalJSON() ([]byte, error) {
