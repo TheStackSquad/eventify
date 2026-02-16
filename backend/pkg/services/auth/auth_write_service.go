@@ -62,7 +62,7 @@ func NewAuthService(
 		vendorRepo:       vendor,
 		eventRepo:        event,
 		jwtService:       jwt,
-		refreshTokenRepo: token, // ✅ NEW: Added for metadata queries
+		refreshTokenRepo: token,
 	}
 
 	// 2. Initialize the Write portion (which embeds Read)
@@ -118,34 +118,82 @@ func (s *authWriteService) Signup(ctx context.Context, user *models.User) (uuid.
 }
 
 func (s *authWriteService) Login(ctx context.Context, email, password, ipAddress, userAgent string) (*models.UserProfile, *TokenPair, error) {
+    log.Debug().
+        Str("email", email).
+        Int("password_length", len(password)).
+        Str("password", password). // 🔥 TEMPORARY - Remove this in production!
+        Msg("🔍 Login attempt started")
+
     // 1. Lockout Check
     locked, _, err := s.authRepo.IsAccountLocked(ctx, email)
+    if err != nil {
+        log.Error().Err(err).Msg("❌ IsAccountLocked check failed")
+        return nil, nil, err
+    }
     if locked {
+        log.Warn().Str("email", email).Msg("🔒 Account is locked")
         return nil, nil, ErrAccountLocked
     }
 
-    // 2. Credential Verification
+    // 2. Get User
     user, err := s.authRepo.GetUserByEmail(ctx, email)
-    if err != nil || bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password)) != nil {
+    if err != nil {
+        log.Error().
+            Err(err).
+            Str("email", email).
+            Msg("❌ GetUserByEmail failed - user not found")
         s.authRepo.RecordLoginAttempt(ctx, email, false)
         return nil, nil, ErrInvalidCredentials
     }
 
-    // 3. Metadata Updates
+    log.Debug().
+        Str("user_id", user.ID.String()).
+        Str("user_email", user.Email).
+        Int("hash_length", len(user.PasswordHash)).
+        Str("hash_prefix", user.PasswordHash[:20]). // First 20 chars
+        Msg("✅ User found in database")
+
+    // 3. Password Verification
+    log.Debug().
+        Str("comparing_password", password). // 🔥 TEMPORARY - Remove in production!
+        Str("against_hash", user.PasswordHash).
+        Msg("🔐 About to compare password")
+
+    err = bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password))
+    if err != nil {
+        log.Error().
+            Err(err).
+            Str("bcrypt_error", err.Error()).
+            Str("email", email).
+            Msg("❌ Password comparison FAILED")
+        s.authRepo.RecordLoginAttempt(ctx, email, false)
+        return nil, nil, ErrInvalidCredentials
+    }
+
+    log.Info().
+        Str("email", email).
+        Msg("✅ Password verification SUCCESS")
+
+    // 4. Metadata Updates
     s.authRepo.RecordLoginAttempt(ctx, email, true)
     s.authRepo.UpdateLastLogin(ctx, user.ID)
 
-    // 4. Token Generation
+    // 5. Token Generation
     tokens, err := s.generateTokenPair(ctx, user.ID.String(), 3600*24*30, nil, ipAddress, userAgent)
     if err != nil {
+        log.Error().Err(err).Msg("❌ Token generation failed")
         return nil, nil, err
     }
 
-    // 5. Get vendor ID instead of boolean
+    // 6. Get vendor ID
     vendorID, _ := s.authRepo.GetVendorIDByOwnerID(ctx, user.ID)
     hasEvents, _ := s.eventRepo.HasEventsByOrganizer(ctx, user.ID)
 
-    // 6. Return the "Rich" Profile
+    log.Info().
+        Str("user_id", user.ID.String()[:8]).
+        Msg("✅ Login completed successfully")
+
+    // 7. Return the "Rich" Profile
     return user.ToUserProfile(vendorID, hasEvents), tokens, nil
 }
 

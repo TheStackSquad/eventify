@@ -53,6 +53,7 @@ type VendorAnalyticsOptimizedRepository interface {
 	GetVendorTier(ctx context.Context, vendorID uuid.UUID) (models.SubscriptionTier, error)
 }
 
+
 // VendorAnalyticsData represents the raw data from the optimized query
 // This is used internally and transformed to VendorAnalyticsResponse
 type VendorAnalyticsDataRaw struct {
@@ -75,42 +76,46 @@ type VendorAnalyticsDataRaw struct {
 	Tier               string `db:"tier"`
 	SubscriptionStatus string `db:"subscription_status"`
 
-	// Views
-	ViewsTotal int `db:"views_total"`
-	Views30d   int `db:"views_30d"`
+	// Views (can be NULL for new vendors)
+	ViewsTotal sql.NullInt64 `db:"views_total"`
+	Views30d   sql.NullInt64 `db:"views_30d"`
 
-	// Metrics from materialized view
-	Inquiries7d    int     `db:"inquiries_7d"`
-	Reviews7d      int     `db:"reviews_7d"`
-	AvgRating7d    float64 `db:"avg_rating_7d"`
-	Inquiries30d   int     `db:"inquiries_30d"`
-	Reviews30d     int     `db:"reviews_30d"`
-	AvgRating30d   float64 `db:"avg_rating_30d"`
-	TotalInquiries int     `db:"total_inquiries"`
-	TotalReviews   int     `db:"total_reviews"`
-	AvgRatingAll   float64 `db:"avg_rating_all"`
+	// Metrics from materialized view (can be NULL for vendors with no activity)
+	Inquiries7d    sql.NullInt64   `db:"inquiries_7d"`
+	Reviews7d      sql.NullInt64   `db:"reviews_7d"`
+	AvgRating7d    sql.NullFloat64 `db:"avg_rating_7d"`
+	Inquiries30d   sql.NullInt64   `db:"inquiries_30d"`
+	Reviews30d     sql.NullInt64   `db:"reviews_30d"`
+	AvgRating30d   sql.NullFloat64 `db:"avg_rating_30d"`
+	TotalInquiries sql.NullInt64   `db:"total_inquiries"`
+	TotalReviews   sql.NullInt64   `db:"total_reviews"`
+	AvgRatingAll   sql.NullFloat64 `db:"avg_rating_all"`
 
-	// Rating distribution
-	FiveStar  int `db:"five_star"`
-	FourStar  int `db:"four_star"`
-	ThreeStar int `db:"three_star"`
-	TwoStar   int `db:"two_star"`
-	OneStar   int `db:"one_star"`
+	// Rating distribution (NULL when no reviews)
+	FiveStar  sql.NullInt64 `db:"five_star"`
+	FourStar  sql.NullInt64 `db:"four_star"`
+	ThreeStar sql.NullInt64 `db:"three_star"`
+	TwoStar   sql.NullInt64 `db:"two_star"`
+	OneStar   sql.NullInt64 `db:"one_star"`
 
 	// JSON aggregated data
 	RecentInquiriesJSON []byte `db:"recent_inquiries"`
 	RecentReviewsJSON   []byte `db:"recent_reviews"`
 }
 
-// UnmarshalJSON fields into structured data
+// UnmarshalJSON fields into structured data with proper NULL handling
 func (d *VendorAnalyticsDataRaw) ToAnalyticsData() (*models.VendorAnalyticsData, error) {
 	var recentInquiries []models.RecentInquiry
 	var recentReviews []models.RecentReview
 
+	// Handle JSON arrays
 	if len(d.RecentInquiriesJSON) > 0 && string(d.RecentInquiriesJSON) != "null" {
 		if err := json.Unmarshal(d.RecentInquiriesJSON, &recentInquiries); err != nil {
 			return nil, err
 		}
+	}
+	if recentInquiries == nil {
+		recentInquiries = []models.RecentInquiry{} // Empty array instead of nil
 	}
 
 	if len(d.RecentReviewsJSON) > 0 && string(d.RecentReviewsJSON) != "null" {
@@ -118,7 +123,27 @@ func (d *VendorAnalyticsDataRaw) ToAnalyticsData() (*models.VendorAnalyticsData,
 			return nil, err
 		}
 	}
+	if recentReviews == nil {
+		recentReviews = []models.RecentReview{} // Empty array instead of nil
+	}
 
+	// Helper function to safely extract int64 values
+	getInt := func(n sql.NullInt64) int {
+		if n.Valid {
+			return int(n.Int64)
+		}
+		return 0
+	}
+
+	// Helper function to safely extract float64 values
+	getFloat := func(n sql.NullFloat64) float64 {
+		if n.Valid {
+			return n.Float64
+		}
+		return 0.0
+	}
+
+	// Extract CAC number
 	cacNumber := ""
 	if d.CacNumber.Valid {
 		cacNumber = d.CacNumber.String
@@ -140,23 +165,31 @@ func (d *VendorAnalyticsDataRaw) ToAnalyticsData() (*models.VendorAnalyticsData,
 		UpdatedAt:          d.UpdatedAt,
 		Tier:               d.Tier,
 		SubscriptionStatus: d.SubscriptionStatus,
-		ViewsTotal:         d.ViewsTotal,
-		Views30d:           d.Views30d,
-		Inquiries7d:        d.Inquiries7d,
-		Reviews7d:          d.Reviews7d,
-		AvgRating7d:        d.AvgRating7d,
-		Inquiries30d:       d.Inquiries30d,
-		Reviews30d:         d.Reviews30d,
-		AvgRating30d:       d.AvgRating30d,
-		TotalInquiries:     d.TotalInquiries,
-		TotalReviews:       d.TotalReviews,
-		AvgRatingAll:       d.AvgRatingAll,
-		FiveStar:           d.FiveStar,
-		FourStar:           d.FourStar,
-		ThreeStar:          d.ThreeStar,
-		TwoStar:            d.TwoStar,
-		OneStar:            d.OneStar,
-		RecentInquiries:    recentInquiries,
-		RecentReviews:      recentReviews,
+		
+		// Views with NULL handling
+		ViewsTotal: getInt(d.ViewsTotal),
+		Views30d:   getInt(d.Views30d),
+		
+		// Time-based metrics with NULL handling
+		Inquiries7d:    getInt(d.Inquiries7d),
+		Reviews7d:      getInt(d.Reviews7d),
+		AvgRating7d:    getFloat(d.AvgRating7d),
+		Inquiries30d:   getInt(d.Inquiries30d),
+		Reviews30d:     getInt(d.Reviews30d),
+		AvgRating30d:   getFloat(d.AvgRating30d),
+		TotalInquiries: getInt(d.TotalInquiries),
+		TotalReviews:   getInt(d.TotalReviews),
+		AvgRatingAll:   getFloat(d.AvgRatingAll),
+		
+		// Rating distribution with NULL handling
+		FiveStar:  getInt(d.FiveStar),
+		FourStar:  getInt(d.FourStar),
+		ThreeStar: getInt(d.ThreeStar),
+		TwoStar:   getInt(d.TwoStar),
+		OneStar:   getInt(d.OneStar),
+		
+		// Recent activity
+		RecentInquiries: recentInquiries,
+		RecentReviews:   recentReviews,
 	}, nil
 }

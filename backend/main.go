@@ -211,6 +211,7 @@ paystackClient := servicepaystack.NewClient(
 	// STEP 7: HANDLER INITIALIZATION
 	// ============================================================================
 	authHandler := handlerauth.NewAuthHandler(authService)
+	preferencesHandler := handlerauth.NewPreferencesHandler(authRepo)
 	vendorLeaderboardHandler := handlervendor.NewVendorLeaderboardHandler(vendorLeaderboardService)
 	eventHandler := handlerevent.NewEventHandler(eventService, likeService)
 	vendorHandler := handlervendor.NewVendorHandler(vendorService, vendorStatsRepo)
@@ -256,6 +257,7 @@ router := routes.ConfigureRouter(
 		vendorLeaderboardHandler, // 12
 		jwtService,               // 13
 		authService,              // 14
+		preferencesHandler,
 	)
 
 	utils.LogSuccess(serviceName, "router", "Router configured with all endpoints")

@@ -21,12 +21,13 @@ type User struct {
 	ID               uuid.UUID    `json:"id" db:"id"`
 	Name             string       `json:"name" db:"name" binding:"required"`
 	Email            string       `json:"email" db:"email" binding:"required,email"`
-	Password         string       `json:"password,omitempty" binding:"required,min=6"` // Only for input
+	Password         string       `json:"password,omitempty" binding:"required,min=6"`
 	PasswordHash     string       `json:"-" db:"password_hash"`
 	Role             Role         `json:"role" db:"role"`
 	ResetToken       sql.NullString `json:"-" db:"reset_token"`
 	ResetTokenExpiry sql.NullTime `json:"-" db:"reset_token_expiry"`
 	LastLogin        sql.NullTime `json:"-" db:"last_login"`
+	AllowReminderEmails  bool           `json:"allowReminderEmails" db:"allow_reminder_emails"`
 	CreatedAt        time.Time    `json:"created_at" db:"created_at"`
 	UpdatedAt        time.Time    `json:"updated_at" db:"updated_at"`
 }
