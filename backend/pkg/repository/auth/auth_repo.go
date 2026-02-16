@@ -11,6 +11,7 @@ import (
 	"github.com/eventify/backend/pkg/models"
 
 	"github.com/google/uuid"
+	"github.com/rs/zerolog/log"
 	"github.com/jmoiron/sqlx"
 )
 
@@ -29,6 +30,8 @@ type AuthRepository interface {
 	RecordLoginAttempt(ctx context.Context, email string, success bool) error
 	ClearFailedLoginAttempts(ctx context.Context, email string) error
 	UpdateLastLogin(ctx context.Context, userID uuid.UUID) error
+
+	UpdateReminderPreference(ctx context.Context, userID uuid.UUID, allow bool) error
 
 	BlacklistToken(ctx context.Context, token string, expiry time.Time) error
 	IsTokenBlacklisted(ctx context.Context, token string) (bool, error)
@@ -84,3 +87,20 @@ func (r *PostgresAuthRepository) CleanupBlacklist(ctx context.Context) (int64, e
 	return result.RowsAffected()
 }
 
+
+func (r *PostgresAuthRepository) UpdateReminderPreference(ctx context.Context, userID uuid.UUID, allow bool) error {
+	query := `
+		UPDATE users 
+		SET allow_reminder_emails = $1, updated_at = NOW()
+		WHERE id = $2
+	`
+	
+	_, err := r.DB.ExecContext(ctx, query, allow, userID)
+	if err != nil {
+		log.Error().Err(err).Str("user_id", userID.String()).Bool("allow", allow).Msg("Failed to update reminder preference")
+		return err
+	}
+	
+	log.Info().Str("user_id", userID.String()).Bool("allow_reminders", allow).Msg("Reminder preference updated")
+	return nil
+}

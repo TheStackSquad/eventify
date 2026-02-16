@@ -45,6 +45,7 @@ func ConfigureRouter(
 	vendorLeaderboardHandler *handlervendor.VendorLeaderboardHandler,
 	jwtService *servicejwt.JWTService,
 	authService auth.AuthService,
+	preferencesHandler *handlerauth.PreferencesHandler,
 ) *gin.Engine {
 	utils.LogInfo(serviceName, "configure", "Initializing router configuration")
 
@@ -121,6 +122,16 @@ func ConfigureRouter(
 			protected.POST("/logout", authHandler.Logout)
 			protected.GET("/me", authHandler.GetCurrentUser) // GET but still needs CSRF cookie
 		}
+	}
+
+	userPrefs := router.Group("/api/user")
+	userPrefs.Use(
+		middleware.AuthMiddleware(authService),
+		middleware.CSRFProtection(csrfConfig),
+	)
+	{
+		userPrefs.GET("/preferences", preferencesHandler.GetPreferences)
+		userPrefs.PATCH("/preferences", preferencesHandler.UpdatePreferences)
 	}
 
 	// ============================================

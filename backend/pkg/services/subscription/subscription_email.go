@@ -150,6 +150,7 @@ Best regards,
 The Eventify Team`, r.UserName, capitalize(r.Tier), priceNaira, r.ExpiresAt.Format("Jan 2, 2006"), r.VendorName)
 }
 
+
 func buildReminderEmail(r subscription.EmailRecipient, reminderType string) string {
 	days := map[string]string{"7d": "7 days", "3d": "3 days", "1d": "1 day"}[reminderType]
 	priceNaira := float64(r.PriceKobo) / 100
@@ -165,8 +166,11 @@ Renew now: https://eventify.ng/dashboard/subscription/renew
 Best regards,
 The Eventify Team
 
-Unsubscribe from reminders: https://eventify.ng/settings/notifications`,
-		r.UserName, capitalize(r.Tier), days, r.ExpiresAt.Format("Jan 2 at 3:04PM"), priceNaira)
+---
+To manage email preferences, visit: https://eventify.ng/account/settings
+You will still receive important account notifications.`,
+		r.UserName, capitalize(r.Tier), days, r.ExpiresAt.Format("Jan 2 at 3:04PM"), 
+		priceNaira)
 }
 
 func buildExpiredNoticeEmail(r subscription.EmailRecipient) string {

@@ -190,9 +190,7 @@ type VendorAnalyticsError struct {
 	Code    string `json:"code"`    // Error code for client handling
 }
 
-// ============================================================================
 // INTERNAL DATA TRANSFER OBJECT (Repository → Service)
-// ============================================================================
 
 // VendorAnalyticsData represents the complete analytics dataset
 // Used internally between repository and service layers
@@ -220,7 +218,7 @@ type VendorAnalyticsData struct {
 	ViewsTotal int `json:"viewsTotal"`
 	Views30d   int `json:"views30d"`
 	
-	// Time-based Metrics
+	// Time-based Metrics (can be 0 for new vendors)
 	Inquiries7d    int     `json:"inquiries7d"`
 	Reviews7d      int     `json:"reviews7d"`
 	AvgRating7d    float64 `json:"avgRating7d"`
@@ -231,14 +229,14 @@ type VendorAnalyticsData struct {
 	TotalReviews   int     `json:"totalReviews"`
 	AvgRatingAll   float64 `json:"avgRatingAll"`
 	
-	// Rating Distribution
+	// Rating Distribution (will be 0 for vendors with no reviews)
 	FiveStar  int `json:"fiveStar"`
 	FourStar  int `json:"fourStar"`
 	ThreeStar int `json:"threeStar"`
 	TwoStar   int `json:"twoStar"`
 	OneStar   int `json:"oneStar"`
 	
-	// Recent Activity
+	// Recent Activity (can be empty arrays)
 	RecentInquiries []RecentInquiry `json:"recentInquiries"`
 	RecentReviews   []RecentReview  `json:"recentReviews"`
 }

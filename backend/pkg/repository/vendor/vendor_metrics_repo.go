@@ -42,53 +42,64 @@ const completeAnalyticsQuery = `
 			AND (s.expires_at IS NULL OR s.expires_at > NOW())
 		LEFT JOIN vendor_stats vs ON v.id = vs.vendor_id
 		WHERE v.id = $1
-	),
-	metrics AS (
-		SELECT
-			COALESCE(inquiries_7d, 0) as inquiries_7d,
-			COALESCE(reviews_7d, 0) as reviews_7d,
-			COALESCE(avg_rating_7d, 0) as avg_rating_7d,
-			COALESCE(inquiries_30d, 0) as inquiries_30d,
-			COALESCE(reviews_30d, 0) as reviews_30d,
-			COALESCE(avg_rating_30d, 0) as avg_rating_30d,
-			COALESCE(total_inquiries, 0) as total_inquiries,
-			COALESCE(total_reviews, 0) as total_reviews,
-			COALESCE(avg_rating_all, 0) as avg_rating_all
-		FROM vendor_daily_metrics
-		WHERE vendor_id = $1
-	),
-	rating_dist AS (
-		SELECT
-			SUM(CASE WHEN rating = 5 THEN 1 ELSE 0 END) as five_star,
-			SUM(CASE WHEN rating = 4 THEN 1 ELSE 0 END) as four_star,
-			SUM(CASE WHEN rating = 3 THEN 1 ELSE 0 END) as three_star,
-			SUM(CASE WHEN rating = 2 THEN 1 ELSE 0 END) as two_star,
-			SUM(CASE WHEN rating = 1 THEN 1 ELSE 0 END) as one_star
-		FROM reviews
-		WHERE vendor_id = $1
-	),
-	recent_inquiries AS (
-		SELECT COALESCE(json_agg(sub), '[]'::json) as data
-		FROM (
-			SELECT id, name, email, message, created_at
-			FROM inquiries WHERE vendor_id = $1
-			ORDER BY created_at DESC LIMIT 5
-		) sub
-	),
-	recent_reviews AS (
-		SELECT COALESCE(json_agg(sub), '[]'::json) as data
-		FROM (
-			SELECT id, rating, comment, user_name, created_at
-			FROM reviews WHERE vendor_id = $1
-			ORDER BY created_at DESC LIMIT 5
-		) sub
 	)
-	SELECT vb.*, m.*, rd.*, ri.data as recent_inquiries, rr.data as recent_reviews
+	SELECT 
+		vb.*,
+		-- Metrics with NULL protection
+		COALESCE(m.inquiries_7d, 0) as inquiries_7d,
+		COALESCE(m.reviews_7d, 0) as reviews_7d,
+		COALESCE(m.avg_rating_7d, 0) as avg_rating_7d,
+		COALESCE(m.inquiries_30d, 0) as inquiries_30d,
+		COALESCE(m.reviews_30d, 0) as reviews_30d,
+		COALESCE(m.avg_rating_30d, 0) as avg_rating_30d,
+		COALESCE(m.total_inquiries, 0) as total_inquiries,
+		COALESCE(m.total_reviews, 0) as total_reviews,
+		COALESCE(m.avg_rating_all, 0) as avg_rating_all,
+		-- Rating distribution with NULL protection
+		COALESCE(
+			(SELECT SUM(CASE WHEN rating = 5 THEN 1 ELSE 0 END) 
+			 FROM reviews WHERE vendor_id = vb.id), 
+			0
+		) as five_star,
+		COALESCE(
+			(SELECT SUM(CASE WHEN rating = 4 THEN 1 ELSE 0 END) 
+			 FROM reviews WHERE vendor_id = vb.id), 
+			0
+		) as four_star,
+		COALESCE(
+			(SELECT SUM(CASE WHEN rating = 3 THEN 1 ELSE 0 END) 
+			 FROM reviews WHERE vendor_id = vb.id), 
+			0
+		) as three_star,
+		COALESCE(
+			(SELECT SUM(CASE WHEN rating = 2 THEN 1 ELSE 0 END) 
+			 FROM reviews WHERE vendor_id = vb.id), 
+			0
+		) as two_star,
+		COALESCE(
+			(SELECT SUM(CASE WHEN rating = 1 THEN 1 ELSE 0 END) 
+			 FROM reviews WHERE vendor_id = vb.id), 
+			0
+		) as one_star,
+		-- Recent data with empty array defaults
+		COALESCE(
+			(SELECT json_agg(sub) FROM (
+				SELECT id, name, email, message, created_at
+				FROM inquiries WHERE vendor_id = vb.id
+				ORDER BY created_at DESC LIMIT 5
+			) sub),
+			'[]'::json
+		) as recent_inquiries,
+		COALESCE(
+			(SELECT json_agg(sub) FROM (
+				SELECT id, rating, comment, user_name, created_at
+				FROM reviews WHERE vendor_id = vb.id
+				ORDER BY created_at DESC LIMIT 5
+			) sub),
+			'[]'::json
+		) as recent_reviews
 	FROM vendor_base vb
-	CROSS JOIN metrics m
-	CROSS JOIN rating_dist rd
-	CROSS JOIN recent_inquiries ri
-	CROSS JOIN recent_reviews rr
+	LEFT JOIN vendor_daily_metrics m ON vb.id = m.vendor_id
 `
 
 func (r *PostgresVendorAnalyticsOptimizedRepo) GetCompleteVendorAnalytics(ctx context.Context, vendorID uuid.UUID) (*models.VendorAnalyticsData, error) {
