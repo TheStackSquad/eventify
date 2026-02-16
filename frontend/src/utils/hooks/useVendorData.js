@@ -58,23 +58,32 @@ const log = {
 };
 
 export const vendorKeys = {
-  // Main list
   all: ["vendors"],
-  // List with filters (key must contain all filter params to be unique)
-  list: (filters) => ["vendors", "list", filters],
-  // Individual vendor profile
+  list: (filters) => {
+    const normalizedFilters = {
+      search: filters?.search || "",
+      category: filters?.category || "",
+      location: filters?.location || "",
+      sortBy: filters?.sortBy || "",
+      page: filters?.page || 1,
+      limit: filters?.limit || 12,
+    };
+    return ["vendors", "list", normalizedFilters];
+  },
   detail: (id) => ["vendors", "detail", id],
 };
 
 export function useVendors(filters = {}, options = {}) {
   const hookName = "useVendors";
-  // Using JSON.stringify ensures the query key is stable and only changes when content changes.
-  const filterKey = JSON.stringify(filters);
 
-  log.query(hookName, "Hook called", { filters, filterKey, options });
+  log.query(hookName, "Hook called", {
+    filters,
+    filterKey: JSON.stringify(filters), // Only for logging
+    options,
+  });
 
   return useQuery({
-    queryKey: vendorKeys.list(filterKey),
+    queryKey: vendorKeys.list(filters),
     queryFn: async ({ signal }) => {
       log.query(hookName, "Fetching vendors...", { filters, signal: !!signal });
       try {
@@ -90,8 +99,9 @@ export function useVendors(filters = {}, options = {}) {
         throw error;
       }
     },
-    staleTime: 1000 * 60 * 5, // 5 minutes
-    keepPreviousData: true, // Crucial for smooth pagination/filtering
+    staleTime: 1000 * 60 * 5,
+    placeholderData: (previousData) => previousData,
+
     onSuccess: (data) => {
       log.query(hookName, "Query onSuccess", {
         dataReturned: !!data,
@@ -99,7 +109,6 @@ export function useVendors(filters = {}, options = {}) {
       });
     },
     onError: (error) => {
-      // Ignoring cancellation error silently as per Redux thunk logic
       if (
         error.name === "CanceledError" ||
         error.status === "CLIENT_CANCELLED"

@@ -1,14 +1,20 @@
 // src/app/events/[id]/page.js
 
+// ✅ 1. RUNTIME CONFIGURATION (Must be at top)
+export const dynamic = "force-dynamic";
+export const dynamicParams = true;
+
+// ✅ 2. IMPORTS
 import { notFound } from "next/navigation";
 import EventDetailClient from "@/app/events/[id]/eventDetailClient";
 
-// ✅ Utility: Convert kobo to naira
+// ✅ 3. UTILITY FUNCTIONS
+// Convert kobo to naira
 function koboToNaira(kobo) {
   return Number(kobo) / 100;
 }
 
-// ✅ Utility: Format price for display
+// Format price for display
 function formatPrice(naira) {
   return naira.toLocaleString("en-NG", {
     minimumFractionDigits: 0,
@@ -16,7 +22,7 @@ function formatPrice(naira) {
   });
 }
 
-// Fetch single event by ID
+// ✅ 4. DATA FETCHING FUNCTION
 async function fetchEventById(eventId) {
   const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8081";
 
@@ -77,47 +83,16 @@ async function fetchEventById(eventId) {
   }
 }
 
+// ✅ 5. GENERATE STATIC PARAMS
 export async function generateStaticParams() {
-  // Don't fetch during build if backend is down
-  // Return empty array to let Next.js generate pages on-demand
-  if (
-    process.env.NODE_ENV === "production" &&
-    !process.env.NEXT_PUBLIC_API_URL
-  ) {
-    console.log("⚠️ Skipping static generation - API URL not available");
-    return [];
-  }
-
-  const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8081";
-
-  try {
-    const res = await fetch(`${baseUrl}/events?limit=50`, {
-      // Add timeout to prevent hanging
-      signal: AbortSignal.timeout(5000), // 5 second timeout
-    });
-
-    if (!res.ok) return [];
-
-    const data = await res.json();
-    const eventsArray =
-      data.events || data.data || (Array.isArray(data) ? data : []);
-
-    if (!Array.isArray(eventsArray)) {
-      console.warn("⚠️ API did not return an array in the expected format");
-      return [];
-    }
-
-    return eventsArray.slice(0, 50).map((event) => ({
-      id: event.id.toString(),
-    }));
-  } catch (error) {
-    console.error("Error generating static params:", error);
-    // Return empty array instead of throwing - pages will be generated on-demand
-    return [];
-  }
+  // Skip static generation during build - generate pages on-demand
+  console.log(
+    "⚠️ Static generation disabled - pages will be generated on-demand",
+  );
+  return [];
 }
 
-// ✅ ENHANCED SEO METADATA GENERATION
+// ✅ 6. GENERATE METADATA
 export async function generateMetadata({ params }) {
   const { id } = await params;
   const event = await fetchEventById(id);
@@ -170,7 +145,7 @@ export async function generateMetadata({ params }) {
       })
     : "";
 
-  // ✅ Create rich, descriptive metadata
+  // Create rich, descriptive metadata
   const shortDescription =
     eventDescription.length > 155
       ? `${eventDescription.slice(0, 155)}...`
@@ -192,7 +167,6 @@ export async function generateMetadata({ params }) {
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
   const eventUrl = `${siteUrl}/events/${id}`;
 
-  // ✅ COMPLETE METADATA OBJECT
   return {
     title: `${eventTitle} - ${formattedDate} | Bandhit`,
     description: richDescription,
@@ -269,7 +243,7 @@ export async function generateMetadata({ params }) {
   };
 }
 
-// ✅ MAIN SERVER COMPONENT
+// ✅ 7. MAIN SERVER COMPONENT
 export default async function EventDetailPage({ params }) {
   console.log("🎬 [EventDetailPage] Component Mount");
 
@@ -286,7 +260,7 @@ export default async function EventDetailPage({ params }) {
   // Get site URL
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
 
-  // ✅ Prepare tickets for structured data (prices already in naira)
+  // Prepare tickets for structured data (prices already in naira)
   const tickets = event.tickets || event.ticketTiers || [];
   const structuredOffers = tickets.map((ticket) => ({
     "@type": "Offer",
@@ -302,7 +276,7 @@ export default async function EventDetailPage({ params }) {
     ...(ticket.description && { description: ticket.description }),
   }));
 
-  // ✅ ENHANCED JSON-LD STRUCTURED DATA
+  // ENHANCED JSON-LD STRUCTURED DATA
   const structuredData = {
     "@context": "https://schema.org",
     "@type": "Event",
@@ -371,7 +345,7 @@ export default async function EventDetailPage({ params }) {
 
   return (
     <>
-      {/* 🎯 JSON-LD Structured Data for Google Rich Results */}
+      {/* JSON-LD Structured Data for Google Rich Results */}
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{
@@ -383,7 +357,3 @@ export default async function EventDetailPage({ params }) {
     </>
   );
 }
-
-// ✅ RUNTIME CONFIGURATION
-export const dynamic = "force-dynamic";
-export const revalidate = 300; // Revalidate every 5 minutes

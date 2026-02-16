@@ -486,18 +486,32 @@ export function useLikeEvent() {
 
 // UTILITY HOOKS
 
+// UTILITY HOOKS - FIXED VERSION
+
 //Check if current user owns the event
 export function useIsEventOwner(eventId) {
   const { user } = useAuth();
-  const { data: event } = useEvent(eventId);
+  // Always call useEvent, but it will handle the enabled state internally
+  const { data: event } = useEvent(eventId, {
+    enabled: !!eventId // Let useEvent handle the conditional
+  });
 
-  return event?.userId === user?.id;
+  // Return early if no eventId or no event data
+  if (!eventId || !event || !user) return false;
+  
+  return event.userId === user.id;
 }
 
 //Check if current user has liked the event
 export function useHasLikedEvent(eventId) {
   const { user } = useAuth();
-  const { data: event } = useEvent(eventId);
+  // Always call useEvent, but it will handle the enabled state internally
+  const { data: event } = useEvent(eventId, {
+    enabled: !!eventId // Let useEvent handle the conditional
+  });
 
-  return event?.likes?.includes(user?.id) || false;
+  // Return early if no eventId or no event data
+  if (!eventId || !event || !user) return false;
+  
+  return event.likes?.includes(user.id) || false;
 }

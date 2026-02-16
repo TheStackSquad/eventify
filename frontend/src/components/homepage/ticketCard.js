@@ -117,5 +117,4 @@ export default function UpcomingEventsSection({
   );
 }
 
-export { UpcomingEventsSection as TicketCard };
 

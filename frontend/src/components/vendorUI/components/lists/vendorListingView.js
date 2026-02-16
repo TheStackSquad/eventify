@@ -1,4 +1,4 @@
-// frontend/src/components/vendorUI/vendorListingView.js
+// frontend/src/components/vendorUI/lists/vendorListingView.js
 "use client";
 
 import React, { useState } from "react";
