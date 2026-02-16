@@ -1,7 +1,7 @@
 // frontend/src/app/vendor/[id]/page.js
 //import { notFound } from "next/navigation";
-import { Link } from "lucide-react";
-//import Link from "next/link";
+//import { Link as LinkIcon } from "lucide-react";
+import Link from "next/link";
 import { parseSlugToId } from "../../../utils/helper/vendorSlugHelper";
 import VendorClientDetails from "./vendorClientDetails";
 

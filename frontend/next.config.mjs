@@ -1,11 +1,32 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // 1. Performance: Modern Image Formats
+  // ✅ DEBUGGING: Better error messages
+  productionBrowserSourceMaps: false,
+
+  // ✅ CATCH BUILD ERRORS: Strict mode catches more bugs
+  reactStrictMode: true,
+
+  // ✅ TYPESCRIPT: Stricter type checking
+  typescript: {
+    ignoreBuildErrors: false,
+  },
+
+  // ✅ ESLINT: Catch problematic patterns
+  eslint: {
+    ignoreDuringBuilds: false,
+  },
+
+  // ✅ LOGGING: More verbose output
+  logging: {
+    fetches: {
+      fullUrl: true,
+    },
+  },
+
   images: {
     formats: ["image/avif", "image/webp"],
     deviceSizes: [640, 750, 828, 1080, 1200, 1920],
     imageSizes: [16, 32, 48, 64, 96, 128, 256, 384],
-    qualities: [25, 50, 75, 85, 100],
     remotePatterns: [
       {
         protocol: "https",
@@ -17,7 +38,6 @@ const nextConfig = {
         hostname: "api.qrserver.com",
         pathname: "/v1/create-qr-code/**",
       },
-      // ✅ ADDED: Paystack domain for logo
       {
         protocol: "https",
         hostname: "paystack.com",
@@ -25,7 +45,7 @@ const nextConfig = {
       },
     ],
   },
-  // 2. Caching & Security Headers
+
   async headers() {
     return [
       {
@@ -51,7 +71,7 @@ const nextConfig = {
       },
     ];
   },
-  // 3. Development/Stale Time Config
+
   experimental: {
     staleTimes: {
       dynamic: 0,
@@ -59,4 +79,5 @@ const nextConfig = {
     },
   },
 };
+
 export default nextConfig;

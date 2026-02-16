@@ -1,6 +1,8 @@
 // frontend/src/app/tickets/page.js
 "use client";
 
+export const dynamic = "force-dynamic";
+
 import { Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
@@ -142,39 +144,30 @@ function TicketContent() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-slate-50 py-8 sm:py-12 px-4">
-      <div className="max-w-4xl mx-auto">
-        <TicketPageHeader
-          isMultiTicket={items.length > 1}
-          amountPaid={amountPaid}
-        />
-
-        <div className="space-y-6 sm:space-y-8">
-          {items.map((item, index) => (
-            <TicketCard
-              key={`${item.eventId}-${index}`}
-              ticketItem={item}
-              customer={customer}
-              reference={orderReference}
-              ticketIndex={index}
-              totalTickets={items.length}
-            />
-          ))}
-        </div>
-
-        <TicketFooter />
-      </div>
-    </div>
-  );
-}
-
-function TicketPageWithBoundary() {
-  const searchParams = useSearchParams();
-  const reference = searchParams.get("ref") || searchParams.get("reference");
-
-  return (
     <TicketVerificationBoundary reference={reference}>
-      <TicketContent />
+      <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-slate-50 py-8 sm:py-12 px-4">
+        <div className="max-w-4xl mx-auto">
+          <TicketPageHeader
+            isMultiTicket={items.length > 1}
+            amountPaid={amountPaid}
+          />
+
+          <div className="space-y-6 sm:space-y-8">
+            {items.map((item, index) => (
+              <TicketCard
+                key={`${item.eventId}-${index}`}
+                ticketItem={item}
+                customer={customer}
+                reference={orderReference}
+                ticketIndex={index}
+                totalTickets={items.length}
+              />
+            ))}
+          </div>
+
+          <TicketFooter />
+        </div>
+      </div>
     </TicketVerificationBoundary>
   );
 }
@@ -182,7 +175,7 @@ function TicketPageWithBoundary() {
 export default function TicketPage() {
   return (
     <Suspense fallback={<LoadingSpinner message="Loading your tickets..." />}>
-      <TicketPageWithBoundary />
+      <TicketContent />
     </Suspense>
   );
 }
