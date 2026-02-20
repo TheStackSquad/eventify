@@ -34,13 +34,15 @@ api_call() {
 log "Test 1: Basic Order Creation"
 ORDER_JSON='{
     "email": "test_buyer@example.com",
+      "firstName": "Test",
+      "lastName": "User",
     "firstName": "John",
     "lastName": "Doe",
     "phone": "+2348012345678",
     "items": [
         {
             "eventId": "027554f8-d41a-4b39-985b-730983cb4c42",
-            "tierName": "General Admission",
+            "ticketTierId": "General Admission",
             "quantity": 2
         }
     ]
@@ -64,6 +66,8 @@ echo ""
 log "Test 2: Invalid Order (Empty Cart)"
 INVALID_JSON='{
     "email": "test@example.com",
+      "firstName": "Test",
+      "lastName": "User",
     "firstName": "John",
     "lastName": "Doe",
     "items": []

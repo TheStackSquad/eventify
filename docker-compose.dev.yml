@@ -1,0 +1,74 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database (same as production)
+  postgres:
+    image: postgres:15-alpine
+    container_name: eventify-postgres-dev
+    environment:
+      POSTGRES_USER: ${DB_USER:-astronautdesh}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-astronautdesh}
+      POSTGRES_DB: ${DB_NAME:-Eventify}
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - eventify-dev-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-astronautdesh}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - eventify-dev-network
+
+  # Backend with Hot Reload (Air)
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    container_name: eventify-backend-dev
+    environment:
+      - PORT=${BACKEND_PORT:-8081}
+      - POSTGRES_URI=postgres://${DB_USER:-astronautdesh}:${DB_PASSWORD:-astronautdesh}@postgres:5432/${DB_NAME:-Eventify}?sslmode=disable
+      - GIN_MODE=debug
+    ports:
+      - "${BACKEND_PORT:-8081}:8081"
+    volumes:
+      - ./backend:/app
+      - /app/vendor
+      - /app/tmp
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - eventify-dev-network
+
+  # Frontend with Hot Reload
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    container_name: eventify-frontend-dev
+    environment:
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8081}
+      - NEXT_PUBLIC_SITE_URL=${NEXT_PUBLIC_SITE_URL:-http://localhost:3000}
+      - NEXTAUTH_URL=${NEXTAUTH_URL:-http://localhost:3000}
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+      - /app/.next
+    depends_on:
+      - backend
+    networks:
+      - eventify-dev-network
+
+volumes:
+  eventify-dev-data:
+    name: eventify-dev-data
+
+networks:
+  eventify-dev-network:
+    name: eventify-dev-network
+    driver: bridge

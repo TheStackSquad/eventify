@@ -187,21 +187,8 @@ func (s *OrderServiceImpl) GetOrderByReference(
 	return nil, errors.New("unauthorized access to order")
 }
 
-func (s *OrderServiceImpl) ReleaseExpiredStock(
-	ctx context.Context,
-	expiryDuration time.Duration,
-) (int, error) {
-	threshold := time.Now().UTC().Add(-expiryDuration)
-	var count int
-
-	log.Info().Time("threshold", threshold).Msg("Running stock release worker")
-
-	// Implementation would typically:
-	// 1. Get expired pending orders (status='PENDING', created_at < threshold)
-	// 2. For each order in transaction:
-	//    a. Update status to 'EXPIRED'
-	//    b. Increment ticket_tiers stock for each item
-	// 3. Return count of processed orders
-
-	return count, nil
+func (s *OrderServiceImpl) ReleaseExpiredStock(ctx context.Context, expiryDuration time.Duration) (int, error) {
+    log.Info().Dur("expiry", expiryDuration).Msg("Running stock release worker")
+    s.CleanupExpiredOrders(ctx, expiryDuration)
+    return 0, nil
 }

@@ -81,15 +81,15 @@ type OrderItem struct {
     UnitPrice      int64     `json:"unitPrice" db:"unit_price"`
     Subtotal       int64     `json:"subtotal" db:"subtotal"`
     EventTitle     string    `json:"eventTitle" db:"event_title"`
-    EventThumbnail string    `json:"eventThumbnail" db:"event_thumbnail"`
+	EventThumbnail *string   `json:"eventThumbnail" db:"event_thumbnail"`
     
     // Catch the COALESCE and JOIN fields from itemsQuery
-    EventStartDate time.Time `json:"eventStartDate" db:"event_start_date"`
-    EventEndDate   time.Time `json:"eventEndDate" db:"event_end_date"`
-    EventCity      string    `json:"eventCity" db:"event_city"`
-    EventState     string    `json:"eventState" db:"event_state"`
-    EventVenue     string    `json:"eventVenue" db:"event_venue"`
-    EventAddress   string    `json:"eventAddress" db:"event_address"`
+	EventStartDate *time.Time `json:"eventStartDate" db:"event_start_date"`
+    EventEndDate   *time.Time `json:"eventEndDate" db:"event_end_date"`
+    EventCity      *string   `json:"eventCity" db:"event_city"`
+    EventState     *string   `json:"eventState" db:"event_state"`
+    EventVenue     *string   `json:"eventVenue" db:"event_venue"`
+    EventAddress   *string   `json:"eventAddress" db:"event_address"`
     
     CreatedAt      time.Time `json:"createdAt" db:"created_at"`
 }
