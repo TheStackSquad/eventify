@@ -162,17 +162,13 @@ func ConfigureRouter(
 	}
 
 	// Public events
-	publicEvents := router.Group("/events")
-	publicEvents.Use(middleware.RateLimit(utils.PublicLimiter))
-	{
-		publicEvents.GET("", eventHandler.GetAllEvents)
-		publicEvents.GET("/:eventId", eventHandler.GetPublicEventByID)
-		publicEvents.POST("/:eventId/like",
-			middleware.RateLimit(utils.WriteLimiter),
-			middleware.OptionalAuth(jwtService),
-			eventHandler.ToggleLike,
-		)
-	}
+// Public events
+publicEvents := router.Group("/events")
+publicEvents.Use(middleware.RateLimit(utils.PublicLimiter))
+{
+    publicEvents.GET("", eventHandler.GetAllEvents)
+    publicEvents.GET("/:eventId", eventHandler.GetPublicEventByID)
+}
 
 	// ============================================
 	// PUBLIC FEEDBACK (Guest submissions)
@@ -266,6 +262,8 @@ func ConfigureRouter(
 
 	// Webhook (no auth, no CSRF)
 	router.POST("/api/webhooks/paystack", orderHandler.HandlePaystackWebhook)
+	router.POST("/subscription/webhook", subscriptionHandler.HandleWebhook)
+
 
 	// ============================================
 	// REVIEWS & INQUIRIES (Mixed - some public, some protected)

@@ -12,7 +12,6 @@ import {
   updateEventApi,
   deleteEventApi,
   publishEventApi,
-  likeEventApi,
 } from "@/services/eventsApi";
 
 // QUERY KEYS
@@ -419,70 +418,6 @@ export function usePublishEvent() {
   });
 }
 
-//Like/unlike event (PROTECTED)
-export function useLikeEvent() {
-  const queryClient = useQueryClient();
-  const { user } = useAuth();
-
-  return useMutation({
-    mutationFn: likeEventApi,
-    onMutate: async (eventId) => {
-      if (process.env.NODE_ENV === "development") {
-        console.log("❤️ [useLikeEvent] Toggling like:", {
-          eventId,
-          userId: user?.id,
-        });
-      }
-
-      // Cancel outgoing refetches
-      await queryClient.cancelQueries({
-        queryKey: eventKeys.detail(eventId),
-      });
-
-      // Snapshot for rollback
-      const previousEvent = queryClient.getQueryData(eventKeys.detail(eventId));
-
-      // Optimistically update like count (safe - doesn't affect prices)
-      if (previousEvent) {
-        const isLiked = previousEvent.likes?.includes(user?.id);
-        const newLikes = isLiked
-          ? previousEvent.likes.filter((id) => id !== user?.id)
-          : [...(previousEvent.likes || []), user?.id];
-
-        queryClient.setQueryData(eventKeys.detail(eventId), {
-          ...previousEvent,
-          likes: newLikes,
-          likeCount: newLikes.length,
-        });
-      }
-
-      return { previousEvent };
-    },
-    onSuccess: (data, eventId) => {
-      if (process.env.NODE_ENV === "development") {
-        console.log("✅ [useLikeEvent] Like toggled:", { eventId });
-      }
-
-      // Invalidate to refetch accurate data
-      queryClient.invalidateQueries({ queryKey: eventKeys.detail(eventId) });
-      queryClient.invalidateQueries({ queryKey: eventKeys.lists() });
-    },
-    onError: (error, eventId, context) => {
-      console.error("❌ [useLikeEvent] Failed:", {
-        eventId,
-        message: error.message,
-      });
-
-      // Rollback
-      if (context?.previousEvent) {
-        queryClient.setQueryData(
-          eventKeys.detail(eventId),
-          context.previousEvent,
-        );
-      }
-    },
-  });
-}
 
 // UTILITY HOOKS
 

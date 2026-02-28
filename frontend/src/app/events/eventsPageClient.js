@@ -53,8 +53,6 @@ const normalizeEvents = (rawEvents) => {
       tag = "Trending";
     }
 
-    const isLikedByUser = event.isLiked || false;
-    const likeCount = event.likesCount || 0;
 
     return {
       id: event.id,
@@ -64,8 +62,6 @@ const normalizeEvents = (rawEvents) => {
       price: startingPrice,
       isFree: startingPrice === 0,
       tag: tag,
-      isLikedByUser: isLikedByUser,
-      likeCount: likeCount,
       date: formatDate(event.startDate),
       time: formatTime(event.startDate),
       location: `${event.venueName || "Venue N/A"}, ${event.city || "N/A"}`,

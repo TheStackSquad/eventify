@@ -30,15 +30,15 @@ func (r *postgresEventRepository) CreateEvent(
 
 	query := `
 		INSERT INTO events (
-			id, organizer_id, event_title, event_description, category,
+			id, organizer_id, event_title, event_description, event_slug, category,
 			event_type, event_image_url, venue_name, venue_address,
 			city, state, country, virtual_platform, meeting_link,
 			start_date, end_date, max_attendees, paystack_subaccount_code,
-			tags, is_deleted, created_at, updated_at
+			tags, is_deleted, deleted_at, created_at, updated_at
 		) VALUES (
 			$1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
 			$11, $12, $13, $14, $15, $16, $17, $18, $19,
-			$20, $21, $22
+			$20, $21, $22, $23, $24
 		)
 		RETURNING id
 	`
@@ -46,11 +46,12 @@ func (r *postgresEventRepository) CreateEvent(
 	var insertedEventID uuid.UUID
 
 	// Use QueryRowxContext to capture the RETURNING ID
-	row := tx.QueryRowxContext(ctx, query,
+	err := tx.QueryRowxContext(ctx, query,
 		event.ID,
 		event.OrganizerID,
 		event.EventTitle,
 		event.EventDescription,
+		event.EventSlug,
 		event.Category,
 		event.EventType,
 		event.EventImageURL,
@@ -67,12 +68,12 @@ func (r *postgresEventRepository) CreateEvent(
 		event.PaystackSubaccountCode,
 		pq.Array(event.Tags),
 		event.IsDeleted,
+		event.DeletedAt,
 		event.CreatedAt,
 		event.UpdatedAt,
-	)
+	).Scan(&insertedEventID)
 
-	// Scan the result from the query
-	if err := row.Scan(&insertedEventID); err != nil {
+	if err != nil {
 		return uuid.Nil, fmt.Errorf("failed to create event and retrieve ID: %w", err)
 	}
 

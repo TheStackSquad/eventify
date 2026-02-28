@@ -116,3 +116,10 @@ test:
 	@echo "🧪 Testing services..."
 	@curl -s http://localhost:8081/health | grep -q "ok" && echo "✅ Backend OK" || echo "❌ Backend Failed"
 	@curl -s http://localhost:3000 > /dev/null && echo "✅ Frontend OK" || echo "❌ Frontend Failed"
+
+
+
+
+	# Go Tests Command 
+	go test -p 1 ./pkg/models/... ./pkg/repository/vendor/... ./pkg/repository/subscription/... ./pkg/services/vendor/...
+	

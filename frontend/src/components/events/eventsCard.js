@@ -1,37 +1,22 @@
 // frontend/src/components/events/eventsCard.js
 "use client";
 
-import { MapPin, Calendar, Clock, Heart } from "lucide-react";
+import { MapPin, Calendar, Clock } from "lucide-react";
 import { motion } from "framer-motion";
 import Image from "next/image";
 import Link from "next/link";
-import { useLikeEvent } from "@/utils/hooks/useEvents";
 import { formatPrice } from "@/utils/currency";
 
 export default function EventCard({ event }) {
-  const { mutate: toggleLike, isPending } = useLikeEvent();
-
   if (!event || typeof event.price === "undefined") {
     return null;
   }
-
-  console.log("📦 EventCard received:", event);
-  const isFavorited = event.isLikedByUser || false;
-  const likeCount = event.likeCount || 0;
-
-  console.log("❤️ likeCount:", likeCount);
-  console.log("💚 isFavorited:", isFavorited);
 
   const tagColors = {
     Trending: "bg-yellow-100 text-yellow-800",
     "Almost Sold Out": "bg-red-100 text-red-800",
     New: "bg-green-100 text-green-800",
     "Free Ticket": "bg-blue-100 text-blue-800",
-  };
-
-  const handleLikeToggle = (e) => {
-    e.stopPropagation();
-    toggleLike(event.id);
   };
 
   const {
@@ -69,35 +54,7 @@ export default function EventCard({ event }) {
         >
           {tag || "Event"}
         </div>
-
-        <div className="absolute top-3 right-3 z-10 flex items-center space-x-2">
-          <span
-            className={`text-xs font-semibold px-2 py-1 rounded-full ${
-              isFavorited
-                ? "bg-red-500 text-white"
-                : "bg-white/70 text-gray-800 backdrop-blur-sm"
-            }`}
-          >
-            {likeCount.toLocaleString()}
-          </span>
-          <button
-            onClick={handleLikeToggle}
-            disabled={isPending}
-            className={`p-2 rounded-full transition-colors ${
-              isFavorited
-                ? "bg-white text-red-500 hover:text-red-600 shadow-md"
-                : "bg-white/70 text-gray-800 hover:text-red-500 backdrop-blur-sm shadow-md"
-            }`}
-          >
-            <Heart
-              className={`w-5 h-5 ${isPending ? "animate-pulse" : ""}`}
-              fill={isFavorited ? "currentColor" : "none"}
-              strokeWidth={2}
-            />
-          </button>
-        </div>
-
-        <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent"></div>
+        <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent" />
       </div>
 
       <div className="p-5 flex flex-col flex-grow">
@@ -106,7 +63,7 @@ export default function EventCard({ event }) {
             {category}
           </p>
           <p className="text-xl font-extrabold text-green-600 font-header">
-            {isFree ? "FREE" : formatPrice((price))}
+            {isFree ? "FREE" : formatPrice(price)}
           </p>
         </div>
 

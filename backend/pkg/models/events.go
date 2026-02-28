@@ -44,10 +44,6 @@ type Event struct {
 	
 	// Relationships
 	TicketTiers []TicketTier `json:"tickets" db:"-"`
-	
-	// Computed fields for UI (not in DB)
-	LikesCount int  `json:"likesCount" db:"-"`
-	IsLiked    bool `json:"isLiked" db:"-"`
 }
 
 type TicketTier struct {

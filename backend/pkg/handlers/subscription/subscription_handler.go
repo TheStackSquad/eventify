@@ -123,8 +123,8 @@ func (h *SubscriptionHandler) HandleWebhook(c *gin.Context) {
 
 	if err := h.Service.HandleWebhook(c.Request.Context(), body, signature); err != nil {
 		status := http.StatusInternalServerError
-		if err.Error() == "invalid webhook signature" {
-			status = http.StatusUnauthorized
+		if err.Error() == "invalid webhook signature" || err.Error() == "invalid signature" {
+    status = http.StatusUnauthorized
 			log.Warn().Msg("Webhook rejected: invalid signature")
 		} else {
 			log.Error().Err(err).Msg("Webhook processing failed")
@@ -194,15 +194,15 @@ func handleServiceError(c *gin.Context, err error, vID string) {
 	log.Error().Err(err).Str("vendorID", vID).Msg("Service Error")
 
 	switch {
-	case strings.Contains(msg, "already has an active"):
+	case strings.Contains(msg, "already have an active"), strings.Contains(msg, "already has an active"):
 		c.JSON(http.StatusConflict, gin.H{
-			"status": "error",
+			"status":  "error",
 			"message": msg,
-			"action": "cancel_existing_or_wait",
+			"action":  "cancel_existing_or_wait",
 		})
 	case strings.Contains(msg, "already has"):
 		c.JSON(http.StatusConflict, gin.H{"error": msg})
-	case msg == "cannot subscribe to the free tier",
+	case strings.Contains(msg, "cannot subscribe to"),
 		strings.HasPrefix(msg, "invalid subscription tier"),
 		strings.Contains(msg, "no email on file"):
 		c.JSON(http.StatusBadRequest, gin.H{"error": msg})

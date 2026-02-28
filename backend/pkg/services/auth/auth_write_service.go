@@ -5,19 +5,24 @@ package auth
 import (
 	"context"
 	"crypto/rand"
-	"encoding/hex"
 	"crypto/sha256"
-	"time"
+	"encoding/hex"
 	"sync"
+	"time"
 
 	"github.com/eventify/backend/pkg/models"
 	repoauth "github.com/eventify/backend/pkg/repository/auth"
-	servicejwt "github.com/eventify/backend/pkg/services/jwt"
 	repoevent "github.com/eventify/backend/pkg/repository/event"
 	repovendor "github.com/eventify/backend/pkg/repository/vendor"
+	servicejwt "github.com/eventify/backend/pkg/services/jwt"
 	"github.com/google/uuid"
 	"github.com/rs/zerolog/log"
 	"golang.org/x/crypto/bcrypt"
+)
+
+const (
+	RotationGracePeriod = 30 * time.Second
+	TokenCacheTTL       = 35 * time.Second
 )
 
 type authWriteService struct {
@@ -28,27 +33,16 @@ type authWriteService struct {
 	vendorRepo       repovendor.VendorRepository
 	eventRepo        repoevent.EventRepository
 
-	// Token cache for concurrent refresh requests
 	tokenCache      map[string]*cachedTokenPair
 	tokenCacheMutex sync.RWMutex
 }
 
-const (
-	// RotationGracePeriod allows concurrent requests to succeed if they happen within 30s
-	RotationGracePeriod = 30 * time.Second
-
-	// TokenCacheTTL - how long we keep cached tokens in memory
-	TokenCacheTTL = 35 * time.Second // Slightly longer than grace period
-)
-
-// Cached token pair with expiry
 type cachedTokenPair struct {
 	Tokens    *TokenPair
 	UserID    uuid.UUID
 	CreatedAt time.Time
 }
 
-// NewAuthService initializes the complete auth service
 func NewAuthService(
 	auth repoauth.AuthRepository,
 	token repoauth.RefreshTokenRepository,
@@ -56,7 +50,6 @@ func NewAuthService(
 	event repoevent.EventRepository,
 	jwt *servicejwt.JWTService,
 ) AuthService {
-	// 1. Initialize the Read portion
 	readService := authReadService{
 		authRepo:         auth,
 		vendorRepo:       vendor,
@@ -65,7 +58,6 @@ func NewAuthService(
 		refreshTokenRepo: token,
 	}
 
-	// 2. Initialize the Write portion (which embeds Read)
 	service := &authWriteService{
 		authReadService:  readService,
 		authRepo:         auth,
@@ -76,13 +68,10 @@ func NewAuthService(
 		tokenCache:       make(map[string]*cachedTokenPair),
 	}
 
-	// 3. Start cache cleanup goroutine
 	go service.cleanupTokenCache()
-
 	return service
 }
 
-// Periodically clean expired cached tokens
 func (s *authWriteService) cleanupTokenCache() {
 	ticker := time.NewTicker(1 * time.Minute)
 	defer ticker.Stop()
@@ -99,14 +88,12 @@ func (s *authWriteService) cleanupTokenCache() {
 	}
 }
 
-// sha256Hash helper for internal consistency
 func sha256Hash(s string) []byte {
 	h := sha256.New()
 	h.Write([]byte(s))
 	return h.Sum(nil)
 }
 
-// Signup hashes password and creates new user
 func (s *authWriteService) Signup(ctx context.Context, user *models.User) (uuid.UUID, error) {
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(user.Password), bcrypt.DefaultCost)
 	if err != nil {
@@ -118,90 +105,60 @@ func (s *authWriteService) Signup(ctx context.Context, user *models.User) (uuid.
 }
 
 func (s *authWriteService) Login(ctx context.Context, email, password, ipAddress, userAgent string) (*models.UserProfile, *TokenPair, error) {
-    log.Debug().
-        Str("email", email).
-        Int("password_length", len(password)).
-        Str("password", password). // 🔥 TEMPORARY - Remove this in production!
-        Msg("🔍 Login attempt started")
+	log.Debug().Str("email", email).Msg("Login attempt")
 
-    // 1. Lockout Check
-    locked, _, err := s.authRepo.IsAccountLocked(ctx, email)
-    if err != nil {
-        log.Error().Err(err).Msg("❌ IsAccountLocked check failed")
-        return nil, nil, err
-    }
-    if locked {
-        log.Warn().Str("email", email).Msg("🔒 Account is locked")
-        return nil, nil, ErrAccountLocked
-    }
+	locked, _, err := s.authRepo.IsAccountLocked(ctx, email)
+	if err != nil {
+		return nil, nil, err
+	}
+	if locked {
+		return nil, nil, ErrAccountLocked
+	}
 
-    // 2. Get User
-    user, err := s.authRepo.GetUserByEmail(ctx, email)
-    if err != nil {
-        log.Error().
-            Err(err).
-            Str("email", email).
-            Msg("❌ GetUserByEmail failed - user not found")
-        s.authRepo.RecordLoginAttempt(ctx, email, false)
-        return nil, nil, ErrInvalidCredentials
-    }
+	user, err := s.authRepo.GetUserByEmail(ctx, email)
+	if err != nil {
+		s.authRepo.RecordLoginAttempt(ctx, email, false)
+		return nil, nil, ErrInvalidCredentials
+	}
 
-    log.Debug().
-        Str("user_id", user.ID.String()).
-        Str("user_email", user.Email).
-        Int("hash_length", len(user.PasswordHash)).
-        Str("hash_prefix", user.PasswordHash[:20]). // First 20 chars
-        Msg("✅ User found in database")
+	err = bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password))
+	if err != nil {
+		s.authRepo.RecordLoginAttempt(ctx, email, false)
+		return nil, nil, ErrInvalidCredentials
+	}
 
-    // 3. Password Verification
-    log.Debug().
-        Str("comparing_password", password). // 🔥 TEMPORARY - Remove in production!
-        Str("against_hash", user.PasswordHash).
-        Msg("🔐 About to compare password")
+	s.authRepo.RecordLoginAttempt(ctx, email, true)
+	s.authRepo.UpdateLastLogin(ctx, user.ID)
 
-    err = bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password))
-    if err != nil {
-        log.Error().
-            Err(err).
-            Str("bcrypt_error", err.Error()).
-            Str("email", email).
-            Msg("❌ Password comparison FAILED")
-        s.authRepo.RecordLoginAttempt(ctx, email, false)
-        return nil, nil, ErrInvalidCredentials
-    }
+	tokens, err := s.generateTokenPair(ctx, user.ID.String(), 3600*24*30, nil, ipAddress, userAgent)
+	if err != nil {
+		return nil, nil, err
+	}
 
-    log.Info().
-        Str("email", email).
-        Msg("✅ Password verification SUCCESS")
+	var vendorID *uuid.UUID
+	var hasEvents bool
+	var wg sync.WaitGroup
 
-    // 4. Metadata Updates
-    s.authRepo.RecordLoginAttempt(ctx, email, true)
-    s.authRepo.UpdateLastLogin(ctx, user.ID)
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		vendorID, _ = s.authRepo.GetVendorIDByOwnerID(ctx, user.ID)
+	}()
+	go func() {
+		defer wg.Done()
+		if s.eventRepo != nil {
+			hasEvents, _ = s.eventRepo.HasEventsByOrganizer(ctx, user.ID)
+		}
+	}()
+	wg.Wait()
 
-    // 5. Token Generation
-    tokens, err := s.generateTokenPair(ctx, user.ID.String(), 3600*24*30, nil, ipAddress, userAgent)
-    if err != nil {
-        log.Error().Err(err).Msg("❌ Token generation failed")
-        return nil, nil, err
-    }
-
-    // 6. Get vendor ID
-    vendorID, _ := s.authRepo.GetVendorIDByOwnerID(ctx, user.ID)
-    hasEvents, _ := s.eventRepo.HasEventsByOrganizer(ctx, user.ID)
-
-    log.Info().
-        Str("user_id", user.ID.String()[:8]).
-        Msg("✅ Login completed successfully")
-
-    // 7. Return the "Rich" Profile
-    return user.ToUserProfile(vendorID, hasEvents), tokens, nil
+	return user.ToUserProfile(vendorID, hasEvents), tokens, nil
 }
 
-// Logout revokes refresh token and blacklists access token
 func (s *authWriteService) Logout(ctx context.Context, userID uuid.UUID, refreshToken string, accessToken string) error {
 	if refreshToken != "" {
 		if err := s.refreshTokenRepo.RevokeRefreshToken(ctx, userID, refreshToken); err != nil {
-			log.Warn().Err(err).Msg("Auth: Failed to revoke refresh token on logout")
+			log.Warn().Err(err).Msg("Failed to revoke refresh token on logout")
 		}
 	}
 
@@ -209,15 +166,13 @@ func (s *authWriteService) Logout(ctx context.Context, userID uuid.UUID, refresh
 		claims, err := s.jwtService.ValidateAccessToken(accessToken)
 		if err == nil {
 			if err := s.authRepo.BlacklistToken(ctx, accessToken, claims.ExpiresAt.Time); err != nil {
-				log.Error().Err(err).Msg("Auth: Failed to blacklist access token")
+				log.Error().Err(err).Msg("Failed to blacklist access token")
 			}
 		}
 	}
-
 	return nil
 }
 
-// RefreshToken with integrated metadata validation
 func (s *authWriteService) RefreshToken(
 	ctx context.Context,
 	oldTokenStr string,
@@ -225,105 +180,69 @@ func (s *authWriteService) RefreshToken(
 	ipAddress string,
 	userAgent string,
 ) (uuid.UUID, *TokenPair, error) {
-
-	// 1. Validate JWT Structure (Check signature and basic claims)
 	_, err := s.jwtService.ValidateRefreshToken(oldTokenStr)
 	if err != nil {
 		return uuid.Nil, nil, ErrSessionExpired
 	}
 
-	// 2. Fetch Token State from DB via Hash
 	tokenHash := hex.EncodeToString(sha256Hash(oldTokenStr))
 	storedToken, err := s.refreshTokenRepo.GetByHash(ctx, tokenHash)
 	if err != nil || storedToken == nil {
 		return uuid.Nil, nil, ErrSessionExpired
 	}
 
+	if storedToken.Revoked {
+		return uuid.Nil, nil, ErrSessionExpired
+	}
+
 	userID := storedToken.UserID
 
-	// 3. Check Absolute Timeout FIRST (prevents infinite session extension)
 	if time.Since(storedToken.CreatedAt) > absoluteTimeout {
-		log.Info().Str("user_id", userID.String()).Msg("Session reached absolute timeout.")
+		log.Info().Str("user_id", userID.String()).Msg("Session reached absolute timeout")
 		_ = s.refreshTokenRepo.RevokeRefreshToken(ctx, userID, oldTokenStr)
 		return uuid.Nil, nil, ErrSessionExpired
 	}
 
-	// ✅ NEW: METADATA VALIDATION (Phase 3 Integration)
-	// Retrieve original metadata from the refresh token
 	originalIP, originalUA, metaErr := s.GetRefreshTokenMetadata(ctx, tokenHash)
 	if metaErr == nil && originalIP != "" && originalUA != "" {
-		// Validate current request metadata against original
 		suspicious, reason := s.ValidateTokenMetadata(
-			ctx,
-			userID,
-			ipAddress,
-			userAgent,
-			originalIP,
-			originalUA,
+			ctx, userID, ipAddress, userAgent, originalIP, originalUA,
 		)
-
 		if suspicious {
 			log.Warn().
 				Str("user_id", userID.String()).
 				Str("reason", reason).
-				Str("original_ip", originalIP).
-				Str("current_ip", ipAddress).
-				Msg("🚨 Suspicious activity detected during token refresh")
-
-			// Phase 3: LOG ONLY - Don't block the request
-			// Phase 4: Add configurable enforcement:
-			//   - Option 1: Require step-up authentication
-			//   - Option 2: Send security alert email
-			//   - Option 3: Force re-login if risk score is high
-			//   - Option 4: Add to security audit log
+				Msg("Suspicious activity detected during token refresh")
 		}
-	} else if metaErr != nil {
-		// Metadata not available (older tokens without metadata)
-		log.Debug().
-			Err(metaErr).
-			Str("user_id", userID.String()).
-			Msg("Auth: Token metadata not available for validation")
 	}
 
-	// 4. CONCURRENCY HANDLING WITH TOKEN CACHING
 	if storedToken.ConsumedAt != nil {
 		timeSinceConsumed := time.Since(*storedToken.ConsumedAt)
 
-		// Beyond grace period = security violation
 		if timeSinceConsumed > RotationGracePeriod {
 			log.Warn().
 				Str("user_id", userID.String()).
-				Time("consumed_at", *storedToken.ConsumedAt).
-				Msg("🚨 Token used after grace period. Revoking family.")
-
+				Msg("Token used after grace period, revoking family")
 			_ = s.refreshTokenRepo.RevokeFamily(ctx, storedToken.ID)
 			return uuid.Nil, nil, ErrTokenReused
 		}
 
-		// Within grace period - check cache first
 		cacheKey := tokenHash
-
 		s.tokenCacheMutex.RLock()
 		cached, exists := s.tokenCache[cacheKey]
 		s.tokenCacheMutex.RUnlock()
 
 		if exists && time.Since(cached.CreatedAt) < TokenCacheTTL {
-			log.Debug().
-				Str("user_id", userID.String()).
-				Msg("✅ Returning cached tokens (grace period)")
-
-			// Return the SAME tokens for all concurrent requests
+			log.Debug().Msg("Returning cached tokens within grace period")
 			return cached.UserID, cached.Tokens, nil
 		}
 
-		// Cache miss - generate new pair
-		log.Debug().Msg("Cache miss within grace period - generating new tokens")
+		log.Debug().Msg("Cache miss within grace period, generating new tokens")
 		tokens, err := s.generateTokenPair(ctx, userID.String(), 0, &storedToken.ID, ipAddress, userAgent)
 		if err != nil {
 			return uuid.Nil, nil, err
 		}
 
-		// Store in cache for subsequent concurrent requests
 		s.tokenCacheMutex.Lock()
 		s.tokenCache[cacheKey] = &cachedTokenPair{
 			Tokens:    tokens,
@@ -331,45 +250,36 @@ func (s *authWriteService) RefreshToken(
 			CreatedAt: time.Now(),
 		}
 		s.tokenCacheMutex.Unlock()
-
 		return userID, tokens, nil
 	}
 
-	// 5. FIRST-TIME USE PATH
-	// Mark current token as consumed to prevent future use
 	if err := s.refreshTokenRepo.ConsumeToken(ctx, storedToken.ID); err != nil {
 		log.Error().Err(err).Msg("Failed to mark token as consumed")
 		return uuid.Nil, nil, err
 	}
 
-	// Generate new pair linked to this parent ID
-	 tokens, err := s.generateTokenPair(ctx, userID.String(), 0, &storedToken.ID, ipAddress, userAgent)
-    if err != nil {
-        return uuid.Nil, nil, err
-    }
+	tokens, err := s.generateTokenPair(ctx, userID.String(), 0, &storedToken.ID, ipAddress, userAgent)
+	if err != nil {
+		return uuid.Nil, nil, err
+	}
 
-	// Cache the newly generated tokens
-	  cacheKey := tokenHash
-    s.tokenCacheMutex.Lock()
-    s.tokenCache[cacheKey] = &cachedTokenPair{
-        Tokens:    tokens,
-        UserID:    userID,
-        CreatedAt: time.Now(),
-    }
-    s.tokenCacheMutex.Unlock()
+	cacheKey := tokenHash
+	s.tokenCacheMutex.Lock()
+	s.tokenCache[cacheKey] = &cachedTokenPair{
+		Tokens:    tokens,
+		UserID:    userID,
+		CreatedAt: time.Now(),
+	}
+	s.tokenCacheMutex.Unlock()
 
-	log.Debug().
-		Str("user_id", userID.String()).
-		Msg("✅ Token rotated successfully (first use)")
-
+	log.Debug().Str("user_id", userID.String()).Msg("Token rotated successfully")
 	return userID, tokens, nil
 }
 
-// ForgotPassword generates reset token for email delivery
 func (s *authWriteService) ForgotPassword(ctx context.Context, email string) (string, error) {
 	user, err := s.authRepo.GetUserByEmail(ctx, email)
 	if err != nil {
-		return "", nil // Anti-enumeration
+		return "", nil
 	}
 
 	token, err := s.generateSecureToken()
@@ -381,11 +291,9 @@ func (s *authWriteService) ForgotPassword(ctx context.Context, email string) (st
 	if err := s.authRepo.SavePasswordResetToken(ctx, user.Email, token, expiry); err != nil {
 		return "", err
 	}
-
 	return token, nil
 }
 
-// ResetPassword updates password and revokes all sessions
 func (s *authWriteService) ResetPassword(ctx context.Context, token, newPassword string) error {
 	user, err := s.authRepo.GetUserByResetToken(ctx, token)
 	if err != nil {
@@ -405,7 +313,6 @@ func (s *authWriteService) ResetPassword(ctx context.Context, token, newPassword
 	return s.refreshTokenRepo.RevokeAllUserTokens(ctx, user.ID)
 }
 
-// BlacklistToken stores token in blacklist until expiry
 func (s *authWriteService) BlacklistToken(ctx context.Context, token string, expiry time.Time) error {
 	if token == "" {
 		return nil
@@ -413,7 +320,6 @@ func (s *authWriteService) BlacklistToken(ctx context.Context, token string, exp
 	return s.authRepo.BlacklistToken(ctx, token, expiry)
 }
 
-// IsTokenBlacklisted checks if token exists in blacklist
 func (s *authWriteService) IsTokenBlacklisted(ctx context.Context, token string) (bool, error) {
 	if token == "" {
 		return false, nil
@@ -421,7 +327,6 @@ func (s *authWriteService) IsTokenBlacklisted(ctx context.Context, token string)
 	return s.authRepo.IsTokenBlacklisted(ctx, token)
 }
 
-// generateTokenPair creates new access/refresh token pair
 func (s *authWriteService) generateTokenPair(
 	ctx context.Context,
 	userID string,
@@ -446,17 +351,11 @@ func (s *authWriteService) generateTokenPair(
 	}
 
 	if refreshExpiry <= 0 {
-		refreshExpiry = 3600 * 24 * 30 // 30 days
+		refreshExpiry = 3600 * 24 * 30
 	}
 
 	_, err = s.refreshTokenRepo.SaveRefreshToken(
-		ctx,
-		uID,
-		refreshToken,
-		refreshExpiry,
-		parentID,
-		ipAddress,
-		userAgent,
+		ctx, uID, refreshToken, refreshExpiry, parentID, ipAddress, userAgent,
 	)
 	if err != nil {
 		return nil, err
@@ -468,7 +367,6 @@ func (s *authWriteService) generateTokenPair(
 	}, nil
 }
 
-// generateSecureToken creates cryptographically secure hex string
 func (s *authWriteService) generateSecureToken() (string, error) {
 	bytes := make([]byte, 32)
 	if _, err := rand.Read(bytes); err != nil {

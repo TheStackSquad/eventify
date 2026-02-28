@@ -48,6 +48,10 @@ func NewPostgresAuthRepository(db *sqlx.DB) *PostgresAuthRepository {
 	}
 }
 
+// func NewAuthRepository(db *sqlx.DB) AuthRepository {
+//     return NewPostgresAuthRepository(db)
+// }
+
 func (r *PostgresAuthRepository) BlacklistToken(ctx context.Context, token string, expiry time.Time) error {
 	hash := sha256.Sum256([]byte(token))
 	tokenHash := hex.EncodeToString(hash[:])

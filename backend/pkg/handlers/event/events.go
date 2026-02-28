@@ -4,7 +4,6 @@ package event
 
 import (
 	serviceevent "github.com/eventify/backend/pkg/services/event"
-	servicelike "github.com/eventify/backend/pkg/services/like"
 	"github.com/eventify/backend/pkg/utils"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -13,13 +12,11 @@ import (
 // Handler struct
 type EventHandler struct {
 	eventService serviceevent.EventService
-    likeService  servicelike.LikeService
 }
 
-func NewEventHandler(eventService serviceevent.EventService, likeService servicelike.LikeService) *EventHandler {
+func NewEventHandler(eventService serviceevent.EventService) *EventHandler {
     return &EventHandler{
         eventService: eventService,
-        likeService:  likeService,
     }
 }
 

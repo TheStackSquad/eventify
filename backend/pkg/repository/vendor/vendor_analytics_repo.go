@@ -6,6 +6,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 
 	"github.com/eventify/backend/pkg/models"
 	"github.com/google/uuid"
@@ -51,6 +52,7 @@ type VendorPublicStatsRepository interface {
 type VendorAnalyticsOptimizedRepository interface {
 	GetCompleteVendorAnalytics(ctx context.Context, vendorID uuid.UUID) (*models.VendorAnalyticsData, error)
 	GetVendorTier(ctx context.Context, vendorID uuid.UUID) (models.SubscriptionTier, error)
+	ExistsForOwner(ctx context.Context, vendorID uuid.UUID, ownerID uuid.UUID) (bool, error)
 }
 
 
@@ -65,7 +67,7 @@ type VendorAnalyticsDataRaw struct {
 	ReviewCount        int            `db:"review_count"`
 	IsIdentityVerified bool           `db:"is_identity_verified"`
 	CacNumber          sql.NullString `db:"cac_number"`
-	IsBusinessVerified bool           `db:"is_business_verified"`
+	IsBusinessVerified sql.NullBool `db:"is_business_verified"`
 	ProfileCompletion  int            `db:"profile_completion"`
 	InquiryCount       int            `db:"inquiry_count"`
 	RespondedCount     int            `db:"responded_count"`
@@ -157,7 +159,7 @@ func (d *VendorAnalyticsDataRaw) ToAnalyticsData() (*models.VendorAnalyticsData,
 		ReviewCount:        d.ReviewCount,
 		IsIdentityVerified: d.IsIdentityVerified,
 		CacNumber:          cacNumber,
-		IsBusinessVerified: d.IsBusinessVerified,
+		IsBusinessVerified: d.IsBusinessVerified.Bool,
 		ProfileCompletion:  d.ProfileCompletion,
 		InquiryCount:       d.InquiryCount,
 		RespondedCount:     d.RespondedCount,
@@ -192,4 +194,21 @@ func (d *VendorAnalyticsDataRaw) ToAnalyticsData() (*models.VendorAnalyticsData,
 		RecentInquiries: recentInquiries,
 		RecentReviews:   recentReviews,
 	}, nil
+}
+
+// ExistsForOwner verifies the vendor exists and is owned by the given user.
+// Used by the analytics service for the security ownership check,
+// replacing the previous raw db.QueryRowContext call in that layer.
+func (r *PostgresVendorAnalyticsOptimizedRepo) ExistsForOwner(
+    ctx context.Context,
+    vendorID uuid.UUID,
+    ownerID uuid.UUID,
+) (bool, error) {
+    var exists bool
+    const q = `SELECT EXISTS(SELECT 1 FROM vendors WHERE id = $1 AND owner_id = $2)`
+    err := r.db.QueryRowContext(ctx, q, vendorID, ownerID).Scan(&exists)
+    if err != nil {
+        return false, fmt.Errorf("ownership check failed: %w", err)
+    }
+    return exists, nil
 }
