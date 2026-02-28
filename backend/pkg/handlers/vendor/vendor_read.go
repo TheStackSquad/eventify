@@ -91,6 +91,11 @@ func (h *VendorHandler) TrackProfileView(c *gin.Context) {
 		sessionID = c.ClientIP() + "-" + time.Now().Format("20060102")
 	}
 
+	c.Next()
+	if c.Writer.Status() != http.StatusOK {
+		return
+	}
+
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		defer cancel()
@@ -111,5 +116,4 @@ func (h *VendorHandler) TrackProfileView(c *gin.Context) {
 		}
 	}()
 
-	c.Next()
 }
