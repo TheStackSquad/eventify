@@ -23,7 +23,6 @@ import (
 	repoevent "github.com/eventify/backend/pkg/repository/event"
 	repofeedback "github.com/eventify/backend/pkg/repository/feedback"
 	repoinquiries "github.com/eventify/backend/pkg/repository/inquiries"
-	repolike "github.com/eventify/backend/pkg/repository/like"
 	repoorder "github.com/eventify/backend/pkg/repository/order"
 	reporeview "github.com/eventify/backend/pkg/repository/review"
 	repovendor "github.com/eventify/backend/pkg/repository/vendor"
@@ -36,7 +35,6 @@ import (
 	serviceinquiries "github.com/eventify/backend/pkg/services/inquiries"
 	servicejwt "github.com/eventify/backend/pkg/services/jwt"
 	serviceauth "github.com/eventify/backend/pkg/services/auth"
-	servicelike "github.com/eventify/backend/pkg/services/like"
 	serviceorder "github.com/eventify/backend/pkg/services/order"
 	servicepricing "github.com/eventify/backend/pkg/services/pricing"
 	servicereview "github.com/eventify/backend/pkg/services/review"
@@ -148,7 +146,6 @@ func main() {
 	vendorStatsRepo := repovendor.NewPostgresVendorStatsRepo(dbClient)
 	authRepo := repoauth.NewPostgresAuthRepository(dbClient)
 	refreshTokenRepo := repoauth.NewPostgresRefreshTokenRepository(dbClient)
-	likeRepo := repolike.NewPostgresLikeRepository(dbClient)
 	reviewRepo := reporeview.NewPostgresReviewRepository(dbClient)
 	inquiryRepo := repoinquiries.NewInquiryRepository(dbClient)
 	feedbackRepo := repofeedback.NewFeedbackRepository(dbClient)
@@ -172,7 +169,6 @@ authService := serviceauth.NewAuthService(
     jwtService,
 )
 	eventService := serviceevent.NewEventService(dbClient, eventRepo)
-	likeService := servicelike.NewLikeService(likeRepo)
 	vendorService := servicevendor.NewVendorService(vendorRepo)
 	reviewService := servicereview.NewReviewService(reviewRepo, vendorRepo, inquiryRepo)
 	inquiryService := serviceinquiries.NewInquiryService(inquiryRepo, inquiryRepo, vendorRepo)
@@ -181,7 +177,6 @@ authService := serviceauth.NewAuthService(
 	
 vendorAnalyticsService := servicevendor.NewVendorAnalyticsService(
     vendorAnalyticsOptimizedRepo,
-    dbClient,
 )
 	vendorLeaderboardService := servicevendor.NewVendorLeaderboardService(vendorLeaderboardRepo)
 
@@ -213,12 +208,12 @@ paystackClient := servicepaystack.NewClient(
 	authHandler := handlerauth.NewAuthHandler(authService)
 	preferencesHandler := handlerauth.NewPreferencesHandler(authRepo)
 	vendorLeaderboardHandler := handlervendor.NewVendorLeaderboardHandler(vendorLeaderboardService)
-	eventHandler := handlerevent.NewEventHandler(eventService, likeService)
 	vendorHandler := handlervendor.NewVendorHandler(vendorService, vendorStatsRepo)
 	reviewHandler := handlerreview.NewReviewHandler(reviewService)
 	inquiryHandler := handlerinquiries.NewInquiryHandler(inquiryService)
 	feedbackHandler := handlerfeedback.NewFeedbackHandler(feedbackService)
 	orderHandler := handlerorder.NewOrderHandler(orderService)
+    eventHandler := handlerevent.NewEventHandler(eventService)
 	analyticsHandler := handleranalytics.NewAnalyticsHandler(analyticsService)
 	
     vendorAnalyticsHandler := handlervendor.NewVendorAnalyticsHandler(vendorAnalyticsService, dbClient)

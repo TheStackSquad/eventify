@@ -1,0 +1,38 @@
+# --- Environment & Secrets ---
+.env
+.env.local
+.env.test
+*.env.*
+config/*.yaml
+!config/default.yaml
+
+# --- Go Specific (Backend) ---
+backend/backend.exe
+backend/backend-test.exe
+backend/vendor/
+go.work
+go.work.sum
+
+# --- Node/Next.js (Frontend) ---
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/build/
+.eslintignore
+
+# --- Scripts & Testing ---
+*.sh
+!scripts/deploy.sh
+eventify-tests/
+testy/
+backend/testy/
+test_feedback_api.sh
+debug-jwt.sh
+fix_jwt_conflict.sh
+clean-ports.sh
+
+# --- IDE & OS ---
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

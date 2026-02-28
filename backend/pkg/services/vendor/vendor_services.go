@@ -32,4 +32,3 @@ func NewVendorService(vendorRepo repovendor.VendorRepository) *VendorServiceImpl
 		vendorRepo: vendorRepo,
 	}
 }
-

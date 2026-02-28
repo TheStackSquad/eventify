@@ -123,13 +123,3 @@ export async function publishEventApi({ eventId, isPublished }) {
   });
   return normalizeEventResponse(response);
 }
-
-export async function likeEventApi(eventId) {
-  if (!eventId) throw new Error("Event ID is required");
-  const endpoint = API_ENDPOINTS.EVENTS.LIKE.replace(":eventId", eventId);
-  const guestId = getCookie("guest_id");
-  const response = await backendInstance.post(endpoint, {
-    guest_id: guestId || undefined,
-  });
-  return response.data;
-}

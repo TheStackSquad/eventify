@@ -14,13 +14,13 @@ import (
 	"github.com/lib/pq"
 )
 
-// GetEventByID retrieves an event with its ticket tiers and social stats
+// GetEventByID retrieves an event with its ticket tiers 
 func (r *postgresEventRepository) GetEventByID(
 	ctx context.Context,
 	eventID uuid.UUID,
-	userID *uuid.UUID,
+	userID *uuid.UUID, 
 ) (*models.Event, error) {
-	log.Printf("🔍 [GetEventByID START] Fetching event: %s, UserID: %v", eventID, userID)
+	log.Printf("🔍 [GetEventByID START] Fetching event: %s", eventID)
 	
 	query := `
 		SELECT 
@@ -53,8 +53,6 @@ func (r *postgresEventRepository) GetEventByID(
 	var ticketTiersJSON []byte
 	var tags pq.StringArray
 
-	log.Printf("📊 [GetEventByID] Executing SQL query for event: %s", eventID)
-	
 	err := r.db.QueryRowContext(ctx, query, eventID).Scan(
 		&event.ID, &event.OrganizerID, &event.EventTitle, &event.EventDescription,
 		&event.EventSlug, &event.Category, &event.EventType, &event.EventImageURL,
@@ -68,82 +66,32 @@ func (r *postgresEventRepository) GetEventByID(
 
 	if err != nil {
 		if err == sql.ErrNoRows {
-			log.Printf("❌ [GetEventByID] Event not found: %s", eventID)
 			return nil, fmt.Errorf("event not found")
 		}
-		log.Printf("❌ [GetEventByID] Database error: %v", err)
 		return nil, fmt.Errorf("failed to fetch event: %w", err)
 	}
 
-	log.Printf("✅ [GetEventByID] Query successful")
-
-	// ✅ CRITICAL: Handle ticket tiers with single conversion
+	// Handle ticket tiers
 	if len(ticketTiersJSON) > 0 && string(ticketTiersJSON) != "[]" {
-		log.Printf("🎫 [GetEventByID] Processing ticket tiers...")
-		log.Printf("   Raw JSON from DB: %s", string(ticketTiersJSON))
-		
-		// Unmarshal ticket tiers
 		if err := json.Unmarshal(ticketTiersJSON, &event.TicketTiers); err != nil {
-			log.Printf("❌ [GetEventByID] Failed to unmarshal ticket tiers: %v", err)
 			return nil, fmt.Errorf("failed to parse ticket tiers: %w", err)
 		}
-
-		log.Printf("✅ [GetEventByID] Successfully unmarshaled %d ticket tiers", len(event.TicketTiers))
 		
-		// ✅ SINGLE CONVERSION: Kobo to Naira
+		// Kobo to Naira Conversion
 		for i := range event.TicketTiers {
-			// The Price field now contains kobo value from JSON (e.g., 50000000)
 			koboValue := int64(event.TicketTiers[i].Price)
-			
-			// Convert to Naira (divide by 100)
 			nairaValue := float64(koboValue) / 100.0
 			
-			// Store both values
-			event.TicketTiers[i].PriceKobo = koboValue      // Keep original kobo (internal use)
-			event.TicketTiers[i].Price = nairaValue         // Naira for API response
-			
-			log.Printf("💰 [Ticket %d] %s:", i+1, event.TicketTiers[i].Name)
-			log.Printf("   Kobo (from DB): %d", koboValue)
-			log.Printf("   Naira (for API): %.2f", nairaValue)
-			log.Printf("   Calculation: %d ÷ 100 = %.2f", koboValue, nairaValue)
+			event.TicketTiers[i].PriceKobo = koboValue 
+			event.TicketTiers[i].Price = nairaValue
 		}
 	} else {
-		log.Printf("📭 [GetEventByID] No ticket tiers found")
 		event.TicketTiers = []models.TicketTier{}
 	}
 
 	event.Tags = []string(tags)
 
-	// Get social stats
-	log.Printf("❤️ [GetEventByID] Fetching social stats...")
-	var likeCount int
-	if err := r.db.GetContext(ctx, &likeCount, 
-		`SELECT COUNT(*) FROM likes WHERE event_id = $1`, eventID); err != nil {
-		log.Printf("⚠️ [GetEventByID] Error fetching like count: %v", err)
-		likeCount = 0
-	}
-	event.LikesCount = likeCount
-
-	// Check if user has liked the event
-	if userID != nil {
-		var isLiked bool
-		if err := r.db.GetContext(ctx, &isLiked, 
-			`SELECT EXISTS(SELECT 1 FROM likes WHERE event_id = $1 AND user_id = $2)`, 
-			eventID, userID); err != nil {
-			log.Printf("⚠️ [GetEventByID] Error checking if liked: %v", err)
-			isLiked = false
-		}
-		event.IsLiked = isLiked
-	} else {
-		event.IsLiked = false
-	}
-
 	log.Printf("🎉 [GetEventByID COMPLETE] Event %s retrieved successfully", eventID)
-	log.Printf("   Tickets: %d", len(event.TicketTiers))
-	if len(event.TicketTiers) > 0 {
-		log.Printf("   First ticket price (Naira): %.2f", event.TicketTiers[0].Price)
-	}
-	
 	return &event, nil
 }
 

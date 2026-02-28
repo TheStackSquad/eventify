@@ -10,16 +10,14 @@ import (
 
 	"github.com/eventify/backend/pkg/models"
 	repoevent "github.com/eventify/backend/pkg/repository/event"
-	//"github.com/eventify/backend/pkg/services"
 	"github.com/eventify/backend/pkg/utils"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 	"github.com/rs/zerolog/log"
 )
 
 // ============================================================================
-// PUBLIC EVENT HANDLERS (Public Listing & Likes)
+// PUBLIC EVENT HANDLERS (Public Listing)
 // ============================================================================
 
 func (h *EventHandler) GetAllEvents(c *gin.Context) {
@@ -87,50 +85,7 @@ func (h *EventHandler) GetAllEvents(c *gin.Context) {
 		return
 	}
 	
-	// 3. Enrich with like data (if needed)
-	userID := extractOptionalUserID(c)
-	guestID, _ := c.Cookie("guest_id")
-	
-	if len(events) > 0 {
-		// Extract event IDs for batch query
-		eventIDs := make([]uuid.UUID, len(events))
-		for i, event := range events {
-			eventIDs[i] = event.ID
-		}
-		
-		// Batch get like counts
-		likeCounts, err := h.likeService.GetBatchLikeCounts(ctx, eventIDs)
-		if err != nil {
-			log.Warn().Err(err).Msg("Failed to get like counts")
-			likeCounts = make(map[string]int)
-		}
-		
-		// Batch get user likes
-		var userLikes map[string]bool
-		if userID != nil || guestID != "" {
-			userIDStr := ""
-			if userID != nil {
-				userIDStr = userID.String()
-			}
-			
-			userLikes, err = h.likeService.GetBatchUserLikes(ctx, eventIDs, userIDStr, guestID)
-			if err != nil {
-				log.Warn().Err(err).Msg("Failed to get user likes")
-				userLikes = make(map[string]bool)
-			}
-		} else {
-			userLikes = make(map[string]bool)
-		}
-		
-		// Enrich events
-		for i := range events {
-			eventIDStr := events[i].ID.String()
-			events[i].LikesCount = likeCounts[eventIDStr]
-			events[i].IsLiked = userLikes[eventIDStr]
-		}
-	}
-	
-	// 4. Success response
+	// 3. Success response
 	c.JSON(http.StatusOK, gin.H{
 		"events": events,
 		"total":  len(events),
@@ -146,19 +101,15 @@ func (h *EventHandler) GetPublicEventByID(c *gin.Context) {
 		return
 	}
 	
-	// 2. Get optional user ID for like status
-	userID := extractOptionalUserID(c)
-	
 	log.Debug().
 		Str("event_id", eventID.String()).
-		Bool("authenticated", userID != nil).
 		Msg("Fetching public event")
 	
-	// 3. Call service
+	// 2. Call service
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
 	defer cancel()
 	
-	event, err := h.eventService.GetEventByID(ctx, eventID, userID)
+	event, err := h.eventService.GetEventByID(ctx, eventID, nil)
 	if err != nil {
 		log.Error().Err(err).Str("event_id", eventID.String()).Msg("Failed to fetch event")
 		
@@ -171,60 +122,6 @@ func (h *EventHandler) GetPublicEventByID(c *gin.Context) {
 		return
 	}
 	
-	// 4. Success response
+	// 3. Success response
 	c.JSON(http.StatusOK, event)
-}
-
-func (h *EventHandler) ToggleLike(c *gin.Context) {
-    // 1. Parse event ID
-    eventID, err := parseEventID(c)
-    if err != nil {
-        c.JSON(http.StatusBadRequest, gin.H{"message": "Invalid event ID"})
-        return
-    }
-
-    // 2. Extract identifiers
-    // We get the guest_id from the cookie (guaranteed by GuestMiddleware)
-    guestID, _ := c.Cookie("guest_id")
-    
-    var userIDStr string
-    if userID := extractOptionalUserID(c); userID != nil {
-        userIDStr = userID.String()
-    }
-
-    // 3. Fallback Safety
-    // Even though GuestMiddleware is global, if for some reason it's missing,
-    // we use the Client IP as a secondary guest identifier to avoid empty strings.
-    if guestID == "" && userIDStr == "" {
-        guestID = "ip-" + c.ClientIP()
-    }
-
-    // 4. Log request details
-    log.Debug().
-        Str("event_id", eventID.String()).
-        Str("user_id", userIDStr).
-        Str("guest_id", guestID).
-        Msg("❤️ Toggling like")
-
-    // 5. Call service
-    ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
-    defer cancel()
-
-    result, err := h.likeService.ToggleLike(ctx, eventID.String(), userIDStr, guestID)
-    if err != nil {
-        log.Error().Err(err).Msg("Failed to toggle like")
-        
-        if appErr, ok := err.(*utils.AppError); ok {
-            c.JSON(appErr.HTTPStatus(), gin.H{"message": appErr.Message})
-            return
-        }
-
-        c.JSON(http.StatusInternalServerError, gin.H{
-            "message": "Failed to toggle like",
-        })
-        return
-    }
-
-    // 6. Success response
-    c.JSON(http.StatusOK, result)
 }

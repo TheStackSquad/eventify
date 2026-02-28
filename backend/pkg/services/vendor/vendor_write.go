@@ -1,49 +1,54 @@
-//pkg/services/vendor/vendor_write.go
+// pkg/services/vendor/vendor_write.go
 
 package vendor
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"reflect"
-	"database/sql"
+	"strings"
 
 	"github.com/eventify/backend/pkg/models"
 	"github.com/google/uuid"
 )
 
+// CreateVendor registers a new vendor profile
 func (s *VendorServiceImpl) CreateVendor(ctx context.Context, vendor *models.Vendor) (string, error) {
+	// Step 1: Check row existence (includes soft-deleted rows)
+	isRegistered, err := s.vendorRepo.IsRegisteredVendor(ctx, vendor.OwnerID)
+	if err != nil {
+		return "", fmt.Errorf("failed to check vendor registration: %w", err)
+	}
 
-	  existingVendor, err := s.vendorRepo.GetByOwnerID(ctx, vendor.OwnerID)
-    if err != nil {
-        return "", fmt.Errorf("failed to check existing vendor: %w", err)
-    }
+	if isRegistered {
+		// Row exists — determine whether it's active or soft-deleted
+		existingVendor, err := s.vendorRepo.GetByOwnerID(ctx, vendor.OwnerID)
+		if err != nil {
+			return "", fmt.Errorf("failed to check existing vendor: %w", err)
+		}
+		if existingVendor == nil {
+			// GetByOwnerID filters deleted_at IS NULL — nil here means soft-deleted
+			return "", errors.New("you previously had a vendor account that was deleted. Please contact support to restore it")
+		}
+		return "", errors.New("user already has an active vendor account")
+	}
 
-	  if existingVendor != nil {
-        // Check if it's a deleted vendor
-       if existingVendor.Status == "deleted" {
-            return "", errors.New("you previously had a vendor account that was deleted. Please contact support to restore it")
-        }
-        return "", errors.New("user already has an active vendor account")
-    }
-
-	// 1. Strict Validation: Vendor cannot exist without vNIN
-	// We check .Valid (is it not null?) and .String (is it not empty?)
-	if !vendor.VNIN.Valid || vendor.VNIN.String == "" {
+	// Step 2: Validate required fields
+	if strings.TrimSpace(vendor.VNIN) == "" {
 		return "", errors.New("vNIN is mandatory for vendor registration")
 	}
 
-	// 2. Business Rules: Set default status if empty
+	// Step 3: Apply business rules
 	if vendor.Status == "" {
 		vendor.Status = models.VendorStatusActive
 	}
 
-	// 3. Auto-verify identity since vNIN is now guaranteed present
+	// Auto-verify identity since vNIN is guaranteed present
 	vendor.IsIdentityVerified = true
 
-	// 4. Auto-verify business if CAC number is provided
-	// Fix: vendor.CACNumber is sql.NullString, IsBusinessVerified is sql.NullBool
+	// Auto-verify business if CAC number is provided
 	if vendor.CACNumber.Valid && vendor.CACNumber.String != "" {
 		vendor.IsBusinessVerified = sql.NullBool{
 			Bool:  true,
@@ -51,57 +56,59 @@ func (s *VendorServiceImpl) CreateVendor(ctx context.Context, vendor *models.Ven
 		}
 	}
 
-	// 5. Calculate initial PVS score
+	// Step 4: Calculate initial PVS score
 	vendor.PVSScore = models.CalculatePVS(vendor)
 
-	  // 6. Persistence
-    vendorID, err := s.vendorRepo.Create(ctx, vendor)
-    if err != nil {
-        return "", err
-    }
-	
+	// Step 5: Persist
+	vendorID, err := s.vendorRepo.Create(ctx, vendor)
+	if err != nil {
+		return "", err
+	}
+
 	return vendorID.String(), nil
 }
 
+// UpdateVendor modifies an existing vendor profile
 func (s *VendorServiceImpl) UpdateVendor(ctx context.Context, id string, requestorID uuid.UUID, updatedVendor *models.Vendor) error {
 	parsedID, err := uuid.Parse(id)
 	if err != nil {
 		return errors.New("invalid vendor ID format")
 	}
 
-	// 1. Fetch current vendor (for ownership check + PVS calculation)
+	// Fetch current vendor (for ownership check + PVS calculation)
 	currentVendor, err := s.vendorRepo.GetByID(ctx, parsedID)
 	if err != nil {
 		return err
 	}
 
-	// 2. Ownership check
+	// Ownership check
 	if currentVendor.OwnerID != requestorID {
 		return errors.New("unauthorized")
 	}
 
-	// 🔑 3. CRITICAL: Set ID and OwnerID on the update struct
+	// CRITICAL: Set ID and OwnerID on the update struct
 	updatedVendor.ID = parsedID
 	updatedVendor.OwnerID = requestorID
 
-	// 🔑 4. Preserve fields needed for PVS calculation (don't overwrite)
+	// Preserve fields needed for PVS calculation (don't overwrite)
 	updatedVendor.ProfileCompletion = currentVendor.ProfileCompletion
 	updatedVendor.InquiryCount = currentVendor.InquiryCount
 	updatedVendor.RespondedCount = currentVendor.RespondedCount
 	updatedVendor.ReviewCount = currentVendor.ReviewCount
 
-	// 5. Don't automatically set IsBusinessVerified based on CAC presence
+	// Don't automatically set IsBusinessVerified based on CAC presence
 	if !updatedVendor.IsBusinessVerified.Valid {
 		updatedVendor.IsBusinessVerified = currentVendor.IsBusinessVerified
 	}
 
-	// 6. Recalculate PVS Score with complete data
+	// Recalculate PVS Score with complete data
 	updatedVendor.PVSScore = models.CalculatePVS(updatedVendor)
 
-	// 7. Persist
+	// Persist
 	return s.vendorRepo.Update(ctx, updatedVendor)
 }
 
+// UpdateVerificationStatus modifies vendor verification flags
 func (s *VendorServiceImpl) UpdateVerificationStatus(ctx context.Context, vendorID string, field string, isVerified bool, reason string) error {
 	parsedID, err := uuid.Parse(vendorID)
 	if err != nil {
@@ -110,6 +117,7 @@ func (s *VendorServiceImpl) UpdateVerificationStatus(ctx context.Context, vendor
 	return s.vendorRepo.UpdateVerificationFlag(ctx, parsedID, field, isVerified, reason)
 }
 
+// DeleteVendor soft-deletes a vendor profile
 func (s *VendorServiceImpl) DeleteVendor(ctx context.Context, id string) error {
 	parsedID, err := uuid.Parse(id)
 	if err != nil {
@@ -125,7 +133,7 @@ func (s *VendorServiceImpl) DeleteVendor(ctx context.Context, id string) error {
 	return nil
 }
 
-// Helper: Check if updates require PVS recalculation
+// needsPVSRecalculation checks if updates require PVS recalculation
 func (s *VendorServiceImpl) needsPVSRecalculation(updates map[string]interface{}) bool {
 	pvsFields := map[string]struct{}{
 		"category":             {},
@@ -144,7 +152,7 @@ func (s *VendorServiceImpl) needsPVSRecalculation(updates map[string]interface{}
 	return false
 }
 
-// Helper: Apply updates to a vendor struct (for PVS calculation)
+// applyUpdatesToVendor applies updates to a vendor struct (for PVS calculation)
 func (s *VendorServiceImpl) applyUpdatesToVendor(vendor *models.Vendor, updates map[string]interface{}) {
 	v := reflect.ValueOf(vendor).Elem()
 	t := v.Type()

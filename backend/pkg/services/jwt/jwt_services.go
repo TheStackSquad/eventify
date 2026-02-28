@@ -167,3 +167,9 @@ func (s *JWTService) ValidateRefreshToken(tokenString string) (*Claims, error) {
 
 	return claims, nil
 }
+
+func (s *JWTService) SetKeysForTesting(priv *rsa.PrivateKey, pub *rsa.PublicKey) {
+    s.privateKey = priv
+    s.publicKey = pub
+    s.once.Do(func() {}) 
+}

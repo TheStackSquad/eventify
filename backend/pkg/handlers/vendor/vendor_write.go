@@ -3,9 +3,9 @@
 package vendor
 
 import (
+	"database/sql"
 	"net/http"
 	"strings"
-	"database/sql"
 
 	"github.com/eventify/backend/pkg/models"
 	"github.com/gin-gonic/gin"
@@ -15,29 +15,24 @@ import (
 
 // VendorBinding captures the incoming JSON from Next.js
 type VendorBinding struct {
-	Name        string `json:"name" binding:"required"`
-	Category    string `json:"category" binding:"required"`
-	Description string `json:"description"`
-	ImageURL    string `json:"imageURL"`
-	State       string `json:"state" binding:"required"`
-	City        string `json:"city"`
-	PhoneNumber string `json:"phoneNumber" binding:"required"`
-	Email       string `json:"email"`
-	MinPrice    int32  `json:"minPrice"`
-
-	// Identity (vNIN)
-	VNIN               string `json:"vnin" binding:"required"`
-	VerifiedVNIN       string `json:"verifiedVnin" binding:"required"`
-	IsIdentityVerified bool   `json:"isIdentityVerified"`
-	FirstName          string `json:"firstName"`
-	MiddleName         string `json:"middleName"`
-	LastName           string `json:"lastName"`
-
-	// Business (CAC)
-	CACNumber          string `json:"cacNumber"`
-	VerifiedCACNumber  string `json:"verifiedCacNumber"`
-	IsBusinessVerified bool   `json:"isBusinessVerified"`
-	Status             string `json:"status"`
+	Name                string `json:"name" binding:"required"`
+	Category            string `json:"category" binding:"required"`
+	Description         string `json:"description"`
+	ImageURL            string `json:"image_url"`
+	City                string `json:"city"`
+	State               string `json:"state"`
+	PhoneNumber         string `json:"phone_number"`
+	Email               string `json:"email"`
+	VNIN                string `json:"vnin" binding:"required"`
+	VerifiedVNIN        string `json:"verified_vnin"`
+	FirstName           string `json:"first_name"`
+	LastName            string `json:"last_name"`
+	MiddleName          string `json:"middle_name"`
+	CACNumber           string `json:"cac_number"`
+	MinPrice            int32  `json:"min_price"` // In Naira
+	Status              string `json:"status"`
+	IsIdentityVerified  bool   `json:"is_identity_verified"`
+	IsBusinessVerified  bool   `json:"is_business_verified"`
 }
 
 // convertNairaToKobo converts Naira to Kobo (multiply by 100)
@@ -45,6 +40,7 @@ func convertNairaToKobo(naira int32) int32 {
 	return naira * 100
 }
 
+// RegisterVendor handles new vendor registration
 func (h *VendorHandler) RegisterVendor(c *gin.Context) {
 	var input VendorBinding
 	if err := c.ShouldBindJSON(&input); err != nil {
@@ -53,14 +49,14 @@ func (h *VendorHandler) RegisterVendor(c *gin.Context) {
 		return
 	}
 
-	// 1. SECURITY: Tamper-proof check for vNIN
+	// Security: Tamper-proof check for vNIN
 	if input.VNIN != input.VerifiedVNIN {
 		log.Warn().Msg("vNIN verification mismatch attempt")
 		c.JSON(http.StatusForbidden, gin.H{"error": "Identity verification mismatch"})
 		return
 	}
 
-	// 2. Auth: Get User ID from Middleware
+	// Auth: Get User ID from Middleware
 	userIDVal, exists := c.Get("user_id")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication required"})
@@ -68,7 +64,7 @@ func (h *VendorHandler) RegisterVendor(c *gin.Context) {
 	}
 	ownerID := userIDVal.(uuid.UUID)
 
-	// 3. Logic: Check if user already has a vendor profile
+	// Check if user already has a vendor profile
 	existingVendor, _ := h.VendorService.GetVendorByOwnerID(c.Request.Context(), ownerID)
 	if existingVendor != nil {
 		log.Warn().Str("owner_id", ownerID.String()).Msg("Duplicate vendor registration attempt")
@@ -76,10 +72,10 @@ func (h *VendorHandler) RegisterVendor(c *gin.Context) {
 		return
 	}
 
-	// 4. Price Conversion: Convert Naira to Kobo
+	// Price Conversion: Convert Naira to Kobo
 	minPriceKobo := convertNairaToKobo(input.MinPrice)
 
-	// 5. Mapping: Binding -> Model
+	// Mapping: Binding -> Model
 	vendor := models.Vendor{
 		OwnerID:            ownerID,
 		Name:               input.Name,
@@ -87,21 +83,21 @@ func (h *VendorHandler) RegisterVendor(c *gin.Context) {
 		Status:             models.VendorStatusActive,
 		IsIdentityVerified: input.IsIdentityVerified,
 		State:              input.State,
-		Description:        models.ToNullString(input.Description),
-		ImageURL:           models.ToNullString(input.ImageURL),
-		City:               models.ToNullString(input.City),
-		PhoneNumber:        models.ToNullString(input.PhoneNumber),
-		Email:              models.ToNullString(input.Email),
-		VNIN:               models.ToNullString(input.VNIN),
-		FirstName:          models.ToNullString(input.FirstName),
+		Description:        input.Description,
+		ImageURL:           input.ImageURL,
+		City:               input.City,
+		PhoneNumber:        input.PhoneNumber,
+		Email:              input.Email,
+		VNIN:               input.VNIN,
+		FirstName:          input.FirstName,
+		LastName:           input.LastName,
 		MiddleName:         models.ToNullString(input.MiddleName),
-		LastName:           models.ToNullString(input.LastName),
 		CACNumber:          models.ToNullString(input.CACNumber),
 		MinPrice:           models.ToNullInt32(minPriceKobo),
 		IsBusinessVerified: sql.NullBool{Bool: input.IsBusinessVerified, Valid: true},
 	}
 
-	// 6. Execution
+	// Execution
 	vendorID, err := h.VendorService.CreateVendor(c.Request.Context(), &vendor)
 	if err != nil {
 		log.Error().Err(err).Str("owner_id", ownerID.String()).Msg("Vendor creation failed")
@@ -120,8 +116,9 @@ func (h *VendorHandler) RegisterVendor(c *gin.Context) {
 	})
 }
 
+// UpdateVendor handles vendor profile updates
 func (h *VendorHandler) UpdateVendor(c *gin.Context) {
-	vendorIDStr := c.Param("id") // Get as string
+	vendorIDStr := c.Param("id")
 	userIDVal, _ := c.Get("user_id")
 	requestorID := userIDVal.(uuid.UUID)
 
@@ -156,24 +153,23 @@ func (h *VendorHandler) UpdateVendor(c *gin.Context) {
 		Name:               input.Name,
 		Category:           input.Category,
 		State:              input.State,
+		Description:        input.Description,
+		ImageURL:           input.ImageURL,
+		City:               input.City,
+		PhoneNumber:        input.PhoneNumber,
+		Email:              input.Email,
+		VNIN:               input.VNIN,
+		FirstName:          input.FirstName,
+		LastName:           input.LastName,
 		Status:             status,
 		IsIdentityVerified: input.IsIdentityVerified,
-		Description:        models.ToNullString(input.Description),
-		ImageURL:           models.ToNullString(input.ImageURL),
-		City:               models.ToNullString(input.City),
-		PhoneNumber:        models.ToNullString(input.PhoneNumber),
-		Email:              models.ToNullString(input.Email),
-		VNIN:               models.ToNullString(input.VNIN),
-		FirstName:          models.ToNullString(input.FirstName),
 		MiddleName:         models.ToNullString(input.MiddleName),
-		LastName:           models.ToNullString(input.LastName),
 		CACNumber:          models.ToNullString(input.CACNumber),
 		MinPrice:           models.ToNullInt32(minPriceKobo),
 		IsBusinessVerified: sql.NullBool{Bool: input.IsBusinessVerified, Valid: true},
 	}
 
 	err := h.VendorService.UpdateVendor(c.Request.Context(), vendorIDStr, requestorID, &updatedVendor)
-
 	if err != nil {
 		if err.Error() == "unauthorized" {
 			c.JSON(http.StatusForbidden, gin.H{"error": "You do not own this profile"})
@@ -193,12 +189,14 @@ func (h *VendorHandler) UpdateVendor(c *gin.Context) {
 	}
 
 	log.Info().Str("vendor_id", vendorIDStr).Msg("Vendor updated successfully")
-	c.JSON(http.StatusOK, gin.H{
-		"message": "Vendor profile updated successfully!",
-		"vendor":  refreshed,
-	})
+	// Replace the c.JSON in the refreshed block
+c.JSON(http.StatusOK, gin.H{
+    "message": "Vendor profile updated successfully!",
+    "vendor":  refreshed.ToOwnerResponse(),
+})
 }
 
+// ToggleIdentityVerification updates vendor identity verification status
 func (h *VendorHandler) ToggleIdentityVerification(c *gin.Context) {
 	vendorID := c.Param("id")
 	var req struct {

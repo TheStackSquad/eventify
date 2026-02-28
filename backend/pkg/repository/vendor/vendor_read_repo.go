@@ -5,7 +5,6 @@ package vendor
 import (
 	"context"
 	"database/sql"
-	//"errors"
 	"fmt"
 	"strings"
 
@@ -16,14 +15,20 @@ import (
 func (r *PostgresVendorRepository) GetByID(ctx context.Context, id uuid.UUID) (models.Vendor, error) {
 	var v models.Vendor
 	err := r.DB.GetContext(ctx, &v, `SELECT * FROM vendors WHERE id = $1`, id)
-	return v, err
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return models.Vendor{}, fmt.Errorf("vendor not found")
+		}
+		return models.Vendor{}, err
+	}
+	return v, nil
 }
 
 func (r *PostgresVendorRepository) GetByOwnerID(ctx context.Context, ownerID uuid.UUID) (*models.Vendor, error) {
-	var v models.Vendor
-	err := r.DB.GetContext(ctx, &v, `SELECT * FROM vendors WHERE owner_id = $1 LIMIT 1`, ownerID)
-	if err == sql.ErrNoRows { return nil, nil }
-	return &v, err
+    var v models.Vendor
+    err := r.DB.GetContext(ctx, &v, `SELECT * FROM vendors WHERE owner_id = $1 AND deleted_at IS NULL LIMIT 1`, ownerID)
+    if err == sql.ErrNoRows { return nil, nil }
+    return &v, err
 }
 
 func (r *PostgresVendorRepository) IsRegisteredVendor(ctx context.Context, ownerID uuid.UUID) (bool, error) {
@@ -35,7 +40,7 @@ func (r *PostgresVendorRepository) IsRegisteredVendor(ctx context.Context, owner
 
 func (r *PostgresVendorRepository) FindPublicVendors(ctx context.Context, filters map[string]string) ([]models.Vendor, error) {
 	var vendors []models.Vendor
-	where := []string{"status = $1"}
+where := []string{"status = $1", "deleted_at IS NULL"}
 	args := []interface{}{models.VendorStatusActive}
 	counter := 2
 

@@ -14,14 +14,14 @@ import (
 
 const getVendorWithSubscriptionQuery = `
 SELECT
-	v.id, v.owner_id, v.name, v.category, v.image_url, v.status,
-	v.is_identity_verified, v.is_business_registered, v.state,
-	v.city, v.phone_number, v.min_price, v.pvs_score,
-	v.review_count, v.profile_completion, v.inquiry_count,
-	v.responded_count, v.created_at, v.updated_at, v.vnin,
-	v.first_name, v.middle_name, v.last_name, v.date_of_birth,
-	v.gender, v.description, v.email, v.cac_number,
-	v.is_business_verified,
+    v.id, v.owner_id, v.name, v.category, v.image_url, v.status,
+    v.is_identity_verified, v.is_business_registered, v.state,
+    v.city, v.phone_number, v.min_price, v.pvs_score,
+    v.review_count, v.profile_completion, v.inquiry_count,
+    v.responded_count, v.created_at, v.updated_at, v.vnin,
+    v.first_name, v.middle_name, v.last_name,
+    v.description, v.email, v.cac_number,
+    v.is_business_verified, v.subscription_tier, v.deleted_at,
 
 	s.id                AS sub_id,
 	s.vendor_id         AS sub_vendor_id,

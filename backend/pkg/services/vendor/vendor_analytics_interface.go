@@ -10,7 +10,6 @@ import (
 	"github.com/eventify/backend/pkg/models"
 	repovendor "github.com/eventify/backend/pkg/repository/vendor"
 	"github.com/google/uuid"
-	"github.com/jmoiron/sqlx" // Added sqlx for the DB type
 	"github.com/rs/zerolog/log"
 )
 
@@ -21,16 +20,13 @@ type VendorAnalyticsService interface {
 
 type vendorAnalyticsServiceImpl struct {
 	optimizedRepo repovendor.VendorAnalyticsOptimizedRepository
-	db            *sqlx.DB // 👈 Added the db field to the struct
 }
 
 func NewVendorAnalyticsService(
 	optimizedRepo repovendor.VendorAnalyticsOptimizedRepository,
-	db *sqlx.DB, // 👈 Inject the db connection here
 ) VendorAnalyticsService {
 	return &vendorAnalyticsServiceImpl{
 		optimizedRepo: optimizedRepo,
-		db:            db, // Initialize the db field
 	}
 }
 
@@ -42,11 +38,7 @@ func (s *vendorAnalyticsServiceImpl) GetVendorAnalytics(
 ) (*models.VendorAnalyticsResponse, error) {
 
 	// 1. SECURITY CHECK: Verify the User owns this Vendor profile
-	var isOwner bool
-	ownerQuery := `SELECT EXISTS(SELECT 1 FROM vendors WHERE id = $1 AND owner_id = $2)`
-
-	// Using QueryRowContext for a fast existence check using the injected db
-	err := s.db.QueryRowContext(ctx, ownerQuery, vendorID, userID).Scan(&isOwner)
+	isOwner, err := s.optimizedRepo.ExistsForOwner(ctx, vendorID, userID)
 	if err != nil {
 		log.Error().Err(err).Msg("Database error during ownership check")
 		return nil, err

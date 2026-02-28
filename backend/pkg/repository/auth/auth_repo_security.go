@@ -14,42 +14,47 @@ import (
 
 // IsAccountLocked checks if the account associated with the email is locked.
 func (r *PostgresAuthRepository) IsAccountLocked(
-	ctx context.Context,
-	email string,
+    ctx context.Context,
+    email string,
 ) (bool, time.Time, error) {
-	var attempt struct {
-		FailedAttempts int       `db:"failed_attempts"`
-		LastAttemptAt  time.Time `db:"last_attempt_at"`
-	}
+    var attempt struct {
+        FailedAttempts int       `db:"failed_attempts"`
+        LastAttemptAt  time.Time `db:"last_attempt_at"`
+    }
 
-	query := `
-		SELECT failed_attempts, last_attempt_at
-		FROM login_attempts
-		WHERE email = $1
-	`
+    query := `
+        SELECT failed_attempts, last_attempt_at
+        FROM login_attempts
+        WHERE email = $1
+    `
 
-	err := r.DB.GetContext(ctx, &attempt, query, email)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return false, time.Time{}, nil
-		}
-		return false, time.Time{}, err
-	}
+    err := r.DB.GetContext(ctx, &attempt, query, email)
+    if err != nil {
+        if errors.Is(err, sql.ErrNoRows) {
+            return false, time.Time{}, nil
+        }
+        return false, time.Time{}, err
+    }
 
-	// Lock after 5 failed attempts
-	const maxAttempts = 5
-	const lockoutDuration = 10 * time.Minute
+    // Lock after 5 failed attempts
+    const maxAttempts = 5
+    const lockoutDuration = 10 * time.Minute
 
-	if attempt.FailedAttempts >= maxAttempts {
-		unlockTime := attempt.LastAttemptAt.Add(lockoutDuration)
-		if time.Now().Before(unlockTime) {
-			return true, unlockTime, nil
-		}
-		// Lockout expired, clear attempts
-		_ = r.ClearFailedLoginAttempts(ctx, email)
-	}
+    if attempt.FailedAttempts >= maxAttempts {
+        // Normalizing to UTC ensures comparison works regardless of server/local time
+        unlockTime := attempt.LastAttemptAt.UTC().Add(lockoutDuration)
+        
+        if time.Now().UTC().Before(unlockTime) {
+            return true, unlockTime, nil
+        }
 
-	return false, time.Time{}, nil
+        // Lockout expired, clear attempts
+        // We ignore the error here as per your original design, 
+        // but we ensure this branch is reachable.
+        _ = r.ClearFailedLoginAttempts(ctx, email)
+    }
+
+    return false, time.Time{}, nil
 }
 
 func (r *PostgresAuthRepository) RecordLoginAttempt(

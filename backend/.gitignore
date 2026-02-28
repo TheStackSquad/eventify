@@ -1,37 +1,35 @@
 # === Binaries & Executables ===
-# Ignore all executables and compiled binaries
 *.exe
 *.exe~
 backend
 main
 bin/
-# Specifically ignoring the ones seen in your ls -la
 backend.exe
 main.exe
 
 # === Environment & Secrets ===
-# Never track secrets or session headers
+# Never track real env files — track .example templates instead
 .env
 .env.*
 *.env
+.env.test          # has real DB credentials; copy .env.test.example to use
+.env.local
 cookies.txt
 login_headers.txt
 
 # === Go Artifacts ===
-# Ignore test binaries and coverage reports
+# Compiled test binaries (e.g. vendor.test, analytics.test)
 *.test
+# Coverage and profiling output
 *.out
 *.prof
-# Specific coverage files from your directory
 coverage.out
 handlers_coverage.out
 coverage.html
 
 # === Local Test Folders & Scripts ===
-# These appear to be local testing playgrounds
 test_scripts/
 testy/
-# Ignore local helper scripts
 *.sh
 
 # === IDE & OS ===
@@ -46,6 +44,4 @@ Thumbs.db
 *.log
 logs/
 tmp/
-temp/.env
-.env.test
-.env.local
+temp/
