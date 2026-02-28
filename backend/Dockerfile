@@ -1,5 +1,5 @@
 # Build stage - compile the Go binary
-FROM golang:1.25-alpine AS builder
+FROM golang:1.23-alpine AS builder
 
 # Install build dependencies
 RUN apk add --no-cache git ca-certificates tzdata
@@ -26,9 +26,9 @@ WORKDIR /app
 
 # Copy binary from builder
 COPY --from=builder /app/backend .
+COPY --from=builder /app/config ./config
 
 # Copy .env file (we'll override DB connection with environment variable)
-COPY .env .env
 
 # Expose port
 EXPOSE 8081
