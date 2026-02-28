@@ -88,7 +88,7 @@ var (
 	PublicLimiter = NewIPRateLimiter(rate.Every(time.Second), 50)
 	
 	// AuthLimiter - 5 attempts per minute (stricter for auth)
-	AuthLimiter = NewIPRateLimiter(rate.Every(time.Minute), 5)
+	AuthLimiter = NewIPRateLimiter(rate.Every(time.Second*10), 10)
 	
 	// WriteLimiter - 1 write every 5 seconds (prevent spam)
 	WriteLimiter = NewIPRateLimiter(rate.Every(time.Second*5), 3)
