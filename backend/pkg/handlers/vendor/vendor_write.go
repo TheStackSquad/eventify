@@ -44,10 +44,13 @@ func convertNairaToKobo(naira int32) int32 {
 func (h *VendorHandler) RegisterVendor(c *gin.Context) {
 	var input VendorBinding
 	if err := c.ShouldBindJSON(&input); err != nil {
-		log.Warn().Err(err).Msg("Invalid vendor registration payload")
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid input data"})
-		return
-	}
+    log.Warn().Err(err).Msg("Invalid vendor registration payload")
+    c.JSON(http.StatusBadRequest, gin.H{
+        "error":  "Invalid input data",
+        "detail": err.Error(),
+    })
+    return
+}
 
 	// Security: Tamper-proof check for vNIN
 	if input.VNIN != input.VerifiedVNIN {
@@ -108,6 +111,7 @@ func (h *VendorHandler) RegisterVendor(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Registration failed"})
 		return
 	}
+	
 
 	log.Info().Str("vendor_id", vendorID).Str("vendor_name", input.Name).Msg("Vendor registered successfully")
 	c.JSON(http.StatusCreated, gin.H{
