@@ -254,6 +254,7 @@ publicEvents.Use(middleware.RateLimit(utils.PublicLimiter))
 	}
 
 	orderRoutes := router.Group("/api/orders")
+	orderRoutes.OPTIONS("/initialize", func(c *gin.Context) { c.Status(http.StatusNoContent) })
 	orderRoutes.Use(middleware.RateLimit(utils.WriteLimiter))
 	{
 		orderRoutes.Use(middleware.OptionalAuth(jwtService))
@@ -370,7 +371,7 @@ func requestLogger() gin.HandlerFunc {
 
 func corsConfig() gin.HandlerFunc {
 	return cors.New(cors.Config{
-		AllowOrigins:     []string{"http://localhost:3000"},
+		AllowOrigins:     []string{"http://localhost:3000", "https://eventify-tix.vercel.app"},
 		AllowMethods:     []string{"GET", "POST", "PUT", "HEAD", "PATCH", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization", "X-CSRF-Token"},
 		ExposeHeaders:    []string{"Content-Length", "X-CSRF-Token"},
