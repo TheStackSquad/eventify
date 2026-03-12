@@ -12,8 +12,12 @@ const ProfileHeader = ({ vendor }) => {
 
   // Logic for badges
   const isPremium = pvsScore >= 80;
-  // Note: bookingsCompleted wasn't in your JSON, so we'll default to false or check another metric
   const isNewVendor = vendor.bookingsCompleted === 0;
+
+  // toLowerCase ensures DOM text is consistent and accessible;
+  // CSS `capitalize` on the <p> handles the visual title-casing.
+  const categoryDisplay =
+    vendor.category?.replace(/_/g, " ").toLowerCase() || "vendor";
 
   return (
     <div className="flex flex-col lg:flex-row justify-between items-start border-b pb-6 mb-6 gap-6">
@@ -23,7 +27,6 @@ const ProfileHeader = ({ vendor }) => {
             className="text-2xl sm:text-3xl md:text-4xl font-extrabold text-gray-900 font-header"
             id="vendor-name"
           >
-            {/* Changed from firstName to name for the business title */}
             {vendor.name || `${vendor.firstName} ${vendor.lastName}`}
           </h1>
 
@@ -54,8 +57,7 @@ const ProfileHeader = ({ vendor }) => {
             size={20}
             aria-hidden="true"
           />
-          {/* Mapping category directly */}
-          {vendor.category?.replace(/_/g, " ") || "Vendor"}
+          {categoryDisplay}
         </p>
       </div>
 

@@ -1,4 +1,4 @@
-// src/components/account/loginForm.js
+// src/components/account/LoginForm.js
 "use client";
 
 import { useState } from "react";
@@ -12,6 +12,7 @@ import {
   getUserFriendlyError,
   isNetworkError,
 } from "@/utils/errors/errorUtils";
+import { validateLogin } from "@/utils/validate/loginValidation";
 
 export default function LoginForm() {
   const router = useRouter();
@@ -23,59 +24,38 @@ export default function LoginForm() {
   const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState("");
 
-  const togglePasswordVisibility = () => {
-    setShowPassword((prev) => !prev);
-  };
+  const togglePasswordVisibility = () => setShowPassword((prev) => !prev);
 
   const handleSubmit = (e) => {
     e.preventDefault();
     setError("");
 
-    // Client-side validation
-    if (!email || !password) {
-      const errorMsg = "Please fill in all fields";
-      setError(errorMsg);
-      toastAlert.error(errorMsg);
+  
+    const validationError = validateLogin({ email, password });
+    if (validationError) {
+      setError(validationError);
+      toastAlert.error(validationError);
       return;
     }
 
-    // Basic email format check
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-      const errorMsg = "Please enter a valid email address";
-      setError(errorMsg);
-      toastAlert.error(errorMsg);
-      return;
-    }
-
-    // Execute login mutation
     login(
-      { email, password },
+      { email, password, rememberMe },
       {
         onSuccess: () => {
-          console.log("✅ Login successful, redirecting to dashboard...");
           toastAlert.success("Welcome back! Redirecting to your dashboard...");
-
-          // Small delay for better UX (user sees success message)
-          setTimeout(() => {
-            router.push("/dashboard");
-          }, 500);
+          setTimeout(() => router.push("/dashboard"), 500);
         },
-        onError: (error) => {
-          console.error("❌ Login failed:", error);
+        onError: (err) => {
+          console.error("❌ Login failed:", err);
 
-          // Get user-friendly error message
           const friendlyMessage = getUserFriendlyError(
-            error,
+            err,
             "Unable to log you in. Please check your credentials and try again.",
           );
 
-          // Show error in both inline display AND toast
           setError(friendlyMessage);
 
-          // Only show toast for unexpected/network errors
-          // For validation errors, inline display is sufficient
-          if (isNetworkError(error) || error.response?.status >= 500) {
+          if (isNetworkError(err) || err.response?.status >= 500) {
             toastAlert.error(friendlyMessage);
           }
         },
@@ -93,7 +73,7 @@ export default function LoginForm() {
         your services.
       </p>
 
-      {/* Error Message Display - RESERVED SPACE to prevent CLS */}
+      {/* Error — reserved space prevents layout shift */}
       <div
         className="mb-4 transition-all duration-200"
         style={{ minHeight: error ? "auto" : "0px" }}
@@ -109,8 +89,7 @@ export default function LoginForm() {
         )}
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-4">
-        {/* Email Address Input */}
+      <form onSubmit={handleSubmit} className="space-y-4" noValidate>
         <LoginInputField
           icon={Mail}
           type="email"
@@ -121,7 +100,6 @@ export default function LoginForm() {
           disabled={isPending}
         />
 
-        {/* Password Input */}
         <LoginInputField
           icon={Lock}
           type={showPassword ? "text" : "password"}
@@ -135,7 +113,6 @@ export default function LoginForm() {
           disabled={isPending}
         />
 
-        {/* Checkbox and Forgot Password */}
         <div className="flex items-center justify-between pt-1 text-sm">
           <label className="flex items-center space-x-2 text-gray-600 cursor-pointer select-none font-body">
             <input
@@ -143,7 +120,8 @@ export default function LoginForm() {
               checked={rememberMe}
               onChange={(e) => setRememberMe(e.target.checked)}
               disabled={isPending}
-              className="w-4 h-4 text-green-600 bg-gray-100 border-gray-300 rounded focus:ring-green-500 disabled:opacity-50"
+              className="w-4 h-4 text-green-600 bg-gray-100 border-gray-300 rounded
+                focus:ring-green-500 disabled:opacity-50"
             />
             <span>Remember me</span>
           </label>
@@ -151,20 +129,22 @@ export default function LoginForm() {
             href="/forgot-password"
             className="text-green-600 hover:text-green-700 font-medium font-body transition duration-150"
             tabIndex={isPending ? -1 : 0}
+            aria-disabled={isPending}
           >
             Forgot Password?
           </Link>
         </div>
 
-        {/* Login Button */}
         <button
           type="submit"
           disabled={isPending}
-          className={`w-full py-3 mt-6 text-lg font-semibold text-white rounded-full transition duration-300 shadow-lg ${
-            isPending
-              ? "bg-green-400 cursor-not-allowed"
-              : "bg-green-600 hover:bg-green-700 active:scale-95"
-          } flex items-center justify-center font-body`}
+          className={`w-full py-3 mt-6 text-lg font-semibold text-white rounded-full
+            transition duration-300 shadow-lg flex items-center justify-center font-body
+            ${
+              isPending
+                ? "bg-green-400 cursor-not-allowed"
+                : "bg-green-600 hover:bg-green-700 active:scale-95"
+            }`}
           aria-label={isPending ? "Logging in..." : "Login"}
         >
           {isPending ? (
@@ -183,12 +163,12 @@ export default function LoginForm() {
                   r="10"
                   stroke="currentColor"
                   strokeWidth="4"
-                ></circle>
+                />
                 <path
                   className="opacity-75"
                   fill="currentColor"
                   d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                ></path>
+                />
               </svg>
               Logging in...
             </>
@@ -198,7 +178,6 @@ export default function LoginForm() {
         </button>
       </form>
 
-      {/* Sign Up Link */}
       <div className="text-center mt-6 font-body">
         Don&apos;t have an account?
         <Link

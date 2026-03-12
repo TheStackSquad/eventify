@@ -1,5 +1,8 @@
 // src/utils/validate/signupValidation.js
 
+// ================================================================
+// PASSWORD STRENGTH CHECKER
+// ================================================================
 function validatePasswordStrength(password) {
   if (password.length < 8) {
     return {
@@ -8,7 +11,6 @@ function validatePasswordStrength(password) {
     };
   }
 
-  // Check for different character types
   const hasLowercase = /[a-z]/.test(password);
   const hasUppercase = /[A-Z]/.test(password);
   const hasNumber = /\d/.test(password);
@@ -21,7 +23,6 @@ function validatePasswordStrength(password) {
     hasSpecial,
   ].filter(Boolean).length;
 
-  // Require at least 3 of 4 character types
   if (characterTypes < 3) {
     return {
       isValid: false,
@@ -30,15 +31,14 @@ function validatePasswordStrength(password) {
     };
   }
 
-  // Check for common weak patterns
   const weakPatterns = [
-    /^(.)\1+$/, // All same character (e.g., "aaaaaaaa")
-    /^(012|123|234|345|456|567|678|789|890)+/, // Sequential numbers
-    /^(abc|bcd|cde|def|efg|fgh|ghi|hij)+/i, // Sequential letters
-    /password/i, // Contains "password"
-    /qwerty/i, // Contains "qwerty"
-    /admin/i, // Contains "admin"
-    /letmein/i, // Contains "letmein"
+    /^(.)\1+$/,
+    /^(012|123|234|345|456|567|678|789|890)+/,
+    /^(abc|bcd|cde|def|efg|fgh|ghi|hij)+/i,
+    /password/i,
+    /qwerty/i,
+    /admin/i,
+    /letmein/i,
   ];
 
   for (const pattern of weakPatterns) {
@@ -54,53 +54,39 @@ function validatePasswordStrength(password) {
   return { isValid: true };
 }
 
+// ================================================================
+// MAIN VALIDATION
+// ================================================================
 export const validateSignup = (formData) => {
   const errors = {};
 
-  // ============================================
-  // Name Validation
-  // ============================================
   if (!formData.name || !formData.name.trim()) {
     errors.name = "Name is required";
   } else if (formData.name.trim().length < 2) {
     errors.name = "Name must be at least 2 characters";
   } else if (formData.name.trim().length > 100) {
     errors.name = "Name is too long (max 100 characters)";
-  } else if (!/^[a-zA-Z\s'-]+$/.test(formData.name.trim())) {
+  } else if (!/^[\p{L}\p{M}\s'\-]+$/u.test(formData.name.trim())) {
     errors.name =
       "Name can only contain letters, spaces, hyphens, and apostrophes";
   }
 
-  // ============================================
-  // Email Validation
-  // ============================================
   if (!formData.email || !formData.email.trim()) {
     errors.email = "Email is required";
   } else {
-    // Remove leading/trailing whitespace
     const email = formData.email.trim();
-
-    // More comprehensive email regex
-    const emailRegex = /^[a-zA-Z0-9._-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+    const emailRegex = /^[^\s@]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
 
     if (!emailRegex.test(email)) {
       errors.email = "Please enter a valid email address";
     } else if (email.length > 254) {
-      // RFC 5321 max email length
       errors.email = "Email address is too long";
     }
-
-    // Optional: Block disposable email domains (uncomment if needed)
-    // const disposableDomains = ['tempmail.com', '10minutemail.com', 'guerrillamail.com'];
-    // const domain = email.split('@')[1]?.toLowerCase();
-    // if (disposableDomains.includes(domain)) {
-    //   errors.email = "Please use a permanent email address";
-    // }
   }
 
-  // ============================================
+  // ============================================================
   // Password Validation
-  // ============================================
+  // ============================================================
   if (!formData.password) {
     errors.password = "Password is required";
   } else {
@@ -110,9 +96,9 @@ export const validateSignup = (formData) => {
     }
   }
 
-  // ============================================
+  // ============================================================
   // Confirm Password Validation
-  // ============================================
+  // ============================================================
   if (!formData.confirmPassword) {
     errors.confirmPassword = "Please confirm your password";
   } else if (formData.password !== formData.confirmPassword) {
@@ -122,18 +108,22 @@ export const validateSignup = (formData) => {
   return errors;
 };
 
+// ================================================================
+// FIELD-LEVEL VALIDATION (used for real-time feedback)
+// ================================================================
 export const validateField = (fieldName, value, allFormData = {}) => {
   const tempData = { ...allFormData, [fieldName]: value };
   const errors = validateSignup(tempData);
   return errors[fieldName] || null;
 };
 
+// ================================================================
+// PASSWORD STRENGTH METER
+// ================================================================
 export const getPasswordStrength = (password) => {
   if (!password) return { level: 0, label: "None", color: "gray" };
-
-  if (password.length < 8) {
+  if (password.length < 8)
     return { level: 1, label: "Too short", color: "red" };
-  }
 
   const checks = {
     hasLowercase: /[a-z]/.test(password),
@@ -145,15 +135,11 @@ export const getPasswordStrength = (password) => {
   const typesCount = Object.values(checks).filter(Boolean).length;
   const length = password.length;
 
-  if (typesCount === 4 && length >= 12) {
+  if (typesCount === 4 && length >= 12)
     return { level: 5, label: "Very Strong", color: "green" };
-  } else if (typesCount >= 3 && length >= 10) {
+  if (typesCount >= 3 && length >= 10)
     return { level: 4, label: "Strong", color: "green" };
-  } else if (typesCount >= 3) {
-    return { level: 3, label: "Good", color: "yellow" };
-  } else if (typesCount >= 2) {
-    return { level: 2, label: "Weak", color: "orange" };
-  } else {
-    return { level: 1, label: "Very Weak", color: "red" };
-  }
+  if (typesCount >= 3) return { level: 3, label: "Good", color: "yellow" };
+  if (typesCount >= 2) return { level: 2, label: "Weak", color: "orange" };
+  return { level: 1, label: "Very Weak", color: "red" };
 };

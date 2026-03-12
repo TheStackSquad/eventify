@@ -1,14 +1,15 @@
 // src/components/account/signUp.js
-
 "use client";
 
 import React, { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useSignup } from "@/utils/hooks/useAuth";
+import Link from "next/link";
 import toastAlert from "@/components/common/toast/toastAlert";
 import { validateSignup } from "@/utils/validate/signupValidation";
 import InputField from "@/components/common/inputFields";
 import { User, Mail, Lock } from "lucide-react";
+import { getUserFriendlyError } from "@/utils/errors/errorUtils";
 
 export default function SignUpForm() {
   const router = useRouter();
@@ -24,29 +25,25 @@ export default function SignUpForm() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [errors, setErrors] = useState({});
 
-  const togglePasswordVisibility = useCallback(() => {
-    setShowPassword((prev) => !prev);
-  }, []);
+  const togglePasswordVisibility = useCallback(
+    () => setShowPassword((prev) => !prev),
+    [],
+  );
 
-  const toggleConfirmPasswordVisibility = useCallback(() => {
-    setShowConfirmPassword((prev) => !prev);
-  }, []);
+  const toggleConfirmPasswordVisibility = useCallback(
+    () => setShowConfirmPassword((prev) => !prev),
+    [],
+  );
 
   const handleInputChange = useCallback(
     (field, value) => {
-      setFormData((prev) => ({
-        ...prev,
-        [field]: value,
-      }));
-
+      setFormData((prev) => ({ ...prev, [field]: value }));
+      // Clear the error for this field as the user types
       if (errors[field]) {
-        setErrors((prev) => ({
-          ...prev,
-          [field]: "",
-        }));
+        setErrors((prev) => ({ ...prev, [field]: "" }));
       }
     },
-    [errors]
+    [errors],
   );
 
   const handleSubmit = useCallback(
@@ -56,26 +53,33 @@ export default function SignUpForm() {
       const validationErrors = validateSignup(formData);
       if (Object.keys(validationErrors).length > 0) {
         setErrors(validationErrors);
-        Object.values(validationErrors).forEach((error) => {
-          toastAlert.error(error);
-        });
+        // Show one toast per error so the user knows what to fix
+        Object.values(validationErrors).forEach((msg) => toastAlert.error(msg));
         return;
       }
 
       setErrors({});
 
-      signup(formData, {
+      // #6: Strip confirmPassword before sending to backend.
+  
+      const { confirmPassword, ...payload } = formData;
+
+      signup(payload, {
         onSuccess: () => {
           router.push("/account/auth/login?signup=success");
         },
         onError: (error) => {
-          const errorMessage = error.message || "An unexpected error occurred.";
-          setErrors({ submit: errorMessage });
-          toastAlert.error(errorMessage);
+    
+          const friendlyMessage = getUserFriendlyError(
+            error,
+            "Unable to create your account. Please try again.",
+          );
+          setErrors({ submit: friendlyMessage });
+          toastAlert.error(friendlyMessage);
         },
       });
     },
-    [formData, router, signup]
+    [formData, router, signup],
   );
 
   return (
@@ -101,7 +105,7 @@ export default function SignUpForm() {
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-1">
+          <form onSubmit={handleSubmit} className="space-y-1" noValidate>
             <InputField
               label="Full Name"
               name="name"
@@ -111,6 +115,8 @@ export default function SignUpForm() {
               onChange={(value) => handleInputChange("name", value)}
               placeholder="Name"
               error={errors.name}
+              disabled={isPending}
+              autoComplete="name"
             />
 
             <InputField
@@ -122,6 +128,8 @@ export default function SignUpForm() {
               onChange={(value) => handleInputChange("email", value)}
               placeholder="Email address"
               error={errors.email}
+              disabled={isPending}
+              autoComplete="email"
             />
 
             <InputField
@@ -136,6 +144,8 @@ export default function SignUpForm() {
               isPassword={true}
               onToggleVisibility={togglePasswordVisibility}
               showPassword={showPassword}
+              disabled={isPending}
+              autoComplete="new-password"
             />
 
             <InputField
@@ -150,16 +160,20 @@ export default function SignUpForm() {
               isPassword={true}
               onToggleVisibility={toggleConfirmPasswordVisibility}
               showPassword={showConfirmPassword}
+              disabled={isPending}
+              autoComplete="new-password"
             />
 
             <button
               type="submit"
               disabled={isPending}
-              className={`w-full py-3 mt-6 text-lg font-semibold text-white rounded-full transition duration-300 shadow-lg ${
-                isPending
-                  ? "bg-green-400 cursor-not-allowed"
-                  : "bg-green-600 hover:bg-green-700"
-              } flex items-center justify-center font-body`}
+              className={`w-full py-3 mt-6 text-lg font-semibold text-white rounded-full
+                transition duration-300 shadow-lg flex items-center justify-center font-body
+                ${
+                  isPending
+                    ? "bg-green-400 cursor-not-allowed"
+                    : "bg-green-600 hover:bg-green-700"
+                }`}
             >
               {isPending ? (
                 <svg
@@ -167,6 +181,7 @@ export default function SignUpForm() {
                   xmlns="http://www.w3.org/2000/svg"
                   fill="none"
                   viewBox="0 0 24 24"
+                  aria-hidden="true"
                 >
                   <circle
                     className="opacity-25"
@@ -175,12 +190,12 @@ export default function SignUpForm() {
                     r="10"
                     stroke="currentColor"
                     strokeWidth="4"
-                  ></circle>
+                  />
                   <path
                     className="opacity-75"
                     fill="currentColor"
                     d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                  ></path>
+                  />
                 </svg>
               ) : (
                 "Create Account"
@@ -189,13 +204,13 @@ export default function SignUpForm() {
           </form>
 
           <div className="text-center mt-6 font-body">
-            Already have an account?
-            <a
+            Already have an account?{" "}
+            <Link
               href="/account/auth/login"
               className="ml-1 text-green-600 hover:text-green-700 font-semibold transition"
             >
               Sign in here
-            </a>
+            </Link>
           </div>
         </div>
       </div>

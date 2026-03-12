@@ -117,9 +117,3 @@ export async function deleteEventApi(eventId) {
   return { eventId };
 }
 
-export async function publishEventApi({ eventId, isPublished }) {
-  const response = await backendInstance.patch(`/events/${eventId}/publish`, {
-    isPublished,
-  });
-  return normalizeEventResponse(response);
-}

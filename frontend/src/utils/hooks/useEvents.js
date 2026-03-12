@@ -348,75 +348,6 @@ export function useDeleteEvent() {
   });
 }
 
-//Publish/unpublish event (PROTECTED)
-export function usePublishEvent() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: publishEventApi,
-    ...MUTATION_CONFIG,
-    onMutate: async (variables) => {
-      if (process.env.NODE_ENV === "development") {
-        console.log("📢 [usePublishEvent] Publishing event:", {
-          eventId: variables.eventId,
-          publish: variables.publish,
-        });
-      }
-
-      // Cancel outgoing refetches
-      await queryClient.cancelQueries({
-        queryKey: eventKeys.detail(variables.eventId),
-      });
-
-      // Snapshot for rollback
-      const previousEvent = queryClient.getQueryData(
-        eventKeys.detail(variables.eventId),
-      );
-
-      // Optimistically update publish status (safe - doesn't affect prices)
-      if (previousEvent) {
-        queryClient.setQueryData(eventKeys.detail(variables.eventId), {
-          ...previousEvent,
-          isPublished: variables.publish,
-        });
-      }
-
-      return { previousEvent };
-    },
-    onSuccess: (serverResponse, variables) => {
-      if (process.env.NODE_ENV === "development") {
-        console.log("✅ [usePublishEvent] Event published:", {
-          eventId: variables.eventId,
-        });
-      }
-
-      // Transform and update with server response
-      const transformed = ensureTransformedData(serverResponse);
-      queryClient.setQueryData(
-        eventKeys.detail(variables.eventId),
-        transformed,
-      );
-
-      // Invalidate related queries
-      queryClient.invalidateQueries({ queryKey: eventKeys.lists() });
-      queryClient.invalidateQueries({ queryKey: eventKeys.users() });
-    },
-    onError: (error, variables, context) => {
-      console.error("❌ [usePublishEvent] Failed:", {
-        eventId: variables.eventId,
-        message: error.message,
-      });
-
-      // Rollback
-      if (context?.previousEvent) {
-        queryClient.setQueryData(
-          eventKeys.detail(variables.eventId),
-          context.previousEvent,
-        );
-      }
-    },
-  });
-}
 
 
 // UTILITY HOOKS
@@ -435,18 +366,4 @@ export function useIsEventOwner(eventId) {
   if (!eventId || !event || !user) return false;
   
   return event.userId === user.id;
-}
-
-//Check if current user has liked the event
-export function useHasLikedEvent(eventId) {
-  const { user } = useAuth();
-  // Always call useEvent, but it will handle the enabled state internally
-  const { data: event } = useEvent(eventId, {
-    enabled: !!eventId // Let useEvent handle the conditional
-  });
-
-  // Return early if no eventId or no event data
-  if (!eventId || !event || !user) return false;
-  
-  return event.likes?.includes(user.id) || false;
 }

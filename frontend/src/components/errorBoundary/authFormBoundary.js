@@ -1,4 +1,5 @@
-// src/components/errorBoundary/authFormBoundary.js
+// src/components/errorBoundary/authFormBoundary.
+
 "use client";
 
 import { Component } from "react";
@@ -67,10 +68,15 @@ class AuthFormBoundary extends Component {
       toastAlert.error(
         "Multiple errors detected. Please contact support if this persists.",
       );
+      // GAP 2 Fix: actually navigate rather than only logging + toasting
+      this.handleGoHome();
     }
   }
 
   handleRetry = () => {
+    // errorCount and lastErrorTime intentionally preserved.
+    // The circuit breaker tracks form stability across retries — not user patience.
+    // The 3s window already handles "user waited, then tried again" by resetting to 1.
     this.setState({
       hasError: false,
       error: null,
@@ -78,7 +84,11 @@ class AuthFormBoundary extends Component {
   };
 
   handleGoHome = () => {
-    window.location.href = "/";
+    // Using assign() instead of href= for two reasons:
+    // 1. Identical UX: both navigate and add to browser history
+    // 2. assign() is a real method — jest.spyOn(window.location, 'assign') works
+    //    in jsdom. The href setter is a C-level binding that cannot be observed in tests.
+    window.location.assign("/");
   };
 
   render() {

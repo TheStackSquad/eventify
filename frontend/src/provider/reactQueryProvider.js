@@ -1,4 +1,4 @@
-// frontend/src/provider/reactQueryProvider.jsx
+// frontend/src/provider/reactQueryProvider.js
 "use client";
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
