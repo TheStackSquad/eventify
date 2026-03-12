@@ -23,8 +23,11 @@ export const isMobileDevice = () => {
 };
 
 export const formatMemberSince = (dateString) => {
-  return new Date(dateString).toLocaleDateString("en-US", {
-    month: "short",
+  if (!dateString) return "Unknown";
+  const date = new Date(dateString);
+  if (isNaN(date.getTime())) return "Unknown";
+  return date.toLocaleDateString("en-US", {
+    month: "long",
     year: "numeric",
   });
 };

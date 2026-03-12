@@ -1,5 +1,4 @@
-// src/components/common/inputField.js
-
+// src/components/common/inputFields.js
 import React from "react";
 import { Eye, EyeOff } from "lucide-react";
 
@@ -14,14 +13,12 @@ export default function InputField({
   onToggleVisibility,
   showPassword,
   name,
-  label, // Added label prop
+  label,
+  disabled = false,
+  autoComplete,
 }) {
-  // step 1: Component definition: Define as a separate, exported component to prevent
-  // re-creation by the parent (SignUpForm), thereby ensuring the input element
-  // maintains focus and fixes the cursor bouncing issue.
   return (
     <div className="mb-4">
-      {/* Label for accessibility */}
       {label && (
         <label
           htmlFor={name}
@@ -30,13 +27,12 @@ export default function InputField({
           {label}
         </label>
       )}
+
       <div className="relative">
-        {/* Input Icon */}
         <div className="absolute inset-y-0 left-0 flex items-center pl-4 pointer-events-none text-gray-400">
           <Icon className="w-5 h-5" />
         </div>
 
-        {/* Input Field */}
         <input
           id={name}
           name={name}
@@ -44,18 +40,23 @@ export default function InputField({
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder}
+          autoComplete={autoComplete}
+          disabled={disabled}
           required
-          className={`w-full pl-12 pr-4 py-4 border rounded-2xl bg-white text-gray-800 focus:ring-green-500 focus:border-green-500 transition duration-150 shadow-sm ${
-            error ? "border-red-300" : "border-gray-200"
-          }`}
+          className={`w-full pl-12 pr-4 py-4 border rounded-2xl bg-white
+            text-gray-800 focus:ring-green-500 focus:border-green-500
+            transition duration-150 shadow-sm
+            disabled:bg-gray-100 disabled:text-gray-400 disabled:cursor-not-allowed
+            ${error ? "border-red-300" : "border-gray-200"}`}
         />
 
-        {/* Password Visibility Toggle Button */}
         {isPassword && (
           <button
             type="button"
             onClick={onToggleVisibility}
-            className="absolute inset-y-0 right-0 flex items-center pr-4 text-gray-500 hover:text-green-600 transition"
+            disabled={disabled}
+            className="absolute inset-y-0 right-0 flex items-center pr-4 text-gray-500
+              hover:text-green-600 transition disabled:opacity-40 disabled:cursor-not-allowed"
             aria-label={showPassword ? "Hide password" : "Show password"}
           >
             {showPassword ? (
@@ -67,8 +68,11 @@ export default function InputField({
         )}
       </div>
 
-      {/* Error Message */}
-      {error && <p className="mt-2 text-sm text-red-600 font-body">{error}</p>}
+      {error && (
+        <p className="mt-2 text-sm text-red-600 font-body" role="alert">
+          {error}
+        </p>
+      )}
     </div>
   );
 }

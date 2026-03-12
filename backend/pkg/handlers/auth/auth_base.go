@@ -13,12 +13,10 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-// AuthHandler now only needs the AuthService and maybe the JWT configuration
 type AuthHandler struct {
 	AuthService serviceauth.AuthService
 }
 
-// NewAuthHandler injects the service instead of the repos
 func NewAuthHandler(authService serviceauth.AuthService) *AuthHandler {
 	return &AuthHandler{
 		AuthService: authService,
@@ -30,17 +28,28 @@ const (
 	AccessTokenCookieName  = "access_token"
 	RefreshTokenCookieName = "refresh_token"
 
-	// Extended token durations for better UX
-	AccessMaxAge  = 3600 * 24      // 24 hours (1 day)
-	RefreshMaxAge = 3600 * 24 * 30 // 30 days
+	// Access token is always short-lived regardless of rememberMe.
+	// It gets silently refreshed by the refresh token — no need to extend it.
+	AccessMaxAge = 3600 * 24 // 24 hours
 
-	// Absolute session timeout (30 days max, regardless of activity)
+	// ✅ FIX: Two distinct refresh token lifetimes.
+	//
+	// ShortSessionMaxAge = 0
+	//   Passing 0 to Gin's SetCookie omits the Max-Age attribute entirely,
+	//   which makes the cookie a SESSION cookie — the browser discards it
+	//   when the window/tab is closed. This is the secure default.
+	//
+	// PersistentSessionMaxAge = 30 days
+	//   Cookie survives browser restarts. Used when rememberMe=true.
+	ShortSessionMaxAge      = 0            // session cookie — expires on browser close
+	PersistentSessionMaxAge = 3600 * 24 * 30 // 30 days
+
+	// Hard ceiling: even a "remember me" session cannot exceed 30 days
 	AbsoluteSessionTimeout = 3600 * 24 * 30
 
 	ResetTokenExpiry = 15 * time.Minute
 )
 
-// getCookieDomain returns the domain for cookies based on environment
 func getCookieDomain() string {
 	domain := os.Getenv("COOKIE_DOMAIN")
 	if domain == "" || domain == "localhost" {
@@ -49,10 +58,8 @@ func getCookieDomain() string {
 	return domain
 }
 
-// getCookieSameSite returns the SameSite policy for cookies
 func getCookieSameSite() http.SameSite {
-	sameSite := os.Getenv("COOKIE_SAMESITE")
-	switch sameSite {
+	switch os.Getenv("COOKIE_SAMESITE") {
 	case "strict":
 		return http.SameSiteStrictMode
 	case "none":
@@ -60,22 +67,48 @@ func getCookieSameSite() http.SameSite {
 	case "lax":
 		return http.SameSiteLaxMode
 	default:
-		return http.SameSiteLaxMode // Safe default
+		return http.SameSiteLaxMode
 	}
 }
 
-// ✅ ENHANCED: setAuthCookies now also generates CSRF token on login
-func setAuthCookies(c *gin.Context, accessToken, refreshToken string) {
+// setAuthCookies writes the access + refresh token cookies and generates a CSRF token.
+//
+// ✅ FIX: Now accepts rememberMe bool.
+//
+// Cookie lifetime strategy:
+//
+//   rememberMe=false → refresh cookie has NO Max-Age (session cookie).
+//     The browser deletes it when closed. This is the secure default —
+//     the user must log in again after closing the browser.
+//
+//   rememberMe=true  → refresh cookie has Max-Age=30 days.
+//     Survives browser restarts. The backend refresh token TTL is also
+//     set to 30 days (controlled in auth_service.go) so both sides match.
+//
+// The access token cookie is always 24h — it is refreshed silently by the
+// refresh flow and does not need to be extended for "remember me" sessions.
+func setAuthCookies(c *gin.Context, accessToken, refreshToken string, rememberMe bool) {
 	domain := getCookieDomain()
 	secure := os.Getenv("COOKIE_SECURE") == "true"
 	sameSite := getCookieSameSite()
 
-	// SameSite=None requires Secure=true
+	// SameSite=None requires Secure=true (browser enforced)
 	if sameSite == http.SameSiteNoneMode {
 		secure = true
 	}
 
-	// Set Access Token Cookie (HttpOnly)
+	// ✅ FIX: Select refresh token cookie lifetime based on rememberMe
+	refreshMaxAge := ShortSessionMaxAge
+	if rememberMe {
+		refreshMaxAge = PersistentSessionMaxAge
+	}
+
+	log.Debug().
+		Bool("rememberMe", rememberMe).
+		Int("refreshMaxAgeSecs", refreshMaxAge).
+		Msg("Auth: Setting auth cookies")
+
+	// Access token — always 24h regardless of rememberMe
 	c.SetSameSite(sameSite)
 	c.SetCookie(
 		AccessTokenCookieName,
@@ -87,24 +120,28 @@ func setAuthCookies(c *gin.Context, accessToken, refreshToken string) {
 		true, // httpOnly
 	)
 
-	// Set Refresh Token Cookie (HttpOnly)
+	// Refresh token — lifetime depends on rememberMe
 	c.SetSameSite(sameSite)
 	c.SetCookie(
 		RefreshTokenCookieName,
 		refreshToken,
-		RefreshMaxAge,
+		refreshMaxAge, // ✅ 0 = session cookie, 2592000 = 30 days
 		"/",
 		domain,
 		secure,
 		true, // httpOnly
 	)
 
-	// ✅ NEW: Generate CSRF token for authenticated session
-	// This protects all subsequent state-changing requests
+	// ✅ Write the remember_me companion cookie so RefreshToken can
+	// preserve the original session preference across token rotations.
+	// Lifetime matches the refresh token exactly.
+	setRememberMeCookie(c, rememberMe, refreshMaxAge)
+
+	// Generate CSRF token for the newly authenticated session
 	csrfToken, err := middleware.GenerateAndSetCSRFToken(c)
 	if err != nil {
 		log.Error().Err(err).Msg("Auth: Failed to generate CSRF token")
-		// Don't fail login if CSRF generation fails, just log it
+		// Don't fail the login — CSRF token is defence-in-depth, not a blocker
 	} else {
 		log.Debug().
 			Str("csrf_preview", csrfToken[:8]+"...").
@@ -112,7 +149,7 @@ func setAuthCookies(c *gin.Context, accessToken, refreshToken string) {
 	}
 }
 
-// clearAuthCookies removes authentication cookies
+// clearAuthCookies removes all authentication and CSRF cookies on logout
 func clearAuthCookies(c *gin.Context) {
 	domain := getCookieDomain()
 	sameSite := getCookieSameSite()
@@ -123,9 +160,11 @@ func clearAuthCookies(c *gin.Context) {
 	c.SetSameSite(sameSite)
 	c.SetCookie(RefreshTokenCookieName, "", -1, "/", domain, false, true)
 
-	// ✅ NEW: Also clear CSRF token on logout
 	c.SetSameSite(sameSite)
 	c.SetCookie(middleware.CSRFTokenCookieName, "", -1, "/", domain, false, false)
 
-	log.Debug().Msg("Auth: All cookies cleared (auth + CSRF)")
+	c.SetSameSite(sameSite)
+	c.SetCookie(RememberMeCookieName, "", -1, "/", domain, false, false)
+
+	log.Debug().Msg("Auth: All cookies cleared (auth + CSRF + remember_me)")
 }

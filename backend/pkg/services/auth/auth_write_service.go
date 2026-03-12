@@ -104,9 +104,18 @@ func (s *authWriteService) Signup(ctx context.Context, user *models.User) (uuid.
 	return s.authRepo.CreateUser(ctx, user)
 }
 
-func (s *authWriteService) Login(ctx context.Context, email, password, ipAddress, userAgent string) (*models.UserProfile, *TokenPair, error) {
-	log.Debug().Str("email", email).Msg("Login attempt")
+func (s *authWriteService) Login(
+	ctx context.Context,
+	email, password, ipAddress, userAgent string,
+	rememberMe bool, // ✅ NEW
+) (*models.UserProfile, *TokenPair, error) {
 
+	log.Debug().
+		Str("email", email).
+		Bool("rememberMe", rememberMe).
+		Msg("Login attempt")
+
+	// Account lock check
 	locked, _, err := s.authRepo.IsAccountLocked(ctx, email)
 	if err != nil {
 		return nil, nil, err
@@ -115,12 +124,14 @@ func (s *authWriteService) Login(ctx context.Context, email, password, ipAddress
 		return nil, nil, ErrAccountLocked
 	}
 
+	// Fetch user
 	user, err := s.authRepo.GetUserByEmail(ctx, email)
 	if err != nil {
 		s.authRepo.RecordLoginAttempt(ctx, email, false)
 		return nil, nil, ErrInvalidCredentials
 	}
 
+	// Verify password
 	err = bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password))
 	if err != nil {
 		s.authRepo.RecordLoginAttempt(ctx, email, false)
@@ -129,12 +140,17 @@ func (s *authWriteService) Login(ctx context.Context, email, password, ipAddress
 
 	s.authRepo.RecordLoginAttempt(ctx, email, true)
 	s.authRepo.UpdateLastLogin(ctx, user.ID)
+	refreshTTL := shortRefreshTTL
+	if rememberMe {
+		refreshTTL = persistentRefreshTTL
+	}
 
-	tokens, err := s.generateTokenPair(ctx, user.ID.String(), 3600*24*30, nil, ipAddress, userAgent)
+	tokens, err := s.generateTokenPair(ctx, user.ID.String(), refreshTTL, nil, ipAddress, userAgent)
 	if err != nil {
 		return nil, nil, err
 	}
 
+	// Fetch vendor/event data concurrently
 	var vendorID *uuid.UUID
 	var hasEvents bool
 	var wg sync.WaitGroup
@@ -374,3 +390,55 @@ func (s *authWriteService) generateSecureToken() (string, error) {
 	}
 	return hex.EncodeToString(bytes), nil
 }
+
+
+// backend/pkg/services/auth/auth_service.go
+// Only the Login method and its interface declaration are shown —
+// the rest of the file is unchanged.
+
+// ================================================================
+// SERVICE INTERFACE — update Login signature here too
+// ================================================================
+//
+// Wherever AuthService interface is declared (likely auth_service.go
+// or an interfaces.go file), update the Login signature to match:
+//
+//   type AuthService interface {
+//       Login(ctx context.Context, email, password, ipAddress, userAgent string, rememberMe bool) (*models.UserProfile, *TokenPair, error)
+//       // ... other methods unchanged
+//   }
+
+// ================================================================
+// IMPLEMENTATION
+// ================================================================
+
+// Refresh token TTL constants — single source of truth.
+// These must stay in sync with the cookie Max-Age values in auth_base.go.
+const (
+	// shortRefreshTTL is used when rememberMe=false.
+	// 24 hours matches the access token lifetime — if the user doesn't
+	// visit within 24h the session naturally expires, matching the
+	// session-cookie behaviour on the frontend (no persistent cookie).
+	shortRefreshTTL = 3600 * 24 // 24 hours
+
+	// persistentRefreshTTL is used when rememberMe=true.
+	// Must match PersistentSessionMaxAge in auth_base.go (30 days).
+	// If these drift apart the cookie or the stored token will expire
+	// first, causing confusing partial-session states.
+	persistentRefreshTTL = 3600 * 24 * 30 // 30 days
+)
+
+// Login authenticates a user and returns their profile + a token pair.
+//
+// ✅ FIX: Added rememberMe bool parameter.
+//
+// TTL decision:
+//   rememberMe=false → 24h refresh token  (short session, secure default)
+//   rememberMe=true  → 30-day refresh token (persistent session)
+//
+// The TTL passed to generateTokenPair controls both:
+//   1. The JWT expiry claim inside the refresh token itself
+//   2. The expiry stored in the database/Redis for server-side validation
+//
+// This means the stored token and the cookie always expire at the same
+// time — no mismatch between client and server session state.

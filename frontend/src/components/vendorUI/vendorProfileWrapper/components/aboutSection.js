@@ -6,7 +6,10 @@ const AboutSection = ({ vendor }) => {
   // Mapping flat JSON fields
   const businessName = vendor?.name || "the Vendor";
   const description = vendor?.description;
-  const category = vendor?.category?.replace(/_/g, " ") || "vendor";
+  // toLowerCase ensures DOM text is consistent and accessible;
+  // CSS `capitalize` on the parent handles the visual title-casing.
+  const category =
+    vendor?.category?.replace(/_/g, " ").toLowerCase() || "vendor";
   const state = vendor?.state || "their local area";
 
   const serviceHighlights = [

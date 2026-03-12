@@ -75,7 +75,8 @@ export function useLockFields(tickets = [], eventStatus = {}) {
 export function isTicketLocked(ticket) {
   if (!ticket) return false;
 
-  const isExisting = ticket.id && !ticket.id.toString().startsWith("temp-");
+  if (!ticket.id) return false;
+  const isExisting = !ticket.id.toString().startsWith("temp-");
   const hasSales = (ticket.soldCount || 0) > 0;
 
   return isExisting && hasSales;

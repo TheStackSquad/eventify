@@ -18,59 +18,56 @@ const (
 )
 
 type User struct {
-	ID               uuid.UUID    `json:"id" db:"id"`
-	Name             string       `json:"name" db:"name" binding:"required"`
-	Email            string       `json:"email" db:"email" binding:"required,email"`
-	Password         string       `json:"password,omitempty" binding:"required,min=6"`
-	PasswordHash     string       `json:"-" db:"password_hash"`
-	Role             Role         `json:"role" db:"role"`
-	ResetToken       sql.NullString `json:"-" db:"reset_token"`
-	ResetTokenExpiry sql.NullTime `json:"-" db:"reset_token_expiry"`
-	LastLogin        sql.NullTime `json:"-" db:"last_login"`
-	AllowReminderEmails  bool           `json:"allowReminderEmails" db:"allow_reminder_emails"`
-	CreatedAt        time.Time    `json:"created_at" db:"created_at"`
-	UpdatedAt        time.Time    `json:"updated_at" db:"updated_at"`
+	ID                  uuid.UUID      `json:"id" db:"id"`
+	Name                string         `json:"name" db:"name" binding:"required"`
+	Email               string         `json:"email" db:"email" binding:"required,email"`
+	Password            string         `json:"password,omitempty" binding:"required,min=6"`
+	PasswordHash        string         `json:"-" db:"password_hash"`
+	Role                Role           `json:"role" db:"role"`
+	ResetToken          sql.NullString `json:"-" db:"reset_token"`
+	ResetTokenExpiry    sql.NullTime   `json:"-" db:"reset_token_expiry"`
+	LastLogin           sql.NullTime   `json:"-" db:"last_login"`
+	AllowReminderEmails bool           `json:"allowReminderEmails" db:"allow_reminder_emails"`
+	CreatedAt           time.Time      `json:"created_at" db:"created_at"`
+	UpdatedAt           time.Time      `json:"updated_at" db:"updated_at"`
 }
 
-// backend/pkg/models/user.go
-
 type UserProfile struct {
-    ID        uuid.UUID      `json:"id"`
-    Name      string         `json:"name"`
-    Email     string         `json:"email"`
-    Role      Role           `json:"role"`
-    IsVendor  bool           `json:"isVendor"`
-    VendorID  *uuid.UUID     `json:"vendorId,omitempty"`
-    HasEvents bool           `json:"hasEvents"`
+	ID        uuid.UUID  `json:"id"`
+	Name      string     `json:"name"`
+	Email     string     `json:"email"`
+	Role      Role       `json:"role"`
+	IsVendor  bool       `json:"isVendor"`
+	VendorID  *uuid.UUID `json:"vendorId,omitempty"`
+	HasEvents bool       `json:"hasEvents"`
 }
 
 func (u *User) ToUserProfile(vendorID *uuid.UUID, hasEvents bool) *UserProfile {
-    if u == nil {
-        return nil
-    }
+	if u == nil {
+		return nil
+	}
 
-    // Determine if user is a vendor based on:
-    // 1. Having an active vendor account (vendorID != nil)
-    // 2. Role is explicitly "vendor"
-    // 3. Role is "admin"
-    isVendorFlag := vendorID != nil || u.Role == RoleVendor || u.Role == RoleAdmin
-    
-    hasEventsFlag := hasEvents || u.Role == RoleAdmin
+	isVendorFlag := vendorID != nil || u.Role == RoleVendor || u.Role == RoleAdmin
+	hasEventsFlag := hasEvents || u.Role == RoleAdmin
 
-    return &UserProfile{
-        ID:        u.ID,
-        Name:      u.Name,
-        Email:     u.Email,
-        Role:      u.Role,
-        IsVendor:  isVendorFlag,
-        VendorID:  vendorID,
-        HasEvents: hasEventsFlag,
-    }
+	return &UserProfile{
+		ID:        u.ID,
+		Name:      u.Name,
+		Email:     u.Email,
+		Role:      u.Role,
+		IsVendor:  isVendorFlag,
+		VendorID:  vendorID,
+		HasEvents: hasEventsFlag,
+	}
 }
 
+// ✅ FIX: Added RememberMe field.
+// No binding tag — defaults to false if the frontend omits it,
+// which is the safe/short-session default.
 type LoginRequest struct {
-	Email    string `json:"email" binding:"required,email"`
-	Password string `json:"password" binding:"required"`
+	Email      string `json:"email"      binding:"required,email"`
+	Password   string `json:"password"   binding:"required"`
+	RememberMe bool   `json:"rememberMe"`
 }
 
 type AuthResponse struct {
@@ -84,8 +81,8 @@ type ForgotPasswordRequest struct {
 }
 
 type ResetPasswordRequest struct {
-	Token       string `json:"token" binding:"required"`
-	NewPassword string `json:"newPassword" binding:"required,min=6"`
+	Token       string `json:"token"        binding:"required"`
+	NewPassword string `json:"newPassword"  binding:"required,min=6"`
 }
 
 type PasswordResetResponse struct {

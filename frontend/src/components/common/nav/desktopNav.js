@@ -1,4 +1,4 @@
-// src/components/common/nav/desktopNav.jsx
+// src/components/common/nav/desktopNav.js
 "use client";
 
 import { motion, AnimatePresence } from "framer-motion";

@@ -364,15 +364,18 @@ export default function Header() {
   }, [menuOpen, closeMobileFeatures, closeMobileBenefit]);
 
   const handleMenuToggle = () => {
-    const newMenuOpen = !menuOpen;
-    setMenuOpen(newMenuOpen);
+    setMenuOpen((prev) => {
+      const next = !prev;
 
-    if (!newMenuOpen) {
-      closeMobileFeatures();
-      closeMobileBenefit();
-      closeFeatures();
-      closeBenefit();
-    }
+      if (!next) {
+        closeMobileFeatures();
+        closeMobileBenefit();
+        closeFeatures();
+        closeBenefit();
+      }
+
+      return next;
+    });
   };
 
   const handleProfileClick = () => {

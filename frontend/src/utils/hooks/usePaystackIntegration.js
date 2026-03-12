@@ -6,29 +6,15 @@ import { useCart } from "@/context/cartContext";
 import toastAlert from "@/components/common/toast/toastAlert";
 import backendInstance, { ENDPOINTS } from "@/axiosConfig/axios";
 
-// ============================================================================
-// PAYSTACK INTEGRATION HOOK
-// ============================================================================
-
-/**
- * Custom hook for Paystack payment flow with backend-driven initialization
- *
- * Flow Summary:
- * 1. User clicks "Pay Now" → validate cart and email
- * 2. Send cart data to backend `/orders/initialize`
- * 3. Backend: creates order, reserves stock, generates Paystack session
- * 4. Receive authorization_url from backend response
- * 5. Redirect user to Paystack's hosted payment page
- * 6. Paystack processes payment and redirects to callback URL
- *
- * Post-payment flow:
- * - Paystack redirects to: `/checkout/confirmation?reference=...&trxref=...`
- * - Frontend verifies payment via: `POST /orders/verify/:reference`
- * - Backend: confirms payment, finalizes order, generates tickets
- * - User sees confirmation page with downloadable tickets
- */
-
-export function usePaystackIntegration({ email, metadata }) {
+export function usePaystackIntegration({
+  email,
+  metadata,
+  // ✅ navigate is injectable for testability. Production callers omit it;
+  // the default is identical to the original window.location.href assignment.
+  navigate = (url) => {
+    window.location.href = url;
+  },
+}) {
   const cart = useCart();
 
   const items = useMemo(() => {
@@ -38,15 +24,12 @@ export function usePaystackIntegration({ email, metadata }) {
   const [isLoading, setIsLoading] = useState(false);
   const initRequestControllerRef = useRef(null);
 
-
   const isValidEmail = (email) => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
     return emailRegex.test(email?.trim() || "");
   };
 
-
   const handlePayment = useCallback(async () => {
-    // Input validation
     if (!isValidEmail(email)) {
       toastAlert.error("Please provide a valid email address.");
       return;
@@ -58,13 +41,11 @@ export function usePaystackIntegration({ email, metadata }) {
 
     setIsLoading(true);
 
-    // Cancel any pending initialization request
     initRequestControllerRef.current?.abort();
     const controller = new AbortController();
     initRequestControllerRef.current = controller;
 
     try {
-      // Prepare order payload
       const payload = {
         email: email.trim(),
         firstName: String(metadata?.customer_info?.firstName || "").trim(),
@@ -77,29 +58,25 @@ export function usePaystackIntegration({ email, metadata }) {
         })),
       };
 
-      // Initialize order and get Paystack session URL
       const response = await backendInstance.post(
         ENDPOINTS.ORDERS.INITIALIZE,
         payload,
         {
           signal: controller.signal,
-          timeout: 30000, // 30 second timeout
+          timeout: 30000,
         },
       );
 
       const result = response.data;
 
-      // Validate response and redirect to Paystack
       if (result.status === "success" && result.data?.authorization_url) {
         console.log("Order initialized. Redirecting to Paystack...");
 
-        // Attempt redirect with fallback for popup blockers
         try {
-          window.location.href = result.data.authorization_url;
+          navigate(result.data.authorization_url);
         } catch (redirectError) {
           console.error("Redirect failed:", redirectError);
           toastAlert.error("Please allow pop-ups to continue to payment.");
-          // Fallback: Open in new tab
           const link = document.createElement("a");
           link.href = result.data.authorization_url;
           link.target = "_blank";
@@ -111,11 +88,14 @@ export function usePaystackIntegration({ email, metadata }) {
         );
       }
     } catch (error) {
-      // Handle request cancellation silently
       if (backendInstance.isCancel(error)) return;
 
-      // Handle network timeout
-      if (error.code === "ECONNABORTED" || error.message.includes("timeout")) {
+      // ✅ FIX: error.message can be undefined for Axios HTTP errors (4xx/5xx)
+      // that arrive as response errors rather than network-level errors.
+      // Without optional chaining, any non-network error crashes the handler
+      // before reaching the switch statement — the toast never fires and
+      // isLoading is never reset, permanently disabling the Pay button.
+      if (error.code === "ECONNABORTED" || error.message?.includes("timeout")) {
         toastAlert.error("Payment initialization timed out. Please try again.");
         setIsLoading(false);
         return;
@@ -123,7 +103,6 @@ export function usePaystackIntegration({ email, metadata }) {
 
       const serverMessage = error.response?.data?.message;
 
-      // Handle specific error cases
       switch (error.response?.status) {
         case 409:
           toastAlert.error(
@@ -145,9 +124,8 @@ export function usePaystackIntegration({ email, metadata }) {
 
       setIsLoading(false);
     }
-  }, [email, items, metadata]);
+  }, [email, items, metadata, navigate]);
 
-  // Cleanup: Cancel any pending requests on unmount
   useEffect(() => {
     return () => {
       initRequestControllerRef.current?.abort();

@@ -33,7 +33,7 @@ type AuthService interface {
 	ParseAccessToken(ctx context.Context, token string) (*servicejwt.Claims, error)
 
 	// Write Operations
-	Login(ctx context.Context, email, password, ipAddress, userAgent string) (*models.UserProfile, *TokenPair, error)
+	Login(ctx context.Context, email, password, ipAddress, userAgent string, rememberMe bool) (*models.UserProfile, *TokenPair, error)
 	Signup(ctx context.Context, user *models.User) (uuid.UUID, error)
 	
 	//FIXED: Updated signature to return userID for enriched session verification

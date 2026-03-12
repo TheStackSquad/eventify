@@ -28,6 +28,7 @@ cookies.txt
 # === Test & Coverage ===
 coverage/
 __tests__/
+__fixtures__/
 __mocks__/
 .jest/
 *.test.js

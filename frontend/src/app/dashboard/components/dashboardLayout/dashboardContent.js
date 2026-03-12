@@ -105,26 +105,22 @@ export default function DashboardPageContainer() {
   // ================================================================
 
   // 1. Loading State - Before initialization
-  if (!isInitialized || activeView === null) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-center">
-          <div className="relative w-16 h-16 mx-auto mb-4">
-            <div className="absolute inset-0 border-4 border-indigo-200 rounded-full"></div>
-            <div className="absolute inset-0 border-4 border-t-indigo-600 rounded-full animate-spin"></div>
+    if (!isInitialized) {
+      return (
+        <div className="min-h-screen flex items-center justify-center bg-gray-50">
+          <div className="text-center">
+            <div className="relative w-16 h-16 mx-auto mb-4">
+              <div className="absolute inset-0 border-4 border-indigo-200 rounded-full"></div>
+              <div className="absolute inset-0 border-4 border-t-indigo-600 rounded-full animate-spin"></div>
+            </div>
+            <h3 className="text-lg font-semibold text-gray-900 mb-1">
+              Loading Dashboard
+            </h3>
+            <p className="text-sm text-gray-500">Verifying session...</p>
           </div>
-          <h3 className="text-lg font-semibold text-gray-900 mb-1">
-            Loading Dashboard
-          </h3>
-          <p className="text-sm text-gray-500">
-            {!isInitialized
-              ? "Verifying session..."
-              : "Preparing your workspace..."}
-          </p>
         </div>
-      </div>
-    );
-  }
+      );
+    }
 
   // 2. Unauthenticated State - Redirect to login
   if (!isAuthenticated || !user) {
@@ -135,6 +131,22 @@ export default function DashboardPageContainer() {
     return null;
   }
 
+    if (activeView === null) {
+      return (
+        <div className="min-h-screen flex items-center justify-center bg-gray-50">
+          <div className="text-center">
+            <div className="relative w-16 h-16 mx-auto mb-4">
+              <div className="absolute inset-0 border-4 border-indigo-200 rounded-full"></div>
+              <div className="absolute inset-0 border-4 border-t-indigo-600 rounded-full animate-spin"></div>
+            </div>
+            <h3 className="text-lg font-semibold text-gray-900 mb-1">
+              Loading Dashboard
+            </h3>
+            <p className="text-sm text-gray-500">Preparing your workspace...</p>
+          </div>
+        </div>
+      );
+    }
   // ================================================================
   // MAIN RENDER
   // ================================================================

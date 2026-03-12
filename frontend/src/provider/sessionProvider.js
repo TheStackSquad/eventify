@@ -1,4 +1,4 @@
-// frontend/src/provider/sessionProvider.js
+//frontend/src/provider/sessionProvider.js
 
 "use client";
 
@@ -10,30 +10,11 @@ import React, {
   useMemo,
 } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { verifySessionApi } from "@/services/authAPI";
-import { refreshTokenApi } from "@/services/authAPI";
+import { verifySessionApi, refreshTokenApi } from "@/services/authAPI";
 import {
   initializeTokenRefresh,
   clearRefreshTimer,
 } from "@/axiosConfig/tokenService";
-
-const IS_DEV = process.env.NODE_ENV === "development";
-
-const debugLog = (category, message, data = {}) => {
-  if (!IS_DEV) return;
-  const emoji = {
-    INIT: "🚀",
-    SESSION: "🔐",
-    REFRESH: "🔄",
-    SUCCESS: "✅",
-    ERROR: "❌",
-    CLEANUP: "🧹",
-  };
-  console.log(
-    `${emoji[category] || "📋"} [SessionProvider:${category}] ${message}`,
-    Object.keys(data).length ? data : "",
-  );
-};
 
 export const AuthContext = createContext(null);
 
@@ -44,155 +25,99 @@ export default function SessionProvider({ children }) {
 
   const queryClient = useQueryClient();
 
-  // ================================================================
-  // ✅ REFACTORED: SESSION VERIFICATION WITH REFRESH RETRY
-  // ================================================================
   const {
     data: sessionData,
-    isLoading,
-    isFetched,
-    error: sessionError,
+    isFetched, // one-way door: false → true, never back — reliable for initialization
+    isFetching, // oscillates: true during any network activity — used for loading UX
     refetch: refetchSession,
   } = useQuery({
     queryKey: ["session"],
     queryFn: async () => {
-      debugLog("SESSION", "Verifying session with backend...");
-
       try {
-        // Attempt 1: Verify existing session
-        const userData = await verifySessionApi();
-        debugLog("SUCCESS", "Session valid", { email: userData.email });
-        return userData;
+        return await verifySessionApi();
       } catch (error) {
         const status = error.response?.status;
-
-        // ✅ FIX: On 401, attempt token refresh before giving up
         if (status === 401) {
-          debugLog("REFRESH", "Session expired, attempting token refresh...");
-
           try {
-            // Attempt 2: Refresh the token
             await refreshTokenApi();
-            debugLog("SUCCESS", "Token refreshed, re-verifying session");
-
-            // Attempt 3: Verify session again with new token
-            const userData = await verifySessionApi();
-            debugLog("SUCCESS", "Session restored after refresh", {
-              email: userData.email,
-            });
-            return userData;
+            return await verifySessionApi();
           } catch (refreshError) {
-            const refreshStatus = refreshError.response?.status;
-
-            debugLog("ERROR", "Refresh failed", {
-              status: refreshStatus,
-              code: refreshError.response?.data?.code,
-            });
-
-            // Both access token AND refresh token are invalid
-            // User needs to re-authenticate
-            return null;
+            const rStatus = refreshError.response?.status;
+            if (rStatus === 401 || rStatus === 403) return null;
+            throw refreshError; // 5xx on re-verify → throw to TanStack for retry
           }
         }
-
-        // For 403 or other errors, don't retry
-        if (status === 403) {
-          debugLog("ERROR", "Access forbidden");
-          return null;
-        }
-
-        // Network errors or 5xx - throw to trigger retry
-        throw error;
+        if (status === 403) return null;
+        throw error; // network/5xx → throw to TanStack for retry
       }
     },
-    enabled: true,
     retry: (failureCount, error) => {
-      // Don't retry on auth failures (handled in queryFn)
-      if (error?.response?.status === 401 || error?.response?.status === 403) {
-        return false;
-      }
-      // Retry network errors up to 2 times
-      return failureCount < 2;
+      const status = error?.response?.status;
+      if (status === 401 || status === 403) return false; // definitive auth failures
+      return failureCount < 2; // retry network/5xx up to 2x
     },
-    staleTime: 5 * 60 * 1000, // 5 minutes
-    refetchOnWindowFocus: true,
-    refetchOnMount: true,
+    staleTime: 5 * 60 * 1000,
   });
 
-  // ================================================================
-  // SYNC SERVER STATE TO LOCAL STATE
-  // ================================================================
+  // INITIALIZATION — uses isFetched, not isLoading.
+  //
+  // isFetched is a one-way door (false → true, never resets). It becomes true
+  // once the first fetch attempt completes — whether success, null, or error
+  // with all retries exhausted. This is reliable in all scenarios:
+  //
+  //   ✓ Clean success:       isFetched → true immediately after resolve
+  //   ✓ Retries (5xx):       isFetched → true ONLY after all retries are done
+  //   ✓ Background refetch:  isFetched stays true — isInitialized never resets
+  //
+  // isLoading (isPending && isFetching) was unreliable because TanStack's
+  // retry delay (~1000ms) meant isLoading flipped false then true again
+  // mid-retry, causing isInitialized to fire prematurely.
   useEffect(() => {
-    if (!isFetched) return;
-
-    if (sessionData) {
-      debugLog("SUCCESS", "User authenticated", {
-        email: sessionData.email,
-        isVendor: sessionData.isVendor,
-        hasEvents: sessionData.hasEvents,
-      });
-
-      setUserState(sessionData);
-      setIsAuthenticated(true);
-
-      // Session confirmed - start proactive refresh scheduler
-      initializeTokenRefresh();
-    } else {
-      debugLog("SESSION", "No active session");
-      setUserState(null);
-      setIsAuthenticated(false);
-      clearRefreshTimer();
+    if (isFetched) {
+      setIsInitialized(true);
     }
+  }, [isFetched]);
 
-    setIsInitialized(true);
-  }, [sessionData, isFetched]);
+  // SESSION SYNC — mirrors server state into local React state.
+  // Runs every time the query returns new data (initial load, refetch, rotation).
+  useEffect(() => {
+    if (sessionData !== undefined) {
+      setUserState(sessionData);
+      setIsAuthenticated(!!sessionData);
+      if (sessionData) initializeTokenRefresh();
+      else clearRefreshTimer();
+    }
+  }, [sessionData]);
 
-  // ================================================================
-  // REFRESH EVENT LISTENER
-  // ================================================================
+  // TOKEN ROTATION LISTENER — re-verifies session when interceptor rotates tokens.
   useEffect(() => {
     const handleTokenRefresh = () => {
-      debugLog("REFRESH", "Token rotated, invalidating session cache");
       queryClient.invalidateQueries({ queryKey: ["session"] });
     };
-
     window.addEventListener("tokenRefreshed", handleTokenRefresh);
-
     return () => {
       window.removeEventListener("tokenRefreshed", handleTokenRefresh);
       clearRefreshTimer();
-      debugLog("CLEANUP", "SessionProvider unmounted");
     };
   }, [queryClient]);
 
-  // ================================================================
-  // EXPOSED METHODS
-  // ================================================================
   const setUser = useCallback(
     (userData) => {
-      debugLog("SESSION", "Manual user state update", {
-        action: userData ? "login" : "logout",
-      });
-
       setUserState(userData);
       setIsAuthenticated(!!userData);
       queryClient.setQueryData(["session"], userData);
-
-      if (userData) {
-        initializeTokenRefresh();
-      } else {
-        clearRefreshTimer();
-      }
+      queryClient.invalidateQueries({ queryKey: ["session"] }); // mark stale → re-verify on next focus
+      if (userData) initializeTokenRefresh();
+      else clearRefreshTimer();
     },
     [queryClient],
   );
 
   const clearAuth = useCallback(() => {
-    debugLog("CLEANUP", "Clearing auth state");
-
     setUserState(null);
     setIsAuthenticated(false);
     queryClient.setQueryData(["session"], null);
+    queryClient.invalidateQueries({ queryKey: ["session"] }); // New Gap A fix: mark stale → re-verify on next focus
     clearRefreshTimer();
   }, [queryClient]);
 
@@ -201,7 +126,9 @@ export default function SessionProvider({ children }) {
       user,
       isAuthenticated,
       isInitialized,
-      loading: !isInitialized || (isInitialized && isLoading),
+      // loading = true during initial boot OR any background refetch (token rotation, focus refetch).
+      // Consumers use this to render spinners and disable actions during uncertain session state.
+      loading: !isInitialized || isFetching,
       setUser,
       clearAuth,
       refetchSession,
@@ -210,25 +137,12 @@ export default function SessionProvider({ children }) {
       user,
       isAuthenticated,
       isInitialized,
-      isLoading,
+      isFetching,
       setUser,
       clearAuth,
       refetchSession,
     ],
   );
-
-  // ================================================================
-  // DEBUG: Log state changes in development
-  // ================================================================
-  useEffect(() => {
-    if (IS_DEV && isInitialized) {
-      debugLog("SESSION", "State snapshot", {
-        isAuthenticated,
-        hasUser: !!user,
-        userEmail: user?.email,
-      });
-    }
-  }, [isAuthenticated, user, isInitialized]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

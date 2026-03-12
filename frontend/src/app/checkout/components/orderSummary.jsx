@@ -1,3 +1,4 @@
+//frontend/src/app/checkout/components/orderSummary.js
 "use client";
 
 import { memo } from "react";
