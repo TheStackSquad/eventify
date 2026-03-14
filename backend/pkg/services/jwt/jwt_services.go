@@ -28,6 +28,7 @@ type JWTService struct {
 	initErr            error
 	accessTokenExpiry  time.Duration
 	refreshTokenExpiry time.Duration
+	Clock              func() time.Time // injectable for tests; defaults to time.Now
 }
 
 func NewJWTService() *JWTService {
@@ -44,6 +45,7 @@ func NewJWTService() *JWTService {
 	return &JWTService{
 		accessTokenExpiry:  time.Duration(accessMin) * time.Minute,
 		refreshTokenExpiry: time.Duration(refreshDays) * 24 * time.Hour,
+		Clock:              time.Now,
 	}
 }
 
@@ -74,21 +76,27 @@ func (s *JWTService) Initialize() error {
 	return s.initErr
 }
 
-// GenerateAccessToken creates access token with unique JTI
+// GenerateAccessToken creates a signed access token for the given userID.
+// The token includes a unique JTI, an audience claim scoped to this service,
+// and a not-before claim set to the current clock time.
 func (s *JWTService) GenerateAccessToken(userID string) (string, error) {
 	if err := s.Initialize(); err != nil {
 		return "", err
 	}
 
+	now := s.Clock()
+
 	claims := &Claims{
 		UserID:    userID,
 		TokenType: "access",
 		RegisteredClaims: jwt.RegisteredClaims{
-			ID:        uuid.NewString(), // Ensures unique tokens
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(s.accessTokenExpiry)),
-			IssuedAt:  jwt.NewNumericDate(time.Now()),
+			ID:        uuid.NewString(),
+			ExpiresAt: jwt.NewNumericDate(now.Add(s.accessTokenExpiry)),
+			IssuedAt:  jwt.NewNumericDate(now),
+			NotBefore: jwt.NewNumericDate(now),
 			Issuer:    "eventify-api",
 			Subject:   userID,
+			Audience:  jwt.ClaimStrings{"eventify-api"},
 		},
 	}
 
@@ -96,28 +104,33 @@ func (s *JWTService) GenerateAccessToken(userID string) (string, error) {
 	return token.SignedString(s.privateKey)
 }
 
-// GenerateRefreshToken creates refresh token with unique JTI
+// GenerateRefreshToken creates a signed refresh token for the given userID.
+// The token includes a unique JTI, an audience claim scoped to this service,
+// and a not-before claim set to the current clock time.
 func (s *JWTService) GenerateRefreshToken(userID string) (string, error) {
 	if err := s.Initialize(); err != nil {
 		return "", err
 	}
 
+	now := s.Clock()
+
 	claims := &Claims{
 		UserID:    userID,
 		TokenType: "refresh",
 		RegisteredClaims: jwt.RegisteredClaims{
-			ID:        uuid.NewString(), // Ensures unique tokens
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(s.refreshTokenExpiry)),
-			IssuedAt:  jwt.NewNumericDate(time.Now()),
+			ID:        uuid.NewString(),
+			ExpiresAt: jwt.NewNumericDate(now.Add(s.refreshTokenExpiry)),
+			IssuedAt:  jwt.NewNumericDate(now),
+			NotBefore: jwt.NewNumericDate(now),
 			Issuer:    "eventify-api",
 			Subject:   userID,
+			Audience:  jwt.ClaimStrings{"eventify-api"},
 		},
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
 	return token.SignedString(s.privateKey)
 }
-
 func (s *JWTService) ValidateToken(tokenString string) (*Claims, error) {
 	if err := s.Initialize(); err != nil {
 		return nil, err
@@ -128,7 +141,7 @@ func (s *JWTService) ValidateToken(tokenString string) (*Claims, error) {
 			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
 		}
 		return s.publicKey, nil
-	})
+	}, jwt.WithTimeFunc(s.Clock)) // ensures expiry validation uses the same clock as token generation
 
 	if err != nil {
 		return nil, fmt.Errorf("token validation failed: %w", err)
@@ -169,7 +182,7 @@ func (s *JWTService) ValidateRefreshToken(tokenString string) (*Claims, error) {
 }
 
 func (s *JWTService) SetKeysForTesting(priv *rsa.PrivateKey, pub *rsa.PublicKey) {
-    s.privateKey = priv
-    s.publicKey = pub
-    s.once.Do(func() {}) 
+	s.privateKey = priv
+	s.publicKey = pub
+	s.once.Do(func() {})
 }

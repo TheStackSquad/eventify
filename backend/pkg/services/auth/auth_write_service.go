@@ -23,6 +23,8 @@ import (
 const (
 	RotationGracePeriod = 30 * time.Second
 	TokenCacheTTL       = 35 * time.Second
+	shortRefreshTTL = 3600 * 24
+	persistentRefreshTTL = 3600 * 24 * 30
 )
 
 type authWriteService struct {
@@ -72,20 +74,23 @@ func NewAuthService(
 	return service
 }
 
-func (s *authWriteService) cleanupTokenCache() {
-	ticker := time.NewTicker(1 * time.Minute)
-	defer ticker.Stop()
+func (s *authWriteService) evictExpiredCacheEntries() {
+    s.tokenCacheMutex.Lock()
+    defer s.tokenCacheMutex.Unlock()
+    now := time.Now()
+    for key, cached := range s.tokenCache {
+        if now.Sub(cached.CreatedAt) >= TokenCacheTTL {
+            delete(s.tokenCache, key)
+        }
+    }
+}
 
-	for range ticker.C {
-		s.tokenCacheMutex.Lock()
-		now := time.Now()
-		for key, cached := range s.tokenCache {
-			if now.Sub(cached.CreatedAt) > TokenCacheTTL {
-				delete(s.tokenCache, key)
-			}
-		}
-		s.tokenCacheMutex.Unlock()
-	}
+func (s *authWriteService) cleanupTokenCache() {
+    ticker := time.NewTicker(1 * time.Minute)
+    defer ticker.Stop()
+    for range ticker.C {
+        s.evictExpiredCacheEntries()
+    }
 }
 
 func sha256Hash(s string) []byte {
@@ -107,7 +112,7 @@ func (s *authWriteService) Signup(ctx context.Context, user *models.User) (uuid.
 func (s *authWriteService) Login(
 	ctx context.Context,
 	email, password, ipAddress, userAgent string,
-	rememberMe bool, // ✅ NEW
+	rememberMe bool,
 ) (*models.UserProfile, *TokenPair, error) {
 
 	log.Debug().
@@ -140,6 +145,7 @@ func (s *authWriteService) Login(
 
 	s.authRepo.RecordLoginAttempt(ctx, email, true)
 	s.authRepo.UpdateLastLogin(ctx, user.ID)
+
 	refreshTTL := shortRefreshTTL
 	if rememberMe {
 		refreshTTL = persistentRefreshTTL
@@ -213,7 +219,10 @@ func (s *authWriteService) RefreshToken(
 
 	userID := storedToken.UserID
 
-	if time.Since(storedToken.CreatedAt) > absoluteTimeout {
+	// FIX: >= ensures session is rejected at exactly the timeout boundary,
+	// not one nanosecond past it. A session at exactly absoluteTimeout is
+	// expired — allowing it through is a security gap.
+	if time.Since(storedToken.CreatedAt) >= absoluteTimeout {
 		log.Info().Str("user_id", userID.String()).Msg("Session reached absolute timeout")
 		_ = s.refreshTokenRepo.RevokeRefreshToken(ctx, userID, oldTokenStr)
 		return uuid.Nil, nil, ErrSessionExpired
@@ -235,7 +244,11 @@ func (s *authWriteService) RefreshToken(
 	if storedToken.ConsumedAt != nil {
 		timeSinceConsumed := time.Since(*storedToken.ConsumedAt)
 
-		if timeSinceConsumed > RotationGracePeriod {
+		// FIX: >= ensures a token presented at exactly the grace period
+		// boundary is treated as reuse, not a legitimate concurrent request.
+		// With >, a token consumed at exactly t=30s would pass through —
+		// that is the theft detection window and must be closed.
+		if timeSinceConsumed >= RotationGracePeriod {
 			log.Warn().
 				Str("user_id", userID.String()).
 				Msg("Token used after grace period, revoking family")
@@ -390,55 +403,3 @@ func (s *authWriteService) generateSecureToken() (string, error) {
 	}
 	return hex.EncodeToString(bytes), nil
 }
-
-
-// backend/pkg/services/auth/auth_service.go
-// Only the Login method and its interface declaration are shown —
-// the rest of the file is unchanged.
-
-// ================================================================
-// SERVICE INTERFACE — update Login signature here too
-// ================================================================
-//
-// Wherever AuthService interface is declared (likely auth_service.go
-// or an interfaces.go file), update the Login signature to match:
-//
-//   type AuthService interface {
-//       Login(ctx context.Context, email, password, ipAddress, userAgent string, rememberMe bool) (*models.UserProfile, *TokenPair, error)
-//       // ... other methods unchanged
-//   }
-
-// ================================================================
-// IMPLEMENTATION
-// ================================================================
-
-// Refresh token TTL constants — single source of truth.
-// These must stay in sync with the cookie Max-Age values in auth_base.go.
-const (
-	// shortRefreshTTL is used when rememberMe=false.
-	// 24 hours matches the access token lifetime — if the user doesn't
-	// visit within 24h the session naturally expires, matching the
-	// session-cookie behaviour on the frontend (no persistent cookie).
-	shortRefreshTTL = 3600 * 24 // 24 hours
-
-	// persistentRefreshTTL is used when rememberMe=true.
-	// Must match PersistentSessionMaxAge in auth_base.go (30 days).
-	// If these drift apart the cookie or the stored token will expire
-	// first, causing confusing partial-session states.
-	persistentRefreshTTL = 3600 * 24 * 30 // 30 days
-)
-
-// Login authenticates a user and returns their profile + a token pair.
-//
-// ✅ FIX: Added rememberMe bool parameter.
-//
-// TTL decision:
-//   rememberMe=false → 24h refresh token  (short session, secure default)
-//   rememberMe=true  → 30-day refresh token (persistent session)
-//
-// The TTL passed to generateTokenPair controls both:
-//   1. The JWT expiry claim inside the refresh token itself
-//   2. The expiry stored in the database/Redis for server-side validation
-//
-// This means the stored token and the cookie always expire at the same
-// time — no mismatch between client and server session state.

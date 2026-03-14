@@ -39,7 +39,7 @@ func TestLogin_LockedAccount_ReturnsErrAccountLocked(t *testing.T) {
 	authRepo.isLockedResult = true
 	authRepo.isLockedUntil = time.Now().Add(15 * time.Minute)
 
-	_, _, err := svc.Login(context.Background(), "user@example.com", "any-password", "127.0.0.1", "TestAgent/1.0")
+	_, _, err := svc.Login(context.Background(), "user@example.com", "any-password", "127.0.0.1", "TestAgent/1.0", false)
 
 	if !errors.Is(err, ErrAccountLocked) {
 		t.Errorf("locked account: expected ErrAccountLocked, got %v", err)
@@ -54,7 +54,7 @@ func TestLogin_UnknownEmail_ReturnsErrInvalidCredentials(t *testing.T) {
 	authRepo.user = nil
 	authRepo.getUserByEmailErr = errors.New("not found")
 
-	_, _, err := svc.Login(context.Background(), "nobody@example.com", "password", "127.0.0.1", "TestAgent/1.0")
+	_, _, err := svc.Login(context.Background(), "nobody@example.com", "password", "127.0.0.1", "TestAgent/1.0", false)
 
 	if !errors.Is(err, ErrInvalidCredentials) {
 		t.Errorf("unknown email: expected ErrInvalidCredentials, got %v", err)
@@ -69,7 +69,7 @@ func TestLogin_UnknownEmail_RecordsFailedAttempt(t *testing.T) {
 	authRepo.user = nil
 	authRepo.getUserByEmailErr = errors.New("not found")
 
-	svc.Login(context.Background(), "nobody@example.com", "password", "127.0.0.1", "TestAgent/1.0") //nolint:errcheck
+	svc.Login(context.Background(), "nobody@example.com", "password", "127.0.0.1", "TestAgent/1.0", false) //nolint:errcheck
 
 	if !authRepo.recordLoginAttemptCalled {
 		t.Error("failed user lookup must still record a failed login attempt")
@@ -90,7 +90,7 @@ func TestLogin_WrongPassword_ReturnsErrInvalidCredentials(t *testing.T) {
 		PasswordHash: hashPassword(t, "correct-password"),
 	}
 
-	_, _, err := svc.Login(context.Background(), "user@example.com", "wrong-password", "127.0.0.1", "TestAgent/1.0")
+	_, _, err := svc.Login(context.Background(), "user@example.com", "wrong-password", "127.0.0.1", "TestAgent/1.0", false)
 
 	if !errors.Is(err, ErrInvalidCredentials) {
 		t.Errorf("wrong password: expected ErrInvalidCredentials, got %v", err)
@@ -108,7 +108,7 @@ func TestLogin_WrongPassword_RecordsFailedAttempt(t *testing.T) {
 		PasswordHash: hashPassword(t, "correct-password"),
 	}
 
-	svc.Login(context.Background(), "user@example.com", "wrong-password", "127.0.0.1", "TestAgent/1.0") //nolint:errcheck
+	svc.Login(context.Background(), "user@example.com", "wrong-password", "127.0.0.1", "TestAgent/1.0", false) //nolint:errcheck
 
 	if !authRepo.recordLoginAttemptCalled {
 		t.Error("wrong password must record a failed login attempt")
@@ -129,7 +129,7 @@ func TestLogin_ValidCredentials_ReturnsTokenPair(t *testing.T) {
 		PasswordHash: hashPassword(t, "correct-password"),
 	}
 
-	_, tokens, err := svc.Login(context.Background(), "user@example.com", "correct-password", "127.0.0.1", "TestAgent/1.0")
+	_, tokens, err := svc.Login(context.Background(), "user@example.com", "correct-password", "127.0.0.1", "TestAgent/1.0", false)
 
 	if err != nil {
 		t.Fatalf("valid credentials: expected success, got %v", err)
@@ -157,7 +157,7 @@ func TestLogin_ValidCredentials_RecordsSuccessfulAttempt(t *testing.T) {
 		PasswordHash: hashPassword(t, "correct-password"),
 	}
 
-	svc.Login(context.Background(), "user@example.com", "correct-password", "127.0.0.1", "TestAgent/1.0") //nolint:errcheck
+	svc.Login(context.Background(), "user@example.com", "correct-password", "127.0.0.1", "TestAgent/1.0", false) //nolint:errcheck
 
 	if !authRepo.recordLoginAttemptCalled {
 		t.Error("successful login must call RecordLoginAttempt")
@@ -178,7 +178,7 @@ func TestLogin_ValidCredentials_UpdatesLastLogin(t *testing.T) {
 		PasswordHash: hashPassword(t, "correct-password"),
 	}
 
-	svc.Login(context.Background(), "user@example.com", "correct-password", "127.0.0.1", "TestAgent/1.0") //nolint:errcheck
+	svc.Login(context.Background(), "user@example.com", "correct-password", "127.0.0.1", "TestAgent/1.0", false) //nolint:errcheck
 
 	if !authRepo.updateLastLoginCalled {
 		t.Error("successful login must call UpdateLastLogin")
@@ -197,7 +197,7 @@ func TestLogin_ValidCredentials_ReturnsUserProfile(t *testing.T) {
 		PasswordHash: hashPassword(t, "correct-password"),
 	}
 
-	profile, _, err := svc.Login(context.Background(), "user@example.com", "correct-password", "127.0.0.1", "TestAgent/1.0")
+	profile, _, err := svc.Login(context.Background(), "user@example.com", "correct-password", "127.0.0.1", "TestAgent/1.0", false)
 
 	if err != nil {
 		t.Fatalf("valid credentials: expected success, got %v", err)
@@ -217,7 +217,7 @@ func TestLogin_IsAccountLocked_Error_Propagates(t *testing.T) {
 
 	authRepo.isLockedErr = errors.New("db: connection refused")
 
-	_, _, err := svc.Login(context.Background(), "user@example.com", "password", "127.0.0.1", "TestAgent/1.0")
+	_, _, err := svc.Login(context.Background(), "user@example.com", "password", "127.0.0.1", "TestAgent/1.0", false)
 
 	if err == nil {
 		t.Error("IsAccountLocked DB error must propagate and not silently succeed")
