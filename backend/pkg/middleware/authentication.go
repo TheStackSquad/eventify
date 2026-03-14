@@ -25,7 +25,7 @@ func AuthMiddleware(svc authService.AuthService) gin.HandlerFunc {
 		// 1. Extraction with Sanitization
 		authHeader := c.GetHeader("Authorization")
 		if authHeader != "" {
-			parts := strings.Split(authHeader, " ")
+			parts := strings.Fields(authHeader)
 			if len(parts) == 2 && parts[0] == "Bearer" {
 				accessToken = strings.TrimSpace(parts[1])
 			}
@@ -33,7 +33,7 @@ func AuthMiddleware(svc authService.AuthService) gin.HandlerFunc {
 
 		if accessToken == "" {
 			if cookieToken, err := c.Cookie("access_token"); err == nil {
-				// TrimSpace ensures that any browser/test-script whitespace 
+				// TrimSpace ensures that any browser/test-script whitespace
 				// doesn't break the SHA-256 hash symmetry.
 				accessToken = strings.TrimSpace(cookieToken)
 			}
@@ -54,14 +54,41 @@ func AuthMiddleware(svc authService.AuthService) gin.HandlerFunc {
 			return
 		}
 
+		// FIX 1: Guard against nil claims with nil error — a buggy JWT service
+		// implementation must never result in a successful auth or a nil dereference
+		// panic downstream at uuid.Parse(claims.UserID).
+		if claims == nil {
+			utils.LogError(service, operation, "ParseAccessToken returned nil claims without error — possible JWT service bug", nil)
+			c.JSON(http.StatusUnauthorized, gin.H{"message": "Session expired or invalid."})
+			c.Abort()
+			return
+		}
+
+		// FIX 2: Guard against unparseable UserID — a malformed UserID in an otherwise
+		// valid token must be rejected explicitly rather than silently injecting uuid.Nil
+		// into the context, which would cause downstream DB misses instead of a clean 401.
+		userUUID, err := uuid.Parse(claims.UserID)
+		if err != nil {
+			utils.LogError(service, operation, "ParseAccessToken returned token with unparseable UserID", err)
+			c.JSON(http.StatusUnauthorized, gin.H{"message": "Session expired or invalid."})
+			c.Abort()
+			return
+		}
+
 		// 3. Check State (Blacklist)
-		// Now we check if this specific valid token was revoked (Logout/Password change)
+		// Now we check if this specific valid token was revoked (logout/password change).
 		blacklisted, err := svc.IsTokenBlacklisted(c.Request.Context(), accessToken)
+
+		// FIX 3: Fail-closed on blacklist DB error — if we cannot verify whether this
+		// token has been revoked, we must deny the request. Failing open here would allow
+		// a logged-out or password-changed session to remain active during an outage.
 		if err != nil {
 			utils.LogError(service, operation, "Blacklist check failed", err)
-			// Fail-safe: If DB is down, we do not allow the request.
+			c.JSON(http.StatusUnauthorized, gin.H{"message": "Session expired or invalid."})
+			c.Abort()
+			return
 		}
-		
+
 		if blacklisted {
 			utils.LogInfo(service, operation, "Access token is blacklisted - rejecting")
 			c.JSON(http.StatusUnauthorized, gin.H{
@@ -73,7 +100,6 @@ func AuthMiddleware(svc authService.AuthService) gin.HandlerFunc {
 		}
 
 		// 4. Inject into Context
-		userUUID, _ := uuid.Parse(claims.UserID)
 		c.Set("user_id", userUUID)
 		c.Set("user_id_string", claims.UserID)
 

@@ -4,6 +4,7 @@ package middleware
 
 import (
 	"strings"
+	"net"
 
 	"github.com/eventify/backend/pkg/utils"
 
@@ -49,15 +50,16 @@ func RateLimit(limiter *utils.IPRateLimiter) gin.HandlerFunc {
 
 // isLocalhost checks if the given address is localhost
 func isLocalhost(addr string) bool {
-	// Remove port if present
-	if idx := strings.LastIndex(addr, ":"); idx != -1 {
-		addr = addr[:idx]
+	// Strip port correctly for both IPv4 ("127.0.0.1:8080") and
+	// IPv6 ("[::1]:8080"). net.SplitHostPort handles both formats.
+	// If it fails (no port present — e.g. bare "::1"), addr is used as-is.
+	if host, _, err := net.SplitHostPort(addr); err == nil {
+		addr = host
 	}
 
-	// Remove brackets from IPv6 addresses like [::1]
+	// Remove brackets from bare IPv6 addresses like [::1] (no port).
 	addr = strings.Trim(addr, "[]")
 
-	// Check for localhost patterns
 	return addr == "127.0.0.1" ||
 		addr == "::1" ||
 		addr == "localhost" ||

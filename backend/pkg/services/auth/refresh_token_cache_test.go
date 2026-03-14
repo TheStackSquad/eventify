@@ -144,16 +144,10 @@ func TestRefreshToken_Cache_FirstUse_StoresInCache(t *testing.T) {
 }
 
 // TestTokenCache_ManualEviction_RemovesExpiredEntries verifies the eviction
-// logic by calling evictExpiredCacheEntries() directly (requires the method
-// to be extracted from cleanupTokenCache). This tests the cleanup logic without
-// relying on the background goroutine's 1-minute ticker.
-//
-// NOTE: This test requires extracting the cleanup loop body into a separate
-// exported (or unexported) method: (s *authWriteService) evictExpiredCacheEntries().
-// If that refactor has not been done yet, skip this test with t.Skip().
+// logic by calling evictExpiredCacheEntries() directly, without relying on
+// the background goroutine's 1-minute ticker. Confirms expired entries are
+// removed and fresh entries are preserved in a single deterministic call.
 func TestTokenCache_ManualEviction_RemovesExpiredEntries(t *testing.T) {
-	t.Skip("requires extracting evictExpiredCacheEntries() from cleanupTokenCache — see review notes")
-
 	svc, _, _ := buildService(t)
 
 	svc.tokenCacheMutex.Lock()
@@ -165,7 +159,7 @@ func TestTokenCache_ManualEviction_RemovesExpiredEntries(t *testing.T) {
 	}
 	svc.tokenCacheMutex.Unlock()
 
-	// svc.evictExpiredCacheEntries() // uncomment once method is extracted
+	svc.evictExpiredCacheEntries()
 
 	svc.tokenCacheMutex.RLock()
 	_, expiredExists := svc.tokenCache["expired"]
