@@ -63,6 +63,7 @@ func ConfigureRouter(
 			"/auth/reset-password",
 			"/auth/verify-reset-token",
 			"/api/webhooks/paystack", // Webhooks don't need CSRF
+			"/api/csrf-token",
 		),
 	}
 
@@ -99,6 +100,24 @@ func ConfigureRouter(
 			},
 		})
 	})
+
+	// CSRF token seed endpoint — allows guests to obtain a CSRF cookie
+// before submitting any state-changing request (inquiry, order, etc.)
+// Industry standard pattern: SPA calls this on mount before any form submission.
+router.GET("/api/csrf-token",
+    func(c *gin.Context) {
+        // If token already exists, don't regenerate — preserve existing session token
+        if existing, err := c.Cookie(middleware.CSRFTokenCookieName); err == nil && existing != "" {
+            c.JSON(http.StatusOK, gin.H{"message": "Token already active."})
+            return
+        }
+        if _, err := middleware.GenerateAndSetCSRFToken(c); err != nil {
+            c.JSON(http.StatusInternalServerError, gin.H{"message": "Could not generate security token."})
+            return
+        }
+        c.JSON(http.StatusOK, gin.H{"message": "Token issued."})
+    },
+)
 
 	// ============================================
 	// AUTH ROUTES (Special handling)
