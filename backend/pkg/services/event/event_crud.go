@@ -152,23 +152,19 @@ func (s *eventService) GetEventByID(
 func (s *eventService) GetAllEvents(
 	ctx context.Context,
 	filters repoevent.EventFilters,
-) ([]*models.Event, error) {
+) (*repoevent.EventQueryResult, error) {
 	filters.IsDeleted = false
 	return s.eventRepo.GetEvents(ctx, filters)
 }
+ 
 
 // GetEventsByOrganizer retrieves events for a specific organizer
 func (s *eventService) GetEventsByOrganizer(
 	ctx context.Context,
 	organizerID uuid.UUID,
 	includeDeleted bool,
-) ([]*models.Event, error) {
-	filters := repoevent.EventFilters{
-		OrganizerID: &organizerID,
-		IsDeleted:   includeDeleted,
-		Limit:       100,
-	}
-	return s.eventRepo.GetEvents(ctx, filters)
+) (*repoevent.EventQueryResult, error) {
+	return s.eventRepo.GetEventsByOrganizer(ctx, organizerID, includeDeleted)
 }
 
 func (s *eventService) UpdateEvent(

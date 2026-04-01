@@ -16,8 +16,8 @@ import (
 type EventService interface {
 	CreateEvent(ctx context.Context, event *models.Event, tiers []models.TicketTier) error
 	GetEventByID(ctx context.Context, eventID uuid.UUID, userID *uuid.UUID) (*models.Event, error)
-	GetEventsByOrganizer(ctx context.Context, organizerID uuid.UUID, includeDeleted bool) ([]*models.Event, error)
-	GetAllEvents(ctx context.Context, filters repoevent.EventFilters) ([]*models.Event, error)
+	GetEventsByOrganizer(ctx context.Context, organizerID uuid.UUID, includeDeleted bool) (*repoevent.EventQueryResult, error)
+	GetAllEvents(ctx context.Context, filters repoevent.EventFilters) (*repoevent.EventQueryResult, error)
 	UpdateEvent(ctx context.Context, eventID, organizerID uuid.UUID, updates *EventUpdateDTO) (*models.Event, error)
 	SoftDeleteEvent(ctx context.Context, eventID, organizerID uuid.UUID) error
 	GetEventAnalytics(ctx context.Context, eventID, organizerID uuid.UUID) (*EventAnalytics, error)

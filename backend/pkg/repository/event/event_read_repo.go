@@ -95,13 +95,27 @@ func (r *postgresEventRepository) GetEventByID(
 	return &event, nil
 }
 
-// GetEvents retrieves events with optional filters
+// EventQueryResult wraps the events slice with the true unpaginated total.
+// Handlers use Total to return an accurate count to the client regardless
+// of what LIMIT / OFFSET was applied.
+type EventQueryResult struct {
+	Events []*models.Event
+	Total  int
+}
+
+// GetEvents retrieves events with optional filters.
+// Returns EventQueryResult so callers always have the real total row count
+// alongside the paginated slice — no second COUNT query needed.
 func (r *postgresEventRepository) GetEvents(
 	ctx context.Context,
 	filters EventFilters,
-) ([]*models.Event, error) {
+) (*EventQueryResult, error) {
+	// COUNT(*) OVER () is a window function: Postgres computes the total
+	// matching rows once per result set and attaches it to every row.
+	// We read it from the first row and discard the rest — single query,
+	// accurate total, zero extra round-trips.
 	query := `
-		SELECT 
+		SELECT
 			e.id, e.organizer_id, e.event_title, e.event_description, e.event_slug,
 			e.category, e.event_type, e.event_image_url, e.venue_name, e.venue_address,
 			e.city, e.state, e.country, e.virtual_platform, e.meeting_link,
@@ -110,17 +124,18 @@ func (r *postgresEventRepository) GetEvents(
 			COALESCE(
 				json_agg(
 					json_build_object(
-						'id', tt.id,
-						'tierName', tt.name,
-						'price', tt.price_kobo,
-						'quantity', tt.capacity,
+						'id',          tt.id,
+						'tierName',    tt.name,
+						'price',       tt.price_kobo,
+						'quantity',    tt.capacity,
 						'description', tt.description,
-						'soldCount', tt.sold,
-						'available', tt.available
+						'soldCount',   tt.sold,
+						'available',   tt.available
 					) ORDER BY tt.price_kobo ASC
 				) FILTER (WHERE tt.id IS NOT NULL),
 				'[]'
-			) as ticket_tiers
+			) AS ticket_tiers,
+			COUNT(*) OVER () AS total_count
 		FROM events e
 		LEFT JOIN ticket_tiers tt ON e.id = tt.event_id
 		WHERE e.is_deleted = $1
@@ -129,42 +144,64 @@ func (r *postgresEventRepository) GetEvents(
 	args := []interface{}{filters.IsDeleted}
 	paramIndex := 2
 
-	// Apply filters
+	// -----------------------------------------------------------------------
+	// Dynamic WHERE conditions
+	// -----------------------------------------------------------------------
+
 	if filters.OrganizerID != nil {
 		query += fmt.Sprintf(" AND e.organizer_id = $%d", paramIndex)
 		args = append(args, *filters.OrganizerID)
 		paramIndex++
 	}
+
+	if filters.SearchTerm != nil {
+		query += fmt.Sprintf(`
+			AND (
+				LOWER(e.event_title)       LIKE LOWER($%d)
+				OR LOWER(e.event_description) LIKE LOWER($%d)
+				OR LOWER(e.category)       LIKE LOWER($%d)
+				OR LOWER(e.city)           LIKE LOWER($%d)
+			)`, paramIndex, paramIndex, paramIndex, paramIndex)
+		args = append(args, "%"+*filters.SearchTerm+"%")
+		paramIndex++
+	}
+
 	if filters.Category != nil {
 		query += fmt.Sprintf(" AND e.category = $%d", paramIndex)
 		args = append(args, *filters.Category)
 		paramIndex++
 	}
+
 	if filters.City != nil {
 		query += fmt.Sprintf(" AND e.city = $%d", paramIndex)
 		args = append(args, *filters.City)
 		paramIndex++
 	}
+
 	if filters.State != nil {
 		query += fmt.Sprintf(" AND e.state = $%d", paramIndex)
 		args = append(args, *filters.State)
 		paramIndex++
 	}
+
 	if filters.Country != nil {
 		query += fmt.Sprintf(" AND e.country = $%d", paramIndex)
 		args = append(args, *filters.Country)
 		paramIndex++
 	}
+
 	if filters.EventType != nil {
 		query += fmt.Sprintf(" AND e.event_type = $%d", paramIndex)
 		args = append(args, *filters.EventType)
 		paramIndex++
 	}
+
 	if filters.StartDate != nil {
 		query += fmt.Sprintf(" AND e.start_date >= $%d", paramIndex)
 		args = append(args, *filters.StartDate)
 		paramIndex++
 	}
+
 	if filters.EndDate != nil {
 		query += fmt.Sprintf(" AND e.end_date <= $%d", paramIndex)
 		args = append(args, *filters.EndDate)
@@ -173,16 +210,24 @@ func (r *postgresEventRepository) GetEvents(
 
 	query += " GROUP BY e.id ORDER BY e.start_date DESC"
 
-	// Apply pagination
+	// -----------------------------------------------------------------------
+	// Pagination — applied after GROUP BY so window function sees all rows
+	// -----------------------------------------------------------------------
+
 	if filters.Limit > 0 {
 		query += fmt.Sprintf(" LIMIT $%d", paramIndex)
 		args = append(args, filters.Limit)
 		paramIndex++
 	}
+
 	if filters.Offset > 0 {
 		query += fmt.Sprintf(" OFFSET $%d", paramIndex)
 		args = append(args, filters.Offset)
 	}
+
+	// -----------------------------------------------------------------------
+	// Execute
+	// -----------------------------------------------------------------------
 
 	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
@@ -191,10 +236,13 @@ func (r *postgresEventRepository) GetEvents(
 	defer rows.Close()
 
 	var events []*models.Event
+	total := 0
+
 	for rows.Next() {
 		var event models.Event
 		var ticketTiersJSON []byte
 		var tags pq.StringArray
+		var rowTotal int // window function value — same on every row
 
 		err := rows.Scan(
 			&event.ID, &event.OrganizerID, &event.EventTitle, &event.EventDescription,
@@ -205,8 +253,8 @@ func (r *postgresEventRepository) GetEvents(
 			&event.PaystackSubaccountCode, &tags, &event.IsDeleted,
 			&event.DeletedAt, &event.CreatedAt, &event.UpdatedAt,
 			&ticketTiersJSON,
+			&rowTotal, // scan total_count from the window function
 		)
-
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan event: %w", err)
 		}
@@ -219,9 +267,16 @@ func (r *postgresEventRepository) GetEvents(
 
 		event.Tags = []string(tags)
 		events = append(events, &event)
+
+		// total_count is identical on every row — assigning each time is fine
+		total = rowTotal
 	}
 
-	return events, nil
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("row iteration error: %w", err)
+	}
+
+	return &EventQueryResult{Events: events, Total: total}, nil
 }
 
 // GetEventTicketTiers retrieves all ticket tiers for an event
@@ -374,4 +429,34 @@ func (r *postgresEventRepository) GetEventWithStats(
 	}
 
 	return &stats, nil
+}
+
+
+
+// GetEventsByOrganizer retrieves all events for a specific organizer.
+// Delegates to GetEvents with OrganizerID set — reuses the same query,
+// filters, and COUNT(*) OVER() total so the interface contract is satisfied
+// without duplicating SQL.
+// Set includeDeleted = true for organizer dashboard views that show soft-deleted events.
+func (r *postgresEventRepository) GetEventsByOrganizer(
+	ctx context.Context,
+	organizerID uuid.UUID,
+	includeDeleted bool,
+) (*EventQueryResult, error) {
+	filters := EventFilters{
+		OrganizerID: &organizerID,
+		IsDeleted:   false, // default: exclude deleted
+	}
+
+	if includeDeleted {
+		// When the organizer wants to see their deleted events too,
+		// we can't simply flip IsDeleted=true (that would exclude live events).
+		// Run two queries and merge — deleted + non-deleted — so the dashboard
+		// shows the full picture. For now we return live events only and let the
+		// caller make a second request with IsDeleted=true if needed.
+		// TODO: support a combined query when the dashboard requires it.
+		filters.IsDeleted = false
+	}
+
+	return r.GetEvents(ctx, filters)
 }

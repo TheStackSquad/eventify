@@ -1,3 +1,4 @@
+
 // backend/pkg/routes/router.go
 package routes
 
@@ -180,12 +181,12 @@ router.GET("/api/csrf-token",
 		leaderboard.GET("/location/:state", vendorLeaderboardHandler.GetTopVendorsByLocation)
 	}
 
-	// Public events
 // Public events
 publicEvents := router.Group("/events")
 publicEvents.Use(middleware.RateLimit(utils.PublicLimiter))
 {
     publicEvents.GET("", eventHandler.GetAllEvents)
+    publicEvents.GET("/search", eventHandler.SearchEvents)       // static route — must come before wildcard
     publicEvents.GET("/:eventId", eventHandler.GetPublicEventByID)
 }
 

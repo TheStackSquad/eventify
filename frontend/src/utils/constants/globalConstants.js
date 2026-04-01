@@ -19,6 +19,7 @@ export const API_ENDPOINTS = {
   EVENTS: {
     BASE: "/events",
     GET_BY_ID: "/events/:eventId",
+    SEARCH: "/events/search",
     CREATE: "/api/events/create",
     UPDATE: "/api/events/:eventId",
     DELETE: "/api/events/:eventId",

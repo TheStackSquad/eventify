@@ -22,38 +22,35 @@ import (
 // ============================================================================
 
 func (h *EventHandler) GetUserEvents(c *gin.Context) {
-	// 1. Extract organizer ID
 	organizerID, err := extractUserID(c)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"message": "Authentication required"})
 		return
 	}
-	
-	// 2. Query parameters
+ 
 	includeDeleted := c.Query("includeDeleted") == "true"
-	
+ 
 	log.Debug().
 		Str("organizer_id", organizerID.String()).
 		Bool("include_deleted", includeDeleted).
 		Msg("Fetching user events")
-	
-	// 3. Call service
+ 
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
 	defer cancel()
-	
-	events, err := h.eventService.GetEventsByOrganizer(ctx, organizerID, includeDeleted)
+ 
+	result, err := h.eventService.GetEventsByOrganizer(ctx, organizerID, includeDeleted)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to fetch user events")
 		c.JSON(http.StatusInternalServerError, gin.H{"message": "Failed to fetch events"})
 		return
 	}
-	
-	// 4. Success response
+ 
 	c.JSON(http.StatusOK, gin.H{
-		"events": events,
-		"total":  len(events),
+		"events": result.Events,
+		"total":  result.Total,
 	})
 }
+ 
 
 func (h *EventHandler) GetEventByID(c *gin.Context) {
 	// 1. Extract organizer ID
