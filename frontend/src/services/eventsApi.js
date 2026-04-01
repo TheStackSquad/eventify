@@ -42,7 +42,7 @@ export async function createEventApi(eventData) {
   try {
     const response = await backendInstance.post(
       API_ENDPOINTS.EVENTS.CREATE,
-      eventData
+      eventData,
     );
     return normalizeEventResponse(response);
   } catch (error) {
@@ -56,9 +56,17 @@ export async function fetchUserEventsApi() {
   return normalizeEventsResponse(response);
 }
 
-export async function fetchAllEventsApi() {
-  const response = await backendInstance.get(API_ENDPOINTS.EVENTS.BASE);
-  return normalizeEventsResponse(response);
+export async function fetchAllEventsApi({ limit = 8, offset = 0 } = {}) {
+  const response = await backendInstance.get(API_ENDPOINTS.EVENTS.BASE, {
+    params: { limit, offset },
+  });
+
+  // Return both fields — eventsPageClient reads total to drive hasMore
+  const raw = response.data;
+  return {
+    events: raw?.data?.events ?? raw?.events ?? [],
+    total: raw?.total ?? 0,
+  };
 }
 
 export async function fetchEventByIdApi(eventId) {
@@ -77,12 +85,12 @@ export async function fetchEventAnalyticsApi(eventId) {
 
 export async function updateEventApi({ eventId, updates }) {
   // 1. Validation Guard
-  if (!eventId || eventId === 'undefined') {
-    throw new Error('Invalid event ID provided to updateEventApi');
+  if (!eventId || eventId === "undefined") {
+    throw new Error("Invalid event ID provided to updateEventApi");
   }
 
   console.group("📡 [API Request] updateEventApi");
-  
+
   try {
     // 2. THE FIX: Apply the mapping logic here
     // This ensures 'tierName' in UI maps to 'tierName' in Go JSON tag
@@ -90,7 +98,7 @@ export async function updateEventApi({ eventId, updates }) {
     const sanitizedPayload = prepareEventPayload(updates);
 
     const endpoint = API_ENDPOINTS.EVENTS.UPDATE.replace(":eventId", eventId);
-    
+
     console.log("📤 Sending Mapping-Verified Payload:", sanitizedPayload);
 
     // 3. Execute PUT request to Go Gin Server
@@ -99,10 +107,10 @@ export async function updateEventApi({ eventId, updates }) {
     // 4. Normalize the response
     // Converts Go's response (with potential nulls) into clean UI data
     const normalizedData = normalizeEventResponse(response.data);
-    
+
     console.log("✅ Received & Normalized Response:", normalizedData);
     console.groupEnd();
-    
+
     return normalizedData;
   } catch (error) {
     console.error("❌ API Error in updateEventApi:", error);
@@ -117,3 +125,16 @@ export async function deleteEventApi(eventId) {
   return { eventId };
 }
 
+export async function searchEventsApi(query) {
+  if (!query) return { dbResults: [], aiSuggestions: [] };
+
+  try {
+    const response = await backendInstance.get(API_ENDPOINTS.EVENTS.SEARCH, {
+      params: { q: query },
+    });
+    return response.data;
+  } catch (error) {
+    console.error("[searchEventsApi]", error);
+    return { dbResults: [], aiSuggestions: [] };
+  }
+}

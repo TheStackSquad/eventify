@@ -16,12 +16,11 @@ export default function EventsUI({ events }) {
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-          {events.map((event) => (
-            <EventCard key={event.id} event={event} />
+          {events.map((event, index) => (
+            <EventCard key={event.id} event={event} index={index} />
           ))}
         </div>
       )}
     </div>
   );
 }
-

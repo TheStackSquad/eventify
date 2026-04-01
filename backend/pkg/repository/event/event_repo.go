@@ -36,6 +36,7 @@ type EventFilters struct {
 	City        *string
 	State       *string
 	Country     *string
+	SearchTerm  *string
 	StartDate   *time.Time
 	EndDate     *time.Time
 	IsDeleted   bool
@@ -58,7 +59,9 @@ type EventWithStats struct {
 type EventRepository interface {
 	// Event CRUD Operations
 	GetEventByID(ctx context.Context, eventID uuid.UUID, userID *uuid.UUID) (*models.Event, error)
-	GetEvents(ctx context.Context, filters EventFilters) ([]*models.Event, error)
+	
+	GetEvents(ctx context.Context, filters EventFilters) (*EventQueryResult, error)
+	GetEventsByOrganizer(ctx context.Context, organizerID uuid.UUID, includeDeleted bool) (*EventQueryResult, error)
 	CreateEvent(ctx context.Context, tx *sqlx.Tx, event *models.Event) (uuid.UUID, error)
 	UpdateEvent(ctx context.Context, tx *sqlx.Tx, event *models.Event) error
 	SoftDeleteEvent(ctx context.Context, eventID uuid.UUID) error

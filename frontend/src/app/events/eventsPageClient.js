@@ -1,4 +1,5 @@
 // src/app/events/eventsPageClient.js
+
 "use client";
 
 import {
@@ -10,6 +11,10 @@ import {
   useTransition,
   useDeferredValue,
 } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useSearchEvents } from "@/utils/hooks/useSearchEvents";
+import { fetchAllEventsApi } from "@/services/eventsApi";
+import AISuggestions from "@/components/events/AISuggestions";
 import EventsHero from "@/components/events/hero/eventsHero";
 import CategoryPills from "@/components/events/hero/categoryPills";
 import FilterBar from "@/components/events/filters/filterBar";
@@ -17,109 +22,176 @@ import ActiveFilters from "@/components/events/filters/activeFilters";
 import EventsUI from "@/components/events/eventsUI";
 import EventsFooter from "@/components/events/eventsFooter";
 
-const EVENTS_PER_LOAD = 8;
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
 
-/**
- * Normalize raw event data into consistent format for UI
- */
-const normalizeEvents = (rawEvents) => {
-  if (!rawEvents || !Array.isArray(rawEvents)) return [];
+const EVENTS_PER_PAGE = 8;
 
-  return rawEvents.map((event) => {
-    const formatDate = (isoDate) => {
-      if (!isoDate) return "Date N/A";
-      return new Date(isoDate).toLocaleDateString("en-US", {
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-      });
-    };
+const SORT_OPTIONS = {
+  "date-asc": (a, b) => new Date(a.startDate) - new Date(b.startDate),
+  "date-desc": (a, b) => new Date(b.startDate) - new Date(a.startDate),
+  "price-asc": (a, b) => a.price - b.price,
+  "price-desc": (a, b) => b.price - a.price,
+};
 
-    const formatTime = (isoDate) => {
-      if (!isoDate) return "Time N/A";
-      return new Date(isoDate).toLocaleTimeString("en-US", {
-        hour: "2-digit",
-        minute: "2-digit",
-        hour12: true,
-      });
-    };
+// ---------------------------------------------------------------------------
+// Pure helpers — defined once, outside the component
+// ---------------------------------------------------------------------------
 
-    const startingPrice = event.tickets?.[0]?.price ?? 0;
-
-    let tag = "New";
-    if (startingPrice === 0) {
-      tag = "Free Ticket";
-    } else if (startingPrice > 10000) {
-      tag = "Trending";
-    }
-
-
-    return {
-      id: event.id,
-      title: event.eventTitle,
-      category: event.category,
-      image: event.eventImage,
-      price: startingPrice,
-      isFree: startingPrice === 0,
-      tag: tag,
-      date: formatDate(event.startDate),
-      time: formatTime(event.startDate),
-      location: `${event.venueName || "Venue N/A"}, ${event.city || "N/A"}`,
-      filterTitle: event.eventTitle.toLowerCase(),
-      filterCity: event.city?.trim() || "N/A",
-      startDate: event.startDate, // Keep for sorting
-    };
+const formatDate = (isoDate) => {
+  if (!isoDate) return "Date N/A";
+  return new Date(isoDate).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
   });
 };
 
+const formatTime = (isoDate) => {
+  if (!isoDate) return "Time N/A";
+  return new Date(isoDate).toLocaleTimeString("en-US", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+  });
+};
+
+const deriveTag = (price) => {
+  if (price === 0) return "Free Ticket";
+  if (price > 10000) return "Trending";
+  return "New";
+};
+
+/**
+ * Normalize a single raw event from the API into the shape the UI expects.
+ */
+const normalizeEvent = (event) => {
+  const price = event.tickets?.[0]?.price ?? 0;
+  return {
+    id: event.id,
+    title: event.eventTitle,
+    category: event.category,
+    image: event.eventImage,
+    price,
+    isFree: price === 0,
+    tag: deriveTag(price),
+    date: formatDate(event.startDate),
+    time: formatTime(event.startDate),
+    location: `${event.venueName || "Venue N/A"}, ${event.city || "N/A"}`,
+    // Lowercased copies for fast client-side filter matching
+    filterTitle: event.eventTitle?.toLowerCase() ?? "",
+    filterCity: event.city?.trim() ?? "N/A",
+    // Keep raw date for sorting
+    startDate: event.startDate,
+  };
+};
+
+const normalizeEvents = (rawEvents) =>
+  Array.isArray(rawEvents) ? rawEvents.map(normalizeEvent) : [];
+
+// ---------------------------------------------------------------------------
+// Pagination query key factory
+// ---------------------------------------------------------------------------
+
+const eventsPageKey = (page) => ["events", "paginated", { page }];
+
+// ---------------------------------------------------------------------------
+// Component
+// ---------------------------------------------------------------------------
+
 export default function EventsPageClient({ initialEvents }) {
-  // Refs
+  // --- Refs ----------------------------------------------------------------
   const heroRef = useRef(null);
 
-  // State
+  // --- UI State ------------------------------------------------------------
   const [searchTerm, setSearchTerm] = useState("");
   const deferredSearchTerm = useDeferredValue(searchTerm);
   const [isPending, startTransition] = useTransition();
+
   const [selectedCategory, setSelectedCategory] = useState("All");
   const [selectedLocation, setSelectedLocation] = useState("All Locations");
   const [sortBy, setSortBy] = useState("date-asc");
-  const [displayedEventsCount, setDisplayedEventsCount] =
-    useState(EVENTS_PER_LOAD);
-  const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [isFilterSticky, setIsFilterSticky] = useState(false);
 
-  // Memoized Data
-  const EVENTS_DATA_SOURCE = useMemo(
-    () => normalizeEvents(initialEvents),
-    [initialEvents],
+  // --- Server-side pagination state ----------------------------------------
+  const [currentPage, setCurrentPage] = useState(0); // 0-based offset pages
+  const [accumulatedEvents, setAccumulatedEvents] = useState(() =>
+    normalizeEvents(initialEvents),
   );
+  const [totalCount, setTotalCount] = useState(initialEvents?.length ?? 0);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
 
+  // --- Search query --------------------------------------------------------
+  const { data: searchData, isFetching: isSearching } =
+    useSearchEvents(deferredSearchTerm);
+
+  // Only show AI suggestions when there are zero DB results for the query
+  const aiSuggestions =
+    deferredSearchTerm && searchData?.dbResults?.length === 0
+      ? (searchData?.aiSuggestions ?? [])
+      : [];
+
+  // --- Load-more query (server-side pagination) ----------------------------
+  // This only runs when the user clicks "Load More" (currentPage > 0).
+  // Page 0 is handled by initialEvents (SSR/SSG), so we skip that fetch.
+  const { data: pageData, isFetching: isFetchingPage } = useQuery({
+    queryKey: eventsPageKey(currentPage),
+    queryFn: () =>
+      fetchAllEventsApi({
+        limit: EVENTS_PER_PAGE,
+        offset: currentPage * EVENTS_PER_PAGE,
+      }),
+    enabled: currentPage > 0,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  // Accumulate pages as they arrive
+  useEffect(() => {
+    if (!pageData) return;
+
+    const newEvents = normalizeEvents(pageData.events);
+    setTotalCount(pageData.total ?? totalCount);
+    setAccumulatedEvents((prev) => {
+      // Deduplicate by id in case of concurrent fetches or re-renders
+      const existingIds = new Set(prev.map((e) => e.id));
+      const deduped = newEvents.filter((e) => !existingIds.has(e.id));
+      return [...prev, ...deduped];
+    });
+    setIsLoadingMore(false);
+  }, [pageData]);
+
+  // --- Derived category / location lists -----------------------------------
+  // Built from the accumulated events so new pages expand the filter options
   const allCategories = useMemo(
     () => [
       "All",
-      ...new Set(
-        EVENTS_DATA_SOURCE.map((event) => event.category).filter(Boolean),
-      ),
+      ...new Set(accumulatedEvents.map((e) => e.category).filter(Boolean)),
     ],
-    [EVENTS_DATA_SOURCE],
+    [accumulatedEvents],
   );
 
   const locations = useMemo(
     () => [
       "All Locations",
-      ...new Set(
-        EVENTS_DATA_SOURCE.map((event) => event.filterCity).filter(Boolean),
-      ),
+      ...new Set(accumulatedEvents.map((e) => e.filterCity).filter(Boolean)),
     ],
-    [EVENTS_DATA_SOURCE],
+    [accumulatedEvents],
   );
 
-  // Filtering and Sorting
-  const filteredEvents = useMemo(() => {
-    let result = EVENTS_DATA_SOURCE.filter((event) => {
-      const matchesSearch = event.filterTitle.includes(
-        deferredSearchTerm.toLowerCase(),
-      );
+  // --- Core filtering + sorting pipeline -----------------------------------
+  const filteredAndSortedEvents = useMemo(() => {
+    // 1. Source: API search results OR local accumulated events
+    const source =
+      deferredSearchTerm && searchData?.dbResults
+        ? normalizeEvents(searchData.dbResults) // search results arrive un-normalized
+        : accumulatedEvents;
+
+    // 2. Apply category + location filters on top of whichever source
+    const filtered = source.filter((event) => {
+      const matchesSearch = deferredSearchTerm
+        ? event.filterTitle.includes(deferredSearchTerm.toLowerCase())
+        : true;
       const matchesCategory =
         selectedCategory === "All" || event.category === selectedCategory;
       const matchesLocation =
@@ -129,74 +201,46 @@ export default function EventsPageClient({ initialEvents }) {
       return matchesSearch && matchesCategory && matchesLocation;
     });
 
-    const sortedResult = [...result];
-
-    if (sortBy === "date-asc") {
-      sortedResult.sort(
-        (a, b) => new Date(a.startDate) - new Date(b.startDate),
-      );
-    } else if (sortBy === "date-desc") {
-      sortedResult.sort(
-        (a, b) => new Date(b.startDate) - new Date(a.startDate),
-      );
-    } else if (sortBy === "price-asc") {
-      sortedResult.sort((a, b) => a.price - b.price);
-    } else if (sortBy === "price-desc") {
-      sortedResult.sort((a, b) => b.price - a.price);
-    } else if (sortBy === "location") {
-      sortedResult.sort((a, b) => a.filterCity.localeCompare(b.filterCity));
-    }
-
-    return sortedResult;
+    // 3. Sort — SORT_OPTIONS[sortBy] is always defined; fallback is a no-op
+    const sorter = SORT_OPTIONS[sortBy] ?? SORT_OPTIONS["date-asc"];
+    return [...filtered].sort(sorter);
   }, [
-    EVENTS_DATA_SOURCE,
+    accumulatedEvents,
     deferredSearchTerm,
+    searchData,
     selectedCategory,
     selectedLocation,
     sortBy,
   ]);
 
-  // Pagination
-  const displayedEvents = useMemo(
-    () => filteredEvents.slice(0, displayedEventsCount),
-    [filteredEvents, displayedEventsCount],
-  );
+  // --- Pagination state derived from server response -----------------------
+  const hasMore = !deferredSearchTerm && accumulatedEvents.length < totalCount;
 
-  const hasMore = displayedEventsCount < filteredEvents.length;
+  // --- Active filter flag --------------------------------------------------
   const hasActiveFilters =
     searchTerm !== "" ||
     selectedCategory !== "All" ||
     selectedLocation !== "All Locations" ||
     sortBy !== "date-asc";
 
-  // Event Handlers
+  // --- Event handlers ------------------------------------------------------
   const handleCategoryChange = useCallback((category) => {
-    startTransition(() => {
-      setSelectedCategory(category);
-    });
+    startTransition(() => setSelectedCategory(category));
   }, []);
 
   const handleLocationChange = useCallback((location) => {
-    startTransition(() => {
-      setSelectedLocation(location);
-    });
+    startTransition(() => setSelectedLocation(location));
   }, []);
 
   const handleSortChange = useCallback((sort) => {
-    startTransition(() => {
-      setSortBy(sort);
-    });
+    startTransition(() => setSortBy(sort));
   }, []);
 
   const handleLoadMore = useCallback(() => {
-    if (hasMore && !isLoadingMore) {
-      setIsLoadingMore(true);
-      setTimeout(() => {
-        setDisplayedEventsCount((prevCount) => prevCount + EVENTS_PER_LOAD);
-        setIsLoadingMore(false);
-      }, 800);
-    }
-  }, [hasMore, isLoadingMore]);
+    if (!hasMore || isLoadingMore || isFetchingPage) return;
+    setIsLoadingMore(true);
+    setCurrentPage((prev) => prev + 1);
+  }, [hasMore, isLoadingMore, isFetchingPage]);
 
   const handleClearFilters = useCallback(() => {
     setSearchTerm("");
@@ -205,49 +249,42 @@ export default function EventsPageClient({ initialEvents }) {
     setSortBy("date-asc");
   }, []);
 
-  // Effects
+  // --- Sticky filter observer ----------------------------------------------
   useEffect(() => {
-    setDisplayedEventsCount(EVENTS_PER_LOAD);
-  }, [searchTerm, selectedCategory, selectedLocation, sortBy]);
-
-  useEffect(() => {
-    const currentHeroRef = heroRef.current;
+    const el = heroRef.current;
+    if (!el) return;
 
     const observer = new IntersectionObserver(
-      ([entry]) => {
-        setIsFilterSticky(!entry.isIntersecting);
-      },
+      ([entry]) => setIsFilterSticky(!entry.isIntersecting),
       { threshold: 0, rootMargin: "-80px 0px 0px 0px" },
     );
 
-    if (currentHeroRef) observer.observe(currentHeroRef);
-
-    return () => {
-      if (currentHeroRef) observer.unobserve(currentHeroRef);
-    };
+    observer.observe(el);
+    return () => observer.unobserve(el);
   }, []);
 
-  // Empty State
+  // --- Empty state ---------------------------------------------------------
   if (!initialEvents || initialEvents.length === 0) {
     return (
       <div className="min-h-screen bg-gray-50 py-10 px-4 sm:px-6 lg:px-8">
         <div className="max-w-7xl mx-auto text-center">
-          <div className="text-lg text-gray-600">
+          <p className="text-lg text-gray-600">
             No events available at the moment. Please check back later.
-          </div>
+          </p>
         </div>
       </div>
     );
   }
 
+  // --- Render --------------------------------------------------------------
   return (
     <div className="min-h-screen bg-gradient-to-b from-orange-50 to-gray-50">
-      {/* Hero Section */}
+      {/* Hero — observed for sticky filter trigger */}
       <div ref={heroRef}>
         <EventsHero searchTerm={searchTerm} onSearchChange={setSearchTerm} />
       </div>
 
-      {/* Category Pills */}
+      {/* Category pills */}
       <div className="bg-white border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <CategoryPills
@@ -258,20 +295,20 @@ export default function EventsPageClient({ initialEvents }) {
         </div>
       </div>
 
-      {/* Filter Bar */}
+      {/* Filter bar — becomes sticky when hero scrolls out */}
       <FilterBar
         location={selectedLocation}
         onLocationChange={handleLocationChange}
         locations={locations}
         sortBy={sortBy}
         onSortChange={handleSortChange}
-        resultsCount={filteredEvents.length}
+        resultsCount={filteredAndSortedEvents.length}
         isSticky={isFilterSticky}
       />
 
-      {/* Main Content */}
+      {/* Main content */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Active Filters */}
+        {/* Active filter chips */}
         {hasActiveFilters && (
           <ActiveFilters
             searchTerm={searchTerm}
@@ -286,26 +323,35 @@ export default function EventsPageClient({ initialEvents }) {
           />
         )}
 
-        {/* Transition Feedback */}
-        <div
-          style={{ opacity: isPending ? 0.6 : 1, transition: "opacity 200ms" }}
-        >
-          {searchTerm !== deferredSearchTerm && (
-            <div className="mb-4 p-2 bg-blue-50 rounded text-sm text-blue-700">
-              Updating results...
-            </div>
-          )}
+        {/* Transition feedback — only shown during the deferred gap */}
+        {searchTerm !== deferredSearchTerm && (
+          <div className="mb-4 p-2 bg-blue-50 rounded text-sm text-blue-700">
+            Updating results…
+          </div>
+        )}
 
-          {/* Events Grid */}
-          <EventsUI events={displayedEvents} />
+        {/* Content area — dims during concurrent transitions */}
+        <div
+          style={{
+            opacity: isPending ? 0.6 : 1,
+            transition: "opacity 200ms ease",
+          }}
+        >
+          {/* AI suggestions — only when search has no DB matches */}
+          <AISuggestions suggestions={aiSuggestions} isLoading={isSearching} />
+
+          {/* Events grid */}
+          <EventsUI events={filteredAndSortedEvents} />
         </div>
 
-        {/* Load More Footer */}
-        <EventsFooter
-          hasMore={hasMore}
-          isLoading={isLoadingMore}
-          onLoadMore={handleLoadMore}
-        />
+        {/* Load more — hidden during active search */}
+        {!deferredSearchTerm && (
+          <EventsFooter
+            hasMore={hasMore}
+            isLoading={isLoadingMore || isFetchingPage}
+            onLoadMore={handleLoadMore}
+          />
+        )}
       </div>
     </div>
   );
