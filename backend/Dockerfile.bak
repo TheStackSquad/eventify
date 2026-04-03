@@ -1,3 +1,4 @@
+# Eventify/backend/Dockerfile.bak
 # Build stage - compile the Go binary
 FROM golang:1.23-alpine AS builder
 

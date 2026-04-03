@@ -36,3 +36,5 @@ clean-ports.sh
 .idea/
 .DS_Store
 Thumbs.db
+backups/
+backend/tmp/
