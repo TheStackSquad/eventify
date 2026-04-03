@@ -65,24 +65,30 @@ const deriveTag = (price) => {
 
 /**
  * Normalize a single raw event from the API into the shape the UI expects.
+ *
+ * Field name resilience:
+ * - initialEvents (SSR via Go JSON tags):   eventTitle, eventImageURL, ticketTiers
+ * - searchData.dbResults (same Go struct):  same shape
+ * - tickets vs ticketTiers: Go serializes the TicketTiers field as "ticketTiers"
+ *   by default. Some endpoints may alias it as "tickets". We check all variants.
  */
 const normalizeEvent = (event) => {
-  const price = event.tickets?.[0]?.price ?? 0;
+  const tiers = event.ticketTiers ?? event.tickets ?? event.ticket_tiers ?? [];
+  const price = tiers?.[0]?.price ?? 0;
+
   return {
     id: event.id,
     title: event.eventTitle,
     category: event.category,
-    image: event.eventImage,
+    image: event.eventImageURL ?? event.eventImage,
     price,
     isFree: price === 0,
     tag: deriveTag(price),
     date: formatDate(event.startDate),
     time: formatTime(event.startDate),
     location: `${event.venueName || "Venue N/A"}, ${event.city || "N/A"}`,
-    // Lowercased copies for fast client-side filter matching
     filterTitle: event.eventTitle?.toLowerCase() ?? "",
     filterCity: event.city?.trim() ?? "N/A",
-    // Keep raw date for sorting
     startDate: event.startDate,
   };
 };
@@ -95,6 +101,12 @@ const normalizeEvents = (rawEvents) =>
 // ---------------------------------------------------------------------------
 
 const eventsPageKey = (page) => ["events", "paginated", { page }];
+
+// ---------------------------------------------------------------------------
+// Dev-only logger — stripped entirely in production builds
+// ---------------------------------------------------------------------------
+
+const isDev = process.env.NODE_ENV === "development";
 
 // ---------------------------------------------------------------------------
 // Component
@@ -115,7 +127,7 @@ export default function EventsPageClient({ initialEvents }) {
   const [isFilterSticky, setIsFilterSticky] = useState(false);
 
   // --- Server-side pagination state ----------------------------------------
-  const [currentPage, setCurrentPage] = useState(0); // 0-based offset pages
+  const [currentPage, setCurrentPage] = useState(0);
   const [accumulatedEvents, setAccumulatedEvents] = useState(() =>
     normalizeEvents(initialEvents),
   );
@@ -126,15 +138,88 @@ export default function EventsPageClient({ initialEvents }) {
   const { data: searchData, isFetching: isSearching } =
     useSearchEvents(deferredSearchTerm);
 
-  // Only show AI suggestions when there are zero DB results for the query
-  const aiSuggestions =
-    deferredSearchTerm && searchData?.dbResults?.length === 0
-      ? (searchData?.aiSuggestions ?? [])
-      : [];
+  // -------------------------------------------------------------------------
+  // 🔍 SEARCH DIAGNOSTIC LOGS (dev only)
+  // Traces: raw API response → field names → normalization → suggestions
+  // Remove this block once search is confirmed working end-to-end.
+  // -------------------------------------------------------------------------
+  if (isDev && deferredSearchTerm) {
+    console.group(`🔍 [SEARCH] query: "${deferredSearchTerm}"`);
+
+    // Step 1 — what React Query handed us
+    console.log("1. searchData (raw from React Query):", searchData);
+    console.log("   isFetching (isSearching):", isSearching);
+
+    if (searchData) {
+      // Step 2 — DB results count and shape
+      console.log(
+        "2. dbResults count:",
+        searchData.dbResults?.length ?? "field missing",
+      );
+      console.log("   dbResults:", searchData.dbResults);
+      console.log("   aiSuggestions from API:", searchData.aiSuggestions);
+
+      // Step 3 — raw field names on the first DB result
+      // This reveals which field name variant the backend is actually sending
+      if (searchData.dbResults?.length > 0) {
+        const sample = searchData.dbResults[0];
+        console.log("3. First dbResult — raw field names:", {
+          id: sample.id,
+          eventTitle: sample.eventTitle,
+          eventImageURL: sample.eventImageURL,
+          eventImage: sample.eventImage, // legacy alias check
+          ticketTiers: sample.ticketTiers, // expected Go JSON tag
+          tickets: sample.tickets, // legacy alias check
+          ticket_tiers: sample.ticket_tiers, // snake_case alias check
+          category: sample.category,
+          city: sample.city,
+          startDate: sample.startDate,
+        });
+
+        // Step 4 — what normalizeEvent produces from that raw shape
+        const normalized = normalizeEvent(sample);
+        console.log("4. After normalizeEvent():", normalized);
+        console.log(
+          "   filterTitle:",
+          normalized.filterTitle,
+          "— must be non-empty for filter to pass",
+        );
+        console.log(
+          "   image:",
+          normalized.image,
+          "— undefined means wrong field name",
+        );
+        console.log("   price:", normalized.price, "— 0 if tiers missing");
+      }
+    } else {
+      console.log(
+        "2. searchData is undefined — query still in-flight or not triggered",
+      );
+    }
+
+    console.groupEnd();
+  }
+
+  // -------------------------------------------------------------------------
+  // AI suggestions derivation
+  // Only shown when: search is active + DB returned zero results + data settled
+  // isSearching is intentionally NOT used here — it would hide suggestions
+  // during keepPreviousData background refetches. isLoading={isSearching && !searchData}
+  // on the component handles the first-fetch skeleton separately.
+  // -------------------------------------------------------------------------
+  const aiSuggestions = useMemo(() => {
+    if (!deferredSearchTerm) return [];
+    if (!searchData) return [];
+    if (searchData.dbResults?.length > 0) return [];
+    return searchData.aiSuggestions ?? [];
+  }, [deferredSearchTerm, searchData]);
+
+  // Dev log — confirm what the component is about to render
+  if (isDev && deferredSearchTerm) {
+    console.log("5. aiSuggestions passed to component:", aiSuggestions);
+  }
 
   // --- Load-more query (server-side pagination) ----------------------------
-  // This only runs when the user clicks "Load More" (currentPage > 0).
-  // Page 0 is handled by initialEvents (SSR/SSG), so we skip that fetch.
   const { data: pageData, isFetching: isFetchingPage } = useQuery({
     queryKey: eventsPageKey(currentPage),
     queryFn: () =>
@@ -146,14 +231,14 @@ export default function EventsPageClient({ initialEvents }) {
     staleTime: 5 * 60 * 1000,
   });
 
-  // Accumulate pages as they arrive
+  // Accumulate pages as they arrive.
+  // Functional update for setTotalCount so totalCount is not a dep (ESLint fix).
   useEffect(() => {
     if (!pageData) return;
 
     const newEvents = normalizeEvents(pageData.events);
-    setTotalCount(pageData.total ?? totalCount);
+    setTotalCount((prev) => pageData.total ?? prev);
     setAccumulatedEvents((prev) => {
-      // Deduplicate by id in case of concurrent fetches or re-renders
       const existingIds = new Set(prev.map((e) => e.id));
       const deduped = newEvents.filter((e) => !existingIds.has(e.id));
       return [...prev, ...deduped];
@@ -162,7 +247,6 @@ export default function EventsPageClient({ initialEvents }) {
   }, [pageData]);
 
   // --- Derived category / location lists -----------------------------------
-  // Built from the accumulated events so new pages expand the filter options
   const allCategories = useMemo(
     () => [
       "All",
@@ -181,13 +265,24 @@ export default function EventsPageClient({ initialEvents }) {
 
   // --- Core filtering + sorting pipeline -----------------------------------
   const filteredAndSortedEvents = useMemo(() => {
-    // 1. Source: API search results OR local accumulated events
     const source =
       deferredSearchTerm && searchData?.dbResults
-        ? normalizeEvents(searchData.dbResults) // search results arrive un-normalized
+        ? normalizeEvents(searchData.dbResults)
         : accumulatedEvents;
 
-    // 2. Apply category + location filters on top of whichever source
+    if (isDev && deferredSearchTerm && source.length > 0) {
+      console.log("6. Filter pipeline — source length:", source.length);
+      console.log("   Sample filterTitle:", source[0]?.filterTitle);
+      console.log(
+        "   deferredSearchTerm (lowered):",
+        deferredSearchTerm.toLowerCase(),
+      );
+      console.log(
+        "   filterTitle includes term:",
+        source[0]?.filterTitle?.includes(deferredSearchTerm.toLowerCase()),
+      );
+    }
+
     const filtered = source.filter((event) => {
       const matchesSearch = deferredSearchTerm
         ? event.filterTitle.includes(deferredSearchTerm.toLowerCase())
@@ -201,7 +296,10 @@ export default function EventsPageClient({ initialEvents }) {
       return matchesSearch && matchesCategory && matchesLocation;
     });
 
-    // 3. Sort — SORT_OPTIONS[sortBy] is always defined; fallback is a no-op
+    if (isDev && deferredSearchTerm) {
+      console.log("7. After filtering — events remaining:", filtered.length);
+    }
+
     const sorter = SORT_OPTIONS[sortBy] ?? SORT_OPTIONS["date-asc"];
     return [...filtered].sort(sorter);
   }, [
@@ -213,7 +311,7 @@ export default function EventsPageClient({ initialEvents }) {
     sortBy,
   ]);
 
-  // --- Pagination state derived from server response -----------------------
+  // --- Pagination state ----------------------------------------------------
   const hasMore = !deferredSearchTerm && accumulatedEvents.length < totalCount;
 
   // --- Active filter flag --------------------------------------------------
@@ -279,12 +377,10 @@ export default function EventsPageClient({ initialEvents }) {
   // --- Render --------------------------------------------------------------
   return (
     <div className="min-h-screen bg-gradient-to-b from-orange-50 to-gray-50">
-      {/* Hero — observed for sticky filter trigger */}
       <div ref={heroRef}>
         <EventsHero searchTerm={searchTerm} onSearchChange={setSearchTerm} />
       </div>
 
-      {/* Category pills */}
       <div className="bg-white border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <CategoryPills
@@ -295,7 +391,6 @@ export default function EventsPageClient({ initialEvents }) {
         </div>
       </div>
 
-      {/* Filter bar — becomes sticky when hero scrolls out */}
       <FilterBar
         location={selectedLocation}
         onLocationChange={handleLocationChange}
@@ -306,9 +401,7 @@ export default function EventsPageClient({ initialEvents }) {
         isSticky={isFilterSticky}
       />
 
-      {/* Main content */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Active filter chips */}
         {hasActiveFilters && (
           <ActiveFilters
             searchTerm={searchTerm}
@@ -323,28 +416,28 @@ export default function EventsPageClient({ initialEvents }) {
           />
         )}
 
-        {/* Transition feedback — only shown during the deferred gap */}
         {searchTerm !== deferredSearchTerm && (
           <div className="mb-4 p-2 bg-blue-50 rounded text-sm text-blue-700">
             Updating results…
           </div>
         )}
 
-        {/* Content area — dims during concurrent transitions */}
         <div
           style={{
             opacity: isPending ? 0.6 : 1,
             transition: "opacity 200ms ease",
           }}
         >
-          {/* AI suggestions — only when search has no DB matches */}
-          <AISuggestions suggestions={aiSuggestions} isLoading={isSearching} />
+          {/* Skeleton shows only on first fetch (no cached data yet).
+              Once searchData exists, the list takes over from aiSuggestions. */}
+          <AISuggestions
+            suggestions={aiSuggestions}
+            isLoading={isSearching && !searchData}
+          />
 
-          {/* Events grid */}
           <EventsUI events={filteredAndSortedEvents} />
         </div>
 
-        {/* Load more — hidden during active search */}
         {!deferredSearchTerm && (
           <EventsFooter
             hasMore={hasMore}

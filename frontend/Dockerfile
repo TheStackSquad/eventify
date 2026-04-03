@@ -1,4 +1,5 @@
 # Frontend Dockerfile for Next.js 15 App Router
+# Eventify/frontend/Dockerfile
 
 # Stage 1: Dependencies
 FROM node:18-alpine AS deps
